@@ -7,8 +7,13 @@ logger = setup_logger(__name__)
 
 class SoundService:
     def __init__(self, config):
-        self.base_dir = os.path.dirname(os.path.dirname(__file__))
+        self.base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
         self.sound_dir = os.path.join(self.base_dir, 'sounds')
+        
+        # サウンドディレクトリが存在しない場合は作成
+        if not os.path.exists(self.sound_dir):
+            os.makedirs(self.sound_dir)
+            logger.info(f"Created sounds directory: {self.sound_dir}")
 
     def play_alert(self, sound_file='alert.wav'):
         def play():
@@ -28,5 +33,5 @@ class SoundService:
                 logger.info(f"Sound played successfully: {sound_path}")
             except Exception as e:
                 logger.error(f"Error playing sound: {e}")
-
         threading.Thread(target=play, daemon=True).start()
+

@@ -6,7 +6,7 @@ logger = setup_logger(__name__)
 class Camera:
     def __init__(self):
         """カメラの初期化とウィンドウのセットアップを行う"""
-        self.cap = cv2.VideoCapture(0)
+        self.cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
         if not self.cap.isOpened():
             raise Exception("Error: Could not open camera.")
         
@@ -29,7 +29,7 @@ class Camera:
         return screen_width, screen_height
 
     def _setup_camera(self):
-        """カメラのプロパテ��を設定する"""
+        """カメラのプロパティを設定する"""
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.screen_width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.screen_height)
         self.cap.set(cv2.CAP_PROP_FPS, 15)

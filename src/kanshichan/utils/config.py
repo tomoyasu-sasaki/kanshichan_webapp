@@ -1,21 +1,16 @@
 import os
-import yaml
-from src.kanshichan.utils.logger import setup_logger
+from src.kanshichan.utils.yaml_utils import load_yaml, save_yaml
 
-logger = setup_logger(__name__)
+DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.yaml')
 
-def load_config():
-    base_dir = os.path.dirname(os.path.dirname(__file__))
-    config_path = os.path.join(base_dir, 'config/config.yaml')
-    
-    if not os.path.exists(config_path):
-        raise FileNotFoundError(f"Configuration file not found: {config_path}")
+def load_config(config_path=None):
+    """設定ファイルを読み込む"""
+    if config_path is None:
+        config_path = DEFAULT_CONFIG_PATH
+    return load_yaml(config_path)
 
-    try:
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-        logger.info("Configuration loaded successfully")
-        return config
-    except Exception as e:
-        logger.error(f"Error loading configuration: {e}")
-        raise
+def save_config(config, config_path=None):
+    """設定をYAMLファイルに保存する"""
+    if config_path is None:
+        config_path = DEFAULT_CONFIG_PATH
+    save_yaml(config, config_path)

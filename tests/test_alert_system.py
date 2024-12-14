@@ -1,51 +1,63 @@
 import pytest
 from unittest import mock
-from src.kanshichan.core.monitor import play_sound_alert, send_line_message, send_sms, trigger_alert
+from src.kanshichan.services.alert_service import AlertService
+from src.kanshichan.services.line_service import LineService
+from src.kanshichan.services.sound_service import SoundService
 
-def test_play_sound_alert():
-    """指定されたサウンドファイルが正しく再生されるかをテストします。"""
-    with mock.patch('monitor.sa.WaveObject.from_wave_file') as mock_wave:
-        mock_play = mock.Mock()
-        mock_wave.return_value.play.return_value = mock_play
+@pytest.fixture
+def config():
+    return {
+        'line': {
+            'token': 'test_token',
+            'user_id': 'test_user_id',
+            'channel_secret': 'test_secret'
+        }
+    }
 
-        play_sound_alert('test_sound.wav')  # サウンド再生関数を呼び出し
-
-        mock_wave.assert_called_with(mock.ANY)  # サウンドファイルが指定されたか確認
-        mock_play.wait_done.assert_called_once()  # サウンド再生完了待ちが呼ばれたか確認
-
-def test_send_line_message():
-    """LINEへのメッセージ送信が正しく行われるかをテストします。"""
-    message = "テストメッセージ"
-    with mock.patch('monitor.line_bot_api.push_message_with_http_info') as mock_push:
-        send_line_message(message)  # LINEメッセージ送信関数を呼び出し
-        mock_push.assert_called_once()  # PUSHメッセージが一度送信された��確認
-
-def test_send_sms():
-    """Twilioを介したSMS送信が正しく行われるかをテストします。"""
-    message = "テストSMS"
-    with mock.patch('monitor.Client') as mock_client_cls:
-        mock_client = mock_client_cls.return_value
-        mock_client.messages.create.return_value.sid = "SM1234567890"
-
-        send_sms(message)  # SMS送信関数を呼び出し
-
-        mock_client.messages.create.assert_called_once_with(
-            body=message,
-            from_=mock.ANY,
-            to=mock.ANY
-        )  # SMS送信が正しく呼ばれたか確認
-
-def test_trigger_alert():
+def test_trigger_alert(config):
     """アラートがトリガーされた際にLINEメッセージとサウンドアラートが正しく実行されるかをテストします。"""
-    message = "アラートメッセージ"
-    sound_file = "alert.wav"
+    alert_service = AlertService(config)
+    
+    with mock.patch.object(LineService, 'send_message') as mock_line, \
+         mock.patch.object(SoundService, 'play_alert') as mock_sound:
+        
+        alert_service.trigger_alert("テストメッセージ", "test.wav")
+        
+        # 非同期実行されるため、少し待機
+        import time
+        time.sleep(0.1)
+        
+        mock_line.assert_called_once_with("テストメッセージ")
+        mock_sound.assert_called_once_with("test.wav")
 
-    with mock.patch('monitor.send_line_message') as mock_send_line, \
-         mock.patch('monitor.play_sound_alert') as mock_play_sound, \
-         mock.patch('monitor.executor.submit') as mock_submit:
+def test_trigger_absence_alert(config):
+    """不在アラートが正しくトリガーされるかをテストします。"""
+    alert_service = AlertService(config)
+    
+    with mock.patch.object(LineService, 'send_message') as mock_line, \
+         mock.patch.object(SoundService, 'play_alert') as mock_sound:
+        
+        alert_service.trigger_absence_alert()
+        
+        # 非同期実行されるため、少し待機
+        import time
+        time.sleep(0.1)
+        
+        mock_line.assert_called_once_with("早く監視範囲に戻れ～！")
+        mock_sound.assert_called_once_with("person_alert.wav")
 
-        trigger_alert(message, sound_file)  # アラートトリガー関数を呼び出し
-
-        mock_submit.assert_any_call(send_line_message, message)  # LINEメッセージ送信がサブミットされたか確認
-        mock_submit.assert_any_call(play_sound_alert, sound_file)  # サウンドアラートがサブミットされたか確認
-        assert mock_submit.call_count == 2  # 2つのタスクがサブミットされたか確認 
+def test_trigger_smartphone_alert(config):
+    """スマートフォン使用アラートが正しくトリガーされるかをテストします。"""
+    alert_service = AlertService(config)
+    
+    with mock.patch.object(LineService, 'send_message') as mock_line, \
+         mock.patch.object(SoundService, 'play_alert') as mock_sound:
+        
+        alert_service.trigger_smartphone_alert()
+        
+        # 非同期実行されるため、少し待機
+        import time
+        time.sleep(0.1)
+        
+        mock_line.assert_called_once_with("スマホばかり触っていないで勉強をしろ！")
+        mock_sound.assert_called_once_with("smartphone_alert.wav")

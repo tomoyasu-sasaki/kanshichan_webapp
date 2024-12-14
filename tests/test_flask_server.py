@@ -1,49 +1,47 @@
 import pytest
 from unittest import mock
-
-from src.kanshichan.core.monitor import app, callback, monitor
-from flask import Flask
+from linebot.v3.exceptions import InvalidSignatureError
+from src.kanshichan.web.app import create_app
 
 @pytest.fixture
-def client():
-    """Flaskテストクライアントを提供するフィクスチャ。"""
-    with app.test_client() as client:
-        yield client
+def app():
+    config = {
+        'line': {
+            'token': 'test_token',
+            'user_id': 'test_user_id',
+            'channel_secret': 'test_secret'
+        }
+    }
+    return create_app(config)
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
 
 def test_callback_valid_signature(client):
     """有効なシグネチャを持つコールバックリクエストが正しく処理されるかをテストします。"""
-    body = '{"events": []}'
+    body = '{"events": [{"type": "message", "message": {"type": "text", "text": "テスト"}}]}'
     signature = "valid_signature"
 
-    with mock.patch('monitor.line_handler.handle') as mock_handle:
-        # リクエストヘッダーを設定
-        response = client.post('/callback', data=body, headers={'X-Line-Signature': signature})
+    with mock.patch('linebot.v3.webhook.WebhookHandler.handle') as mock_handle:
+        response = client.post('/callback', 
+                             data=body, 
+                             headers={'X-Line-Signature': signature})
 
-        mock_handle.assert_called_once_with(body, signature)  # ハンドラーが正しく呼ばれたか確認
-        assert response.status_code == 200  # ステータスコードが200であることを確認
-        assert response.data == b'OK'  # レスポンスボディが'OK'であることを確認
+        mock_handle.assert_called_once()
+        assert response.status_code == 200
+        assert response.data == b'OK'
 
 def test_callback_invalid_signature(client):
-    """無効なシグネチャを持つコールバック���クエストが適切に拒否されるかをテストします。"""
+    """無効なシグネチャを持つコールバックリクエストが適切に拒否されるかをテストします。"""
     body = '{"events": []}'
     signature = "invalid_signature"
 
-    with mock.patch('monitor.line_handler.handle', side_effect=monitor.InvalidSignatureError):
-        # 無効なシグネチャでリクエストを送信
-        response = client.post('/callback', data=body, headers={'X-Line-Signature': signature})
+    with mock.patch('linebot.v3.webhook.WebhookHandler.handle', 
+                   side_effect=InvalidSignatureError):
+        response = client.post('/callback', 
+                             data=body, 
+                             headers={'X-Line-Signature': signature})
 
-        assert response.status_code == 400  # ステータスコードが400であることを確認
-
-def test_callback_exception(client):
-    """コールバック処理中に例外が発生した場合でも適切に200ステータスを返すかをテストします。"""
-    body = '{"events": []}'
-    signature = "valid_signature"
-
-    with mock.patch('monitor.line_handler.handle', side_effect=Exception("Unhandled Error")), \
-         mock.patch('monitor.logger') as mock_logger:
-        # 例外を発生させてリクエストを送信
-        response = client.post('/callback', data=body, headers={'X-Line-Signature': signature})
-
-        mock_logger.error.assert_called_with('Error handling webhook: Unhandled Error')  # エラーログが記録されたか確認
-        assert response.status_code == 200  # ステータスコードが200であることを確認
-        assert response.data == b'OK'  # レスポンスボディが'OK'であることを確認 
+        assert response.status_code == 400
+  

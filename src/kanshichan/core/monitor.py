@@ -4,24 +4,35 @@ from src.kanshichan.utils.logger import setup_logger
 from src.kanshichan.core.camera import Camera
 from src.kanshichan.core.detector import Detector
 from src.kanshichan.services.alert_service import AlertService
+from PIL import Image, ImageDraw, ImageFont
+import numpy as np
 
 logger = setup_logger(__name__)
 
 class Monitor:
     def __init__(self, config):
+        """モニターの初期化"""
         self.config = config
         self.camera = Camera()
         self.detector = Detector()
         self.alert_service = AlertService(config)
         
-        self.last_seen_time = time.time()
-        self.alert_triggered_absence = False
+        # 検出状態の初期化
+        self.person_detected = False
         self.smartphone_in_use = False
+        
+        # 警告状態の初期化
+        self.alert_triggered_absence = False
         self.alert_triggered_smartphone = False
+        
+        # タイムスタンプの初期化
+        self.last_seen_time = time.time()
         self.last_phone_detection_time = time.time()
         
-        self.absence_threshold = config['conditions']['absence']['threshold_seconds']
-        self.smartphone_threshold = config['conditions']['smartphone_usage']['threshold_seconds']
+        # しきい値の設定
+        conditions = config.get('conditions', {})
+        self.absence_threshold = conditions.get('absence', {}).get('threshold_seconds', 5)
+        self.smartphone_threshold = conditions.get('smartphone_usage', {}).get('threshold_seconds', 3)
 
     def run(self):
         try:
@@ -87,18 +98,64 @@ class Monitor:
     def update_display(self, frame):
         """画面表示を更新する"""
         try:
-            # 検出結果を描画
+            # 人物検出の実行
+            person_result = self.detector.detect_person(frame)
+            self.person_detected = person_result['detected']
+            
+            if self.person_detected:
+                # 人物のランドマークを描画
+                self.detector.draw_landmarks(frame, person_result)
+                
+                # スマートフォン検出の実行
+                phone_result = self.detector.detect_phone(frame)
+                self.smartphone_in_use = phone_result['detected']
+                
+                if self.smartphone_in_use:
+                    # スマートフォンの検出結果を描画
+                    combined_results = {
+                        'landmarks': person_result.get('landmarks'),
+                        'detections': phone_result.get('detections')
+                    }
+                    self.detector.draw_landmarks(frame, combined_results)
+            
+            # 検出結果のテキストを描画
             self.draw_detection_results(frame)
             
             # フレームを表示
             self.camera.show_frame(frame)
+            
         except Exception as e:
-            logger.error(f"Error updating display: {e}")
+            logger.error(f"画面表示の更新中にエラーが発生しました: {e}")
 
     def draw_detection_results(self, frame):
         """検出結果を画面に描画する"""
+        # PILイメージに変換
+        pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        draw = ImageDraw.Draw(pil_image)
+        
+        # フォントの設定（システムにインストールされているフォントのパスを指定）
+        try:
+            font = ImageFont.truetype('/System/Library/Fonts/ヒラギノ角ゴシック W4.ttc', 32)  # macOS
+        except:
+            try:
+                font = ImageFont.truetype('/usr/share/fonts/truetype/fonts-japanese-gothic.ttf', 32)  # Linux
+            except:
+                font = ImageFont.load_default()  # デフォルトフォント
+        
         # 現在の状態を表示
         status_text = []
+        
+        # 人物検出状態
+        if self.person_detected:
+            status_text.append("人物検出中")
+        else:
+            status_text.append("人物未検出")
+        
+        # スマートフォン検出状態
+        if self.smartphone_in_use:
+            status_text.append("スマホ使用中")
+        
+        # 警告状態
         if self.alert_triggered_absence:
             status_text.append("不在警告中")
         if self.alert_triggered_smartphone:
@@ -106,12 +163,7 @@ class Monitor:
         
         # テキストを描画
         for i, text in enumerate(status_text):
-            cv2.putText(
-                frame,
-                text,
-                (10, 30 + i * 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (0, 0, 255),
-                2
-            )
+            draw.text((10, 30 + i * 40), text, font=font, fill=(255, 0, 0))
+        
+        # OpenCV形式に戻す
+        frame[:] = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
