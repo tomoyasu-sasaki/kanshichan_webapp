@@ -86,7 +86,7 @@ class Detector:
                     cls = int(box.cls[0])
                     conf = float(box.conf[0])
                     # クラス67（cell phone）かつ信頼度が0.5以上の場合
-                    if cls == 67 and conf >= 0.5:
+                    if cls == 67 and conf >= 0.4:
                         phone_detections.append({
                             'bbox': box.xyxy[0].cpu().numpy(),  # バウンディングボックス
                             'confidence': conf
