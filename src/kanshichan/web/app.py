@@ -23,6 +23,9 @@ message_sound_mapping = {
 
 def create_app(config):
     app = Flask(__name__)
+
+    # Monitorインスタンスを初期化
+    monitor = Monitor(config)
     
     # LINE Handlerの初期化
     line_handler = WebhookHandler(config['line']['channel_secret'])
@@ -44,11 +47,7 @@ def create_app(config):
                 alert_service.trigger_alert(text, sound_file)
                 
                 # absenceのthreshold_secondsを延長
-                Monitor.absence_threshold += extension_time
-
-
-                # ログに出力
-                logger.info(f"Absence threshold extended by {extension_time} seconds. New threshold: {Monitor.absence_threshold} seconds.")
+                monitor.extend_absence_threshold(extension_time)
 
                 # reply_text = f"受信しました: {text}"
                 # line_bot_api.reply_message(
