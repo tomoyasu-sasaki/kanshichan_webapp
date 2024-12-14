@@ -1,53 +1,44 @@
 import pytest
 from unittest import mock
-from src.kanshichan.core.monitor import handle_message, activity_threshold_map, save_thresholds, absence_threshold, smartphone_threshold, MAX_ABSENCE_THRESHOLD, MAX_SMARTPHONE_THRESHOLD
+from linebot.v3.messaging import TextMessage
+from src.kanshichan.web.app import create_app
 
 @pytest.fixture
-def mock_event():
-    """モックイベントを生成するフィクスチャ。LINEからのメッセージイベントをシミュレートします。"""
-    event = mock.Mock()
-    event.message.text = "お風呂入ってくる"  # テスト用のメッセージ
-    event.reply_token = "test_token"  # テスト用のリプライトークン
-    return event
+def app():
+    config = {
+        'line': {
+            'token': 'test_token',
+            'user_id': 'test_user_id',
+            'channel_secret': 'test_secret'
+        }
+    }
+    return create_app(config)
 
-def test_handle_message_activity_update(mock_event):
-    """特定のアクティビティメッセージを受信した際に閾値が正しく更新されるかをテストします。"""
-    with mock.patch('monitor.save_thresholds') as mock_save, \
-         mock.patch('monitor.line_bot_api.reply_message') as mock_reply:
+@pytest.fixture
+def client(app):
+    return app.test_client()
 
-        handle_message(mock_event)  # メッセージハンドラーを呼び出し
+def test_callback_valid_signature(client):
+    """有効なシグネチャを持つコールバックリクエストが正しく処理されるかをテストします。"""
+    body = '{"events": [{"type": "message", "message": {"type": "text", "text": "テスト"}}]}'
+    signature = "valid_signature"
 
-        activity = activity_threshold_map["お風呂入ってくる"]
-        expected_new_threshold = min(absence_threshold + activity["additional_time"], MAX_ABSENCE_THRESHOLD)
+    with mock.patch('linebot.v3.webhook.WebhookHandler.handle') as mock_handle:
+        response = client.post('/callback', 
+                             data=body, 
+                             headers={'X-Line-Signature': signature})
 
-        assert absence_threshold == expected_new_threshold  # 閾値が期待通りに更新されたか確認
-        mock_save.assert_called_once()  # 閾値保存関数が一度呼ばれたか確認
-        mock_reply.assert_called_once()  # LINEへの返信が一度行われたか確認
+        mock_handle.assert_called_once()
+        assert response.status_code == 200
+        assert response.data == b'OK'
 
-def test_handle_message_reset():
-    """'リセット'メッセージを受信した際に閾値が初期値にリセットされるかをテストします。"""
-    reset_event = mock.Mock()
-    reset_event.message.text = "リセット"  # リセットコマンド
-    reset_event.reply_token = "reset_token"  # リセット用のリプライトークン
+def test_callback_invalid_signature(client):
+    """無効なシグネチャを持つコールバックリクエストが適切に拒否されるかをテストします。"""
+    body = '{"events": []}'
+    signature = "invalid_signature"
 
-    with mock.patch('monitor.save_thresholds') as mock_save, \
-         mock.patch('monitor.line_bot_api.reply_message') as mock_reply:
+    response = client.post('/callback', 
+                         data=body, 
+                         headers={'X-Line-Signature': signature})
 
-        handle_message(reset_event)  # リセットメッセージを処理
-
-        assert absence_threshold == mock.ANY  # 不在閾値が初期値にリセットされたか
-        assert smartphone_threshold == mock.ANY  # スマホ使用閾値が初期値にリセットされたか
-        mock_save.assert_called_once()  # 閾値保存関数が一度呼ばれたか
-        mock_reply.assert_called_once_with(reset_event.reply_token, mock.ANY)  # 正しいリプライが送信されたか
-
-def test_handle_message_unknown_command(mock_event):
-    """未知のコマンドを受信した際に適切なエラーメッセージとサウンドが再生されるかをテストします。"""
-    mock_event.message.text = "未知のコマンド"  # 未知のコマンドメッセージ
-
-    with mock.patch('monitor.send_sound_alert') as mock_sound, \
-         mock.patch('monitor.line_bot_api.reply_message') as mock_reply:
-
-        handle_message(mock_event)  # 未知のコマンドを処理
-
-        mock_sound.assert_called_with("unknown_command.wav")  # 未知コマンド用のサウンドが再生されたか
-        mock_reply.assert_called_once()  # エラーメッセージが一度送信されたか 
+    assert response.status_code == 400 

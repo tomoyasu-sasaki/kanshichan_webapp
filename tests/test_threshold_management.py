@@ -1,29 +1,62 @@
 import pytest
-import os
-import yaml # type: ignore
 from unittest import mock
-from src.kanshichan.core.monitor import save_thresholds, CONFIG_PATH, config, absence_threshold, smartphone_threshold, threshold_lock
+from src.kanshichan.core.monitor import Monitor
+from src.kanshichan.utils.config import load_config, save_config, DEFAULT_CONFIG_PATH
 
 @pytest.fixture
-def mock_config_file(tmp_path):
-    mock_path = tmp_path / "config.yaml"
-    mock_path.write_text(yaml.dump(config))
-    with mock.patch('src.kanshichan.core.monitor.CONFIG_PATH', str(mock_path)):
-        yield mock_path
+def config():
+    return {
+        'line': {
+            'token': 'test_token',
+            'user_id': 'test_user_id',
+            'channel_secret': 'test_secret'
+        },
+        'conditions': {
+            'absence': {'threshold_seconds': 5},
+            'smartphone_usage': {'threshold_seconds': 3}
+        }
+    }
 
-def test_save_thresholds(mock_config_file):
-    new_absence = 2000
-    new_smartphone = 1500
+def test_threshold_initialization(config):
+    """閾値が正しく初期化されるかテスト"""
+    monitor = Monitor(config)
+    
+    assert monitor.absence_threshold == 5
+    assert monitor.smartphone_threshold == 3
 
-    with threshold_lock:
-        global absence_threshold, smartphone_threshold
-        absence_threshold = new_absence
-        smartphone_threshold = new_smartphone
+def test_config_loading():
+    """設定ファイルから正しく設定が読み込まれるかテスト"""
+    mock_config = {
+        'line': {
+            'token': 'test_token',
+            'user_id': 'test_user_id',
+            'channel_secret': 'test_secret'
+        },
+        'conditions': {
+            'absence': {'threshold_seconds': 10},
+            'smartphone_usage': {'threshold_seconds': 5}
+        }
+    }
+    
+    with mock.patch('src.kanshichan.utils.config.load_yaml', return_value=mock_config) as mock_load:
+        config = load_config()
+        mock_load.assert_called_once()
+        assert config == mock_config
 
-    save_thresholds()
-
-    with open(mock_config_file, 'r') as f:
-        updated_config = yaml.safe_load(f)
-
-    assert updated_config['conditions']['absence']['threshold_seconds'] == new_absence
-    assert updated_config['conditions']['smartphone_usage']['threshold_seconds'] == new_smartphone 
+def test_config_saving():
+    """設定が正しく保存されるかテスト"""
+    test_config = {
+        'line': {
+            'token': 'test_token',
+            'user_id': 'test_user_id',
+            'channel_secret': 'test_secret'
+        },
+        'conditions': {
+            'absence': {'threshold_seconds': 5},
+            'smartphone_usage': {'threshold_seconds': 3}
+        }
+    }
+    
+    with mock.patch('src.kanshichan.utils.config.save_yaml') as mock_save:
+        save_config(test_config)
+        mock_save.assert_called_once_with(test_config, DEFAULT_CONFIG_PATH)

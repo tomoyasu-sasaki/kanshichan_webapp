@@ -15,7 +15,7 @@ class AlertService:
 
     def trigger_alert(self, message, sound_file='alert.wav'):
         """非同期で通知と音声再生を実行"""
-        self.executor.submit(self.line_service.send_message, message)
+        # self.executor.submit(self.line_service.send_message, message)
         self.executor.submit(self.sound_service.play_alert, sound_file)
 
     def trigger_absence_alert(self):
