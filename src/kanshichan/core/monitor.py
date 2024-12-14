@@ -77,7 +77,7 @@ class Monitor:
     def handle_phone_detection(self, phone_detected):
         current_time = time.time()
         
-        if phone_detected:
+        if phone_detected['detected']:
             if not self.smartphone_in_use:
                 self.smartphone_in_use = True
                 self.last_phone_detection_time = current_time
@@ -87,9 +87,12 @@ class Monitor:
                     self.alert_service.trigger_smartphone_alert()
                     self.alert_triggered_smartphone = True
         else:
-            if current_time - self.last_phone_detection_time > 5.0:  # RESET_BUFFER
-                self.smartphone_in_use = False
-                self.alert_triggered_smartphone = False
+            # スマートフォンが検出されなかった場合の処理
+            if self.smartphone_in_use:
+                # 一定時間内に再度検出されなければ使用中を解除
+                if current_time - self.last_phone_detection_time > 5.0:  # 5秒のしきい値
+                    self.smartphone_in_use = False
+                    self.alert_triggered_smartphone = False
 
     def cleanup(self):
         self.camera.release()
@@ -108,10 +111,10 @@ class Monitor:
                 
                 # スマートフォン検出の実行
                 phone_result = self.detector.detect_phone(frame)
-                self.smartphone_in_use = phone_result['detected']
+                self.handle_phone_detection(phone_result)  # スマートフォン検出結果を処理
                 
+                # スマートフォンの検出状態に基づいて描画
                 if self.smartphone_in_use:
-                    # スマートフォンの検出結果を描画
                     combined_results = {
                         'landmarks': person_result.get('landmarks'),
                         'detections': phone_result.get('detections')
