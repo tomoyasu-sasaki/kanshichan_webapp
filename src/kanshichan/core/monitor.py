@@ -34,6 +34,17 @@ class Monitor:
         self.absence_threshold = conditions.get('absence', {}).get('threshold_seconds', 5)
         self.smartphone_threshold = conditions.get('smartphone_usage', {}).get('threshold_seconds', 3)
 
+        # 延長時間を管理する変数
+        self.extension_display_time = 0
+        self.extension_applied_at = None
+
+    def extend_absence_threshold(self, extension_time):
+        """absence_thresholdを延長するメソッド"""
+        self.absence_threshold += extension_time
+        self.extension_display_time = extension_time
+        self.extension_applied_at = time.time()  # 延長された時刻を記録
+        logger.info(f"Absence threshold updated to: {self.absence_threshold}")
+
     def run(self):
         try:
             while True:
@@ -77,7 +88,7 @@ class Monitor:
     def handle_phone_detection(self, phone_detected):
         current_time = time.time()
         
-        if phone_detected:
+        if phone_detected['detected']:
             if not self.smartphone_in_use:
                 self.smartphone_in_use = True
                 self.last_phone_detection_time = current_time
@@ -87,9 +98,12 @@ class Monitor:
                     self.alert_service.trigger_smartphone_alert()
                     self.alert_triggered_smartphone = True
         else:
-            if current_time - self.last_phone_detection_time > 5.0:  # RESET_BUFFER
-                self.smartphone_in_use = False
-                self.alert_triggered_smartphone = False
+            # スマートフォンが検出されなかった場合の処理
+            if self.smartphone_in_use:
+                # 一定時間内に再度検出されなければ使用中を解除
+                if current_time - self.last_phone_detection_time > 5.0:  # 5秒のしきい値
+                    self.smartphone_in_use = False
+                    self.alert_triggered_smartphone = False
 
     def cleanup(self):
         self.camera.release()
@@ -108,10 +122,10 @@ class Monitor:
                 
                 # スマートフォン検出の実行
                 phone_result = self.detector.detect_phone(frame)
-                self.smartphone_in_use = phone_result['detected']
+                self.handle_phone_detection(phone_result)  # スマートフォン検出結果を処理
                 
+                # スマートフォンの検出状態に基づいて描画
                 if self.smartphone_in_use:
-                    # スマートフォンの検出結果を描画
                     combined_results = {
                         'landmarks': person_result.get('landmarks'),
                         'detections': phone_result.get('detections')
@@ -120,6 +134,12 @@ class Monitor:
             
             # 検出結果のテキストを描画
             self.draw_detection_results(frame)
+            
+            # 延長時間が設定された場合の表示
+            if self.extension_display_time > 0 and self.extension_applied_at:
+                elapsed_time = time.time() - self.extension_applied_at
+                if elapsed_time < 5:  # 5秒間表示
+                    cv2.putText(frame, f"しきい値延長: +{self.extension_display_time}秒", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
             
             # フレームを表示
             self.camera.show_frame(frame)
@@ -160,6 +180,16 @@ class Monitor:
             status_text.append("不在警告中")
         if self.alert_triggered_smartphone:
             status_text.append("スマホ使用警告中")
+
+         # 延長時間が設定された場合の表示
+        if self.extension_display_time > 0 and self.extension_applied_at:
+            elapsed_time = time.time() - self.extension_applied_at
+            if elapsed_time < 5:  # 5秒間表示
+                status_text.append(f"しきい値延長: +{self.extension_display_time}秒")
+            else:
+                # 表示をリセット
+                self.extension_display_time = 0
+                self.extension_applied_at = None
         
         # テキストを描画
         for i, text in enumerate(status_text):

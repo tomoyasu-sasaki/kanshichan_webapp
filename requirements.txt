@@ -208,7 +208,6 @@ seaborn==0.13.2
 sentencepiece==0.2.0
 sentry-sdk==2.19.2
 setuptools==75.6.0
-simpleaudio==1.0.4
 six==1.17.0
 sounddevice==0.5.1
 sympy==1.13.1
