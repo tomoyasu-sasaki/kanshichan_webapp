@@ -5,12 +5,15 @@ logger = setup_logger(__name__)
 
 class TwilioService:
     def __init__(self, config):
-        twilio_config = config['twilio']
-        self.account_sid = twilio_config['account_sid']
-        self.auth_token = twilio_config['auth_token']
-        self.to_number = twilio_config['to_number']
-        self.from_number = twilio_config['from_number']
-        self.client = Client(self.account_sid, self.auth_token)
+        self.enabled = 'twilio' in config
+        if self.enabled:
+            twilio_config = config['twilio']
+            self.client = Client(
+                twilio_config['account_sid'],
+                twilio_config['auth_token']
+            )
+            self.from_number = twilio_config['from_number']
+            self.to_number = twilio_config['to_number']
 
     def send_sms(self, message):
         try:

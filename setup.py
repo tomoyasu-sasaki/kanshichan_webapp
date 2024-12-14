@@ -6,7 +6,7 @@ setup(
     packages=find_packages("src"),
     package_dir={"": "src"},
     package_data={
-        "kanshichan": ["config/*.yaml"],
+        "kanshichan": ["config/config.yaml"],
     },
     install_requires=[
         "opencv-python",
@@ -18,5 +18,6 @@ setup(
         "twilio",
         "simpleaudio",
         "pyyaml",
+        "Pillow",
     ],
 )
