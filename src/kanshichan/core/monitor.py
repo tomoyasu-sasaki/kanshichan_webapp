@@ -6,6 +6,8 @@ from src.kanshichan.core.detector import Detector
 from src.kanshichan.services.alert_service import AlertService
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
+import platform
+import os
 
 logger = setup_logger(__name__)
 
@@ -31,8 +33,17 @@ class Monitor:
         
         # しきい値の設定
         conditions = config.get('conditions', {})
-        self.absence_threshold = conditions.get('absence', {}).get('threshold_seconds', 5)
-        self.smartphone_threshold = conditions.get('smartphone_usage', {}).get('threshold_seconds', 3)
+        absence_condition = conditions.get('absence', {})
+        self.absence_threshold = absence_condition.get('threshold_seconds', 5)
+        if self.absence_threshold is None:
+            logger.warning("Absence threshold is None, setting to default value of 5.")
+            self.absence_threshold = 5
+
+        smartphone_condition = conditions.get('smartphone_usage', {})
+        self.smartphone_threshold = smartphone_condition.get('threshold_seconds', 3)
+        if self.smartphone_threshold is None:
+            logger.warning("Smartphone threshold is None, setting to default value of 3.")
+            self.smartphone_threshold = 3
 
         # 延長時間を管理する変数
         self.extension_display_time = 0
@@ -100,7 +111,7 @@ class Monitor:
         else:
             # スマートフォンが検出されなかった場合の処理
             if self.smartphone_in_use:
-                # 一定時間内に再度検出されなければ使用中を解除
+                # 一定間内に再度検出されなければ使用中を解除
                 if current_time - self.last_phone_detection_time > 5.0:  # 5秒のしきい値
                     self.smartphone_in_use = False
                     self.alert_triggered_smartphone = False
@@ -155,12 +166,10 @@ class Monitor:
         
         # フォントの設定（システムにインストールされているフォントのパスを指定）
         try:
-            font = ImageFont.truetype('/System/Library/Fonts/ヒラギノ角ゴシック W4.ttc', 32)  # macOS
-        except:
-            try:
-                font = ImageFont.truetype('/usr/share/fonts/truetype/fonts-japanese-gothic.ttf', 32)  # Linux
-            except:
-                font = ImageFont.load_default()  # デフォルトフォント
+            font_path = self._get_system_font()
+            font = ImageFont.truetype(font_path, 32)
+        except Exception:
+            font = ImageFont.load_default()  # デフォルトフォント
         
         # 現在の状態を表示
         status_text = []
@@ -197,3 +206,34 @@ class Monitor:
         
         # OpenCV形式に戻す
         frame[:] = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+
+    def _get_system_font(self):
+        """OSに応じたフォントパスを返す"""
+        system = platform.system()
+        try:
+            if system == "Windows":
+                font_paths = [
+                    "C:\\Windows\\Fonts\\msgothic.ttc",  # MSゴシック
+                    "C:\\Windows\\Fonts\\meiryo.ttc",    # メイリオ
+                    "C:\\Windows\\Fonts\\yugothic.ttf"   # 游ゴシック
+                ]
+            elif system == "Darwin":  # macOS
+                font_paths = [
+                    "/System/Library/Fonts/ヒラギノ角ゴシック W4.ttc",
+                    "/System/Library/Fonts/AppleGothic.ttf"
+                ]
+            else:  # Linux
+                font_paths = [
+                    "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
+                    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+                ]
+
+            # 利用可能なフォントを探す
+            for font_path in font_paths:
+                if os.path.exists(font_path):
+                    return font_path
+
+        except Exception as e:
+            logger.warning(f"Error loading system font: {e}")
+        
+        return None
