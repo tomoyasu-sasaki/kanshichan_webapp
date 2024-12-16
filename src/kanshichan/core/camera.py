@@ -1,4 +1,6 @@
 import cv2
+import platform
+from screeninfo import get_monitors
 from src.kanshichan.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -6,7 +8,7 @@ logger = setup_logger(__name__)
 class Camera:
     def __init__(self):
         """カメラの初期化とウィンドウのセットアップを行う"""
-        self.cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
+        self.cap = self._initialize_camera()
         if not self.cap.isOpened():
             raise Exception("Error: Could not open camera.")
         
@@ -15,18 +17,32 @@ class Camera:
         self._setup_camera()
         self._setup_window()
 
-    def _get_screen_dimensions(self):
-        """画面サイズを取得する"""
+    def _initialize_camera(self):
+        """OSに応じたカメラの初期化"""
+        system = platform.system()
         try:
-            from AppKit import NSScreen
-            screen_width = int(NSScreen.mainScreen().frame().size.width)
-            screen_height = int(NSScreen.mainScreen().frame().size.height)
-            logger.info("Using macOS screen dimensions")
-        except ImportError:
-            screen_width = 1280
-            screen_height = 720
-            logger.info("Using default screen dimensions")
-        return screen_width, screen_height
+            if system == "Windows":
+                return cv2.VideoCapture(0, cv2.CAP_DSHOW)  # DirectShowを使用
+            elif system == "Darwin":  # macOS
+                return cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
+            else:  # Linux等
+                return cv2.VideoCapture(0)
+        except Exception as e:
+            logger.error(f"Camera initialization error: {e}")
+            return cv2.VideoCapture(0)  # フォールバック
+
+    def _get_screen_dimensions(self):
+        """クロスプラットフォーム対応の画面サイズ取得"""
+        try:
+            monitors = get_monitors()
+            if monitors:
+                primary = monitors[0]
+                return primary.width, primary.height
+        except Exception as e:
+            logger.warning(f"Failed to get screen dimensions: {e}")
+        
+        # デフォルト値
+        return 1280, 720
 
     def _setup_camera(self):
         """カメラのプロパティを設定する"""

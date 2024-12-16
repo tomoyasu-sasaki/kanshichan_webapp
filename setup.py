@@ -16,8 +16,9 @@ setup(
         "flask",
         "line-bot-sdk",
         "twilio",
-        "simpleaudio",
+        "playsound",
         "pyyaml",
         "Pillow",
+        "screeninfo",
     ],
 )
