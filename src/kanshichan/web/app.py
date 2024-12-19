@@ -13,12 +13,12 @@ logger = setup_logger(__name__)
 
 # メッセージと音声ファイルのマッピング
 message_sound_mapping = {
-	"お風呂入ってくる": {"sound": "bath.wav", "extension": 1200},
-	"買い物行ってくる": {"sound": "shopping.wav", "extension": 1200},
-	"料理しなきゃ": {"sound": "cooking.wav", "extension": 1200},
-	"散歩してくる": {"sound": "walking.wav", "extension": 1200},
-	"シコってくる": {"sound": "alone.wav", "extension": 600},
-	"とりあえず離席": {"sound": "leaving_seat.wav", "extension": 600},
+	"お風呂入ってくる": {"sound": "Copythat.wav", "extension": 1200},
+	"買い物行ってくる": {"sound": "Copythat.wav", "extension": 1200},
+	"料理しなきゃ": {"sound": "Copythat.wav", "extension": 1200},
+	"散歩してくる": {"sound": "Copythat.wav", "extension": 1200},
+	"うんこ": {"sound": "Copythat.wav", "extension": 600},
+	"とりあえず離席": {"Copythat": "Copythat.wav", "extension": 600},
 }
 
 def create_app(config):
