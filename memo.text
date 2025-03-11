@@ -28,3 +28,12 @@ pytest --cov=monitor
 
 # テストカバレッジをHTMLで表示
 pytest --cov-report html
+
+# ngrokを起動
+ngrok http http://localhost:5001
+
+# ポートを確認
+lsof -i :5001
+
+# ポートを解放
+kill -9 <PID>
