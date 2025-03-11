@@ -141,10 +141,20 @@ class Monitor:
 
     def extend_absence_threshold(self, extension_time):
         """absence_thresholdを延長するメソッド"""
-        self.absence_threshold += extension_time
-        self.extension_display_time = extension_time
-        self.extension_applied_at = time.time()  # 延長された時刻を記録
-        logger.info(f"Absence threshold updated to: {self.absence_threshold}")
+        try:
+            self.absence_threshold += extension_time
+            self.extension_display_time = extension_time
+            self.extension_applied_at = time.time()
+            logger.info(f"Absence threshold updated to: {self.absence_threshold}")
+            logger.info(f"Extension time set to: {self.extension_display_time}")
+            
+            # 現在のフレームを取得して画面を更新
+            frame = self.camera.get_frame()
+            if frame is not None:
+                self.update_display(frame)
+                
+        except Exception as e:
+            logger.error(f"Error extending threshold: {e}")
 
     def run(self):
         try:
@@ -263,12 +273,6 @@ class Monitor:
             # 検出結果のテキストを描画
             self.draw_detection_results(frame)
             
-            # 延長時間が設定された場合の表示
-            if self.extension_display_time > 0 and self.extension_applied_at:
-                elapsed_time = time.time() - self.extension_applied_at
-                if elapsed_time < 5:  # 5秒間表示
-                    cv2.putText(frame, f"しきい値延長: +{self.extension_display_time}秒", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-            
             # フレームを表示
             self.camera.show_frame(frame)
             
@@ -288,16 +292,15 @@ class Monitor:
         except Exception:
             font = ImageFont.load_default()  # デフォルトフォント
         
-        # 現在の状態を表示
+        # 状態テキストのリスト
         status_text = []
         
-        # 人物検出状態
+        # 基本的な状態表示
         if self.person_detected:
             status_text.append("人物検出中")
         else:
             status_text.append("人物未検出")
         
-        # スマートフォン検出状態
         if self.smartphone_in_use:
             status_text.append("スマホ使用中")
         
@@ -307,16 +310,19 @@ class Monitor:
         if self.alert_triggered_smartphone:
             status_text.append("スマホ使用警告中")
 
-         # 延長時間が設定された場合の表示
-        if self.extension_display_time > 0 and self.extension_applied_at:
-            elapsed_time = time.time() - self.extension_applied_at
-            if elapsed_time < 5:  # 5秒間表示
+        # 延長時間の表示（閾値の更新状態）
+        current_time = time.time()
+        if self.extension_applied_at is not None:
+            elapsed_time = current_time - self.extension_applied_at
+            if elapsed_time < self.extension_display_duration:  # 設定された表示時間
                 status_text.append(f"しきい値延長: +{self.extension_display_time}秒")
+                logger.info(f"表示中の延長時間: {self.extension_display_time}秒")
             else:
-                # 表示をリセット
+                # 表示期間が終了したらリセット
+                logger.info("延長時間の表示期間が終了")
                 self.extension_display_time = 0
                 self.extension_applied_at = None
-        
+
         # テキストを描画
         for i, text in enumerate(status_text):
             draw.text((10, 30 + i * 40), text, font=font, fill=(255, 0, 0))
@@ -354,3 +360,38 @@ class Monitor:
             logger.warning(f"Error loading system font: {e}")
         
         return None
+
+    def analyze_behavior(self, frame, person_detected, smartphone_in_use):
+        """行動分析と適切なアドバイスの生成"""
+        current_time = time.time()
+        if current_time - self.last_analysis_time < self.analysis_interval:
+            return
+
+        try:
+            # コンテキストの生成
+            context = self._create_context(person_detected, smartphone_in_use)
+            # LLMからの応答を取得
+            response = self.llm_service.generate_response(context)
+            
+            if response:
+                logger.info(f"LLM Response: {response}")  # デバッグ用ログ
+                self.current_llm_response = response
+                # 重要なメッセージの場合のみ通知
+                if "警告" in response or "注意" in response:
+                    self.alert_service.trigger_alert(response)
+            
+            self.last_analysis_time = current_time
+            
+        except Exception as e:
+            logger.error(f"行動分析中にエラーが発生: {e}")
+
+    def _create_context(self, person_detected, smartphone_in_use):
+        context = []
+        if not person_detected:
+            context.append("ユーザーが席を離れています")
+        elif smartphone_in_use:
+            context.append("ユーザーがスマートフォンを使用しています")
+        else:
+            context.append("ユーザーが勉強に集中しています")
+
+        return " ".join(context)
