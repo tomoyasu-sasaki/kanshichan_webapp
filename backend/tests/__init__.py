@@ -1,0 +1,3 @@
+"""
+KanshiChan test suite
+"""
