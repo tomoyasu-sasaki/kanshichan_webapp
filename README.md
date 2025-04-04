@@ -65,7 +65,7 @@ cd backend
 python -m venv venv
 source venv/bin/activate  # Windows: `venv\Scripts\activate.bat`
 pip install -r requirements.txt  # 依存関係のインストール
-python -m src.main  # サーバー起動
+python -m backend.src.main  # サーバー起動
 
 # 3. フロントエンドのセットアップ（新しいターミナルで実行）
 cd frontend
