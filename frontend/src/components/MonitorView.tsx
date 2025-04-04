@@ -56,21 +56,20 @@ export const MonitorView = () => {
   }, [toast]);
 
   useEffect(() => {
-    let frameRequestId: number;
-    const updateImage = () => {
-      if (videoRef.current) {
-        videoRef.current.src = `http://localhost:5001/api/video_feed?t=${Date.now()}`;
-      }
-      frameRequestId = requestAnimationFrame(updateImage);
-    };
+    if (videoRef.current) {
+      // MJPEGストリームのエンドポイントを直接srcに設定
+      // キャッシュ無効化のタイムスタンプは不要
+      videoRef.current.src = 'http://localhost:5001/api/video_feed';
+    }
 
-    frameRequestId = requestAnimationFrame(updateImage);
-    return () => {
-      if (frameRequestId) {
-        cancelAnimationFrame(frameRequestId);
-      }
-    };
-  }, []);
+    // クリーンアップ関数（必要であれば）
+    // return () => {
+    //   if (videoRef.current) {
+    //     // ストリームの切断などが必要な場合の処理
+    //     videoRef.current.src = '';
+    //   }
+    // };
+  }, []); // マウント時に一度だけ実行
 
   const toggleFullscreen = async () => {
     try {
@@ -82,6 +81,7 @@ export const MonitorView = () => {
         setIsFullscreen(false);
       }
     } catch (error) {
+      console.error('エラー:', error);
       toast({
         title: 'エラー',
         description: '全画面表示の切り替えに失敗しました',
