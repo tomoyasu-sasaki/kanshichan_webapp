@@ -7,8 +7,8 @@ import os
 import sys
 from unittest import mock
 
-# プロジェクトルートをPythonパスに追加
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# backend/src をPythonパスに追加
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
 @pytest.fixture
 def mock_line_event():

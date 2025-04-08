@@ -1,8 +1,9 @@
 import pytest
 from unittest import mock
 import torch
-from src.kanshichan.services.llm_service import LLMService
+from src.services.llm_service import LLMService
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from unittest.mock import MagicMock
 
 @pytest.fixture
 def config():
@@ -18,16 +19,18 @@ def config():
 def mock_tokenizer():
     tokenizer = mock.Mock()
     tokenizer.decode.return_value = "<|system|>...<|assistant|>テスト応答"
-    tokenizer.__call__ = mock.Mock(return_value={
-        'input_ids': torch.tensor([[1, 2, 3]]),
-        'attention_mask': torch.tensor([[1, 1, 1]])
-    })
+    mock_inputs = MagicMock()
+    mock_inputs.to.return_value = mock_inputs
+    mock_inputs.input_ids = torch.tensor([[1, 2, 3]])
+    mock_inputs.attention_mask = torch.tensor([[1, 1, 1]])
+
+    tokenizer.__call__ = mock.Mock(return_value=mock_inputs)
     return tokenizer
 
 @pytest.fixture
 def mock_model():
     model = mock.Mock()
-    model.generate.return_value = torch.tensor([[1, 2, 3]])
+    model.generate.return_value = torch.tensor([[1, 2, 3, 4, 5]])
     return model
 
 def test_llm_initialization(config):
@@ -48,10 +51,10 @@ def test_generate_response(config, mock_tokenizer, mock_model):
          mock.patch('transformers.AutoModelForCausalLM.from_pretrained', return_value=mock_model):
         
         llm_service = LLMService(config)
-        mock_tokenizer.to = mock.Mock(return_value=mock_tokenizer)
         
         response = llm_service.generate_response("ユーザーが勉強に集中しています")
         assert "テスト応答" in response
+        mock_model.generate.assert_called_once()
 
 def test_error_handling(config):
     """エラー処理テストの修正版"""
