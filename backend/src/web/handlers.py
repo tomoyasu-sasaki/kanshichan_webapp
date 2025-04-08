@@ -1,14 +1,15 @@
-from flask import request, abort
+from flask import request, abort, current_app
+from utils.logger import setup_logger
 from linebot.v3.exceptions import InvalidSignatureError
-from backend.src.utils.logger import setup_logger
+from linebot.v3 import WebhookHandler
+from typing import Optional
 
 logger = setup_logger(__name__)
 
-def setup_handlers(app, config):
-    line_handler = config['line_handler']
+def setup_handlers(app, line_handler: Optional[WebhookHandler]):
     if not line_handler:
-        logger.error("LINE handlerが設定されていません")
-        raise ValueError("LINE handler configuration missing")
+        logger.warning("LINE handler is None. /callback endpoint will not be configured.")
+        return
 
     @app.route("/callback", methods=['POST'])
     def callback():
@@ -19,9 +20,10 @@ def setup_handlers(app, config):
         try:
             line_handler.handle(body, signature)
         except InvalidSignatureError:
+            logger.warning("Invalid LINE signature received.")
             abort(400)
         except Exception as e:
-            logger.error(f"Error handling webhook: {e}")
+            logger.error(f"Error handling webhook: {e}", exc_info=True)
             return 'OK', 200
 
         return 'OK', 200

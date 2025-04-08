@@ -7,6 +7,8 @@ common_requires = [
     "mediapipe",
     "torch",
     "ultralytics",
+    "transformers",
+    "openai",
     "flask",
     "line-bot-sdk",
     "twilio",
@@ -32,10 +34,10 @@ else:  # Linux
     ]
 
 setup(
-    name="kanshichan",
+    name="kanshichan-backend",
     version="0.1",
-    packages=find_packages("src"),
-    package_dir={"": "src"},
+    packages=find_packages("backend/src"),
+    package_dir={"": "backend/src"},
     package_data={
         "kanshichan": ["config/config.yaml"],
     },
