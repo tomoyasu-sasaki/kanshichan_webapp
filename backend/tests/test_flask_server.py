@@ -1,18 +1,28 @@
 import pytest
 from unittest import mock
 from linebot.v3.exceptions import InvalidSignatureError
-from backend.src.web.app import create_app
+from flask import Flask
+import json
+from web.app import create_app
+from web.api import api
+from utils.config_manager import ConfigManager
+from unittest.mock import MagicMock
 
 @pytest.fixture
 def app():
-    config = {
-        'line': {
-            'token': 'test_token',
-            'user_id': 'test_user_id',
-            'channel_secret': 'test_secret'
-        }
-    }
-    return create_app(config)
+    mock_config_manager = MagicMock(spec=ConfigManager)
+    mock_config_manager.get.side_effect = lambda key, default=None: {
+        'line.enabled': True,
+        'line.channel_secret': 'test_secret',
+        'line.token': 'test_token'
+    }.get(key, default)
+
+    test_app = create_app(mock_config_manager)
+    test_app.config['TESTING'] = True
+    mock_monitor = MagicMock(spec='core.monitor.Monitor')
+    test_app.config['monitor_instance'] = mock_monitor
+    test_app.config['config_manager'] = mock_config_manager
+    return test_app
 
 @pytest.fixture
 def client(app):
@@ -24,11 +34,11 @@ def test_callback_valid_signature(client):
     signature = "valid_signature"
 
     with mock.patch('linebot.v3.webhook.WebhookHandler.handle') as mock_handle:
-        response = client.post('/callback', 
-                             data=body, 
+        response = client.post('/callback',
+                             data=body,
                              headers={'X-Line-Signature': signature})
 
-        mock_handle.assert_called_once()
+        mock_handle.assert_called_once_with(body, signature)
         assert response.status_code == 200
         assert response.data == b'OK'
 
@@ -37,11 +47,11 @@ def test_callback_invalid_signature(client):
     body = '{"events": []}'
     signature = "invalid_signature"
 
-    with mock.patch('linebot.v3.webhook.WebhookHandler.handle', 
-                   side_effect=InvalidSignatureError):
-        response = client.post('/callback', 
-                             data=body, 
+    with mock.patch('linebot.v3.webhook.WebhookHandler.handle',
+                   side_effect=InvalidSignatureError("Invalid signature")) as mock_handle:
+        response = client.post('/callback',
+                             data=body,
                              headers={'X-Line-Signature': signature})
-
+        mock_handle.assert_called_once_with(body, signature)
         assert response.status_code == 400
   
