@@ -82,10 +82,10 @@ npm run dev  # 開発サーバー起動
 
 ### 🎯 主要機能
 - 👀 **リアルタイム監視**
-  - MediaPipeによる33点の姿勢ランドマーク検出
+  - MediaPipeによる**Pose, Hands, Face**のランドマーク検出と表示（設定でON/OFF可能）
   - YOLOv8を使用したスマートフォン等の物体検知
 - ⏰ **インテリジェントアラート**
-  - 不適切な姿勢の検知と警告
+  - 不適切な姿勢の検知と警告（将来実装予定）
   - 長時間のスマートフォン使用検知
   - カスタマイズ可能な不在管理
 - 🎛️ **直感的なUI**
@@ -115,69 +115,145 @@ npm run dev  # 開発サーバー起動
 KanshiChan/
 ├── backend/                      # Pythonバックエンド
 │   ├── src/
-│   │   ├── config/             # アプリケーション設定
-│   │   │   ├── display.py     # 表示設定
-│   │   │   └── alert.py       # アラート設定
-│   │   ├── core/              # 検出エンジン
-│   │   │   ├── pose.py       # 姿勢検出
-│   │   │   └── object.py     # 物体検出
-│   │   ├── services/          # ビジネスロジック
-│   │   │   ├── monitor.py    # 監視サービス
-│   │   │   └── alert.py      # アラートサービス
-│   │   ├── web/               # Web API
-│   │   │   ├── routes.py     # エンドポイント
-│   │   │   └── socket.py     # WebSocket
-│   │   └── main.py           # エントリーポイント
-│   └── requirements.txt        # 依存パッケージ
+│   │   ├── config/             # デフォルト設定ファイル (config.yaml) が格納されるディレクトリ (現在は未使用)
+│   │   ├── core/               # コア機能 (カメラ、検出、状態管理)
+│   │   │   ├── camera.py
+│   │   │   ├── detector.py     # YOLOv8, MediaPipe 検出ロジック、描画ロジック
+│   │   │   ├── detection_manager.py # 検出処理の管理
+│   │   │   └── state_manager.py     # 状態管理 (不在、スマホ使用)
+│   │   ├── services/           # 外部サービス連携 (アラート)
+│   │   │   ├── alert_manager.py # アラート通知の管理
+│   │   │   └── alert_service.py   # (将来的な具体的な通知処理: 音声、LINEなど)
+│   │   ├── web/                # Web API (Flask) と WebSocket
+│   │   │   ├── api.py          # Flask API エンドポイント
+│   │   │   └── websocket.py    # WebSocket 通信ハンドラ
+│   │   ├── utils/              # ユーティリティ (ロガー、設定管理)
+│   │   │   ├── logger.py
+│   │   │   └── config_manager.py # 設定ファイル (config.yaml) の読み込み・管理
+│   │   ├── __init__.py
+│   │   └── main.py             # アプリケーションエントリーポイント
+│   ├── logs/                   # ログファイル出力先
+│   ├── config.yaml             # ★ アプリケーション設定ファイル ★
+│   ├── requirements.txt        # Python 依存パッケージ
+│   └── venv/                   # Python 仮想環境 (Git管理外)
 │
-├── frontend/                    # Reactフロントエンド
+├── frontend/                     # Reactフロントエンド
+│   ├── public/
 │   ├── src/
-│   │   ├── components/        # UIコンポーネント
-│   │   │   ├── Monitor/      # 監視画面
-│   │   │   └── Settings/     # 設定画面
-│   │   └── assets/           # 静的リソース
-│   └── package.json           # npm設定
+│   │   ├── assets/             # 画像、音声ファイル
+│   │   ├── components/         # React コンポーネント (MonitorView, SettingsPanel など)
+│   │   ├── hooks/              # カスタムフック
+│   │   ├── services/           # API/WebSocket 通信
+│   │   ├── styles/             # スタイル関連
+│   │   ├── types/              # TypeScript 型定義
+│   │   ├── App.tsx             # アプリケーションメインコンポーネント
+│   │   └── main.tsx            # フロントエンドエントリーポイント
+│   ├── index.html
+│   ├── package.json            # npm 設定
+│   ├── tsconfig.json           # TypeScript 設定
+│   └── vite.config.ts        # Vite 設定
 │
-├── .kanshichan/                # アプリ設定
-├── setup.py                    # パッケージ設定
-└── yolov8n.pt                  # YOLOモデル
+├── docs/                         # ドキュメント、画像
+├── tests/                        # テストコード
+├── .gitignore
+├── LICENSE
+├── README.md                     # このファイル
+└── REFACTORING.md                # リファクタリング計画・進捗
+
 ```
 
 ## ⚙️ 設定とカスタマイズ
-### アラート設定
-```python
-{
-    "不在警告": {
-        "sound": "alert.wav",      # 警告音ファイル名
-        "threshold": 300,          # 警告までの時間（秒）
-        "extensions": {            # 延長オプション
-            "休憩": 600,           # 10分延長
-            "お昼休み": 3600       # 1時間延長
-        }
-    },
-    "姿勢警告": {
-        "sound": "posture.wav",    # 警告音ファイル名
-        "threshold": 0.7,          # 検出閾値（0-1）
-        "interval": 60             # 警告間隔（秒）
-    }
-}
+
+### 設定ファイル
+すべての設定はルートディレクトリ直下の `config.yaml` に集約されています。このファイルを編集することで、アプリケーションの挙動をカスタマイズできます。
+
+```yaml
+# カメラ設定
+camera:
+  device_id: 0       # カメラデバイスID (通常は0)
+  width: 640         # 解像度 (幅)
+  height: 480        # 解像度 (高さ)
+  fps: 30            # フレームレート
+
+# 状態管理の閾値設定 (秒)
+conditions:
+  absence:
+    threshold_seconds: 600.0  # この時間以上不在だとアラート
+  smartphone_usage:
+    threshold_seconds: 600.0  # この時間以上スマホを使っているとアラート
+
+# 検出機能の設定
+detector:
+  use_mediapipe: true   # MediaPipe (Pose, Hands, Face) を使用するか
+  use_yolo: true         # YOLO (物体検出) を使用するか
+  # MediaPipe 検出設定 (値域: 0.0 ~ 1.0)
+  mediapipe_options:
+    pose:
+      min_detection_confidence: 0.5
+      min_tracking_confidence: 0.5
+    hands:
+      min_detection_confidence: 0.5
+      min_tracking_confidence: 0.5
+    face:
+      min_detection_confidence: 0.5
+      min_tracking_confidence: 0.5 # Face Mesh は tracking confidence がない場合がある
+
+# 各ランドマークの表示設定
+landmark_settings:
+  pose:
+    enabled: true      # Poseランドマークを表示するか
+    color: [0, 255, 0]   # BGR 色 (緑)
+    thickness: 2       # 線の太さ
+  hands:
+    enabled: true      # Handsランドマークを表示するか
+    color: [0, 0, 255]   # BGR 色 (赤)
+    thickness: 2
+  face:
+    enabled: true      # Face Meshランドマークを表示するか
+    color: [255, 0, 0]   # BGR 色 (青)
+    thickness: 1
+
+# 検出オブジェクトの設定
+detection_objects:
+  smartphone:
+    enabled: true        # スマホ検出を有効にするか
+    alert_message: "スマホの使用時間が長すぎます！"
+    alert_sound: "alert.wav" # frontend/public/sounds/ 内のファイル
+  # 他の検出対象オブジェクト (例: book, laptop) を追加可能
+  # book:
+  #   enabled: false
+  #   alert_message: ""
+  #   alert_sound: ""
+
+# 表示関連の設定
+display:
+  show_opencv_window: true # 開発用に OpenCV のウィンドウを表示するか
+  draw_bounding_boxes: true # YOLO の検出ボックスを描画するか
+  draw_labels: true        # YOLO の検出ラベルを描画するか
+
+# アラート通知設定
+alert:
+  sound_enabled: true    # アラート音を有効にするか
+  line_notify_enabled: false # LINE Notify を有効にするか
+  line_notify_token: "YOUR_LINE_NOTIFY_TOKEN" # LINE Notify のトークン
+
+# メッセージ表示時間等の設定 (フロントエンド用)
+message_extensions:
+  info_duration: 3000       # 情報メッセージの表示時間 (ms)
+  warning_duration: 5000    # 警告メッセージの表示時間 (ms)
+  error_duration: 7000      # エラーメッセージの表示時間 (ms)
+  alert_cooldown: 10000     # アラートのクールダウン時間 (ms)
+  threshold_extension_options: # 不在時間延長オプション (UI表示名: 秒数)
+    "5分休憩": 300
+    "10分休憩": 600
+    "昼休憩": 3600
+
 ```
 
-### 表示設定
-```python
-{
-    "camera": {
-        "width": 640,             # カメラ解像度（横）
-        "height": 480,            # カメラ解像度（縦）
-        "fps": 30                 # フレームレート
-    },
-    "overlay": {
-        "landmarks": True,        # 姿勢ランドマーク表示
-        "boxes": True,            # 検出ボックス表示
-        "stats": True            # 統計情報表示
-    }
-}
-```
+> 💡 **注意点**
+> - 設定変更後はバックエンドの再起動が必要です。
+> - `landmark_settings` の `color` は BGR (青、緑、赤) の順で指定します。
+> - アラート音ファイルは `frontend/public/sounds/` ディレクトリに配置してください。
 
 ## 👥 開発ガイド
 ### 🔬 テスト実行

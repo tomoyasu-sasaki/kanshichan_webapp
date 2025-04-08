@@ -3,29 +3,53 @@ from linebot.v3.messaging import (
     ApiClient,
     MessagingApi,
     TextMessage,
-    PushMessageRequest
+    PushMessageRequest,
+    ReplyMessageRequest
 )
-from linebot.v3.webhook import WebhookHandler
-from backend.src.utils.logger import setup_logger
+from utils.logger import setup_logger
+from utils.config_manager import ConfigManager
 
 logger = setup_logger(__name__)
 
 class LineService:
-    def __init__(self, config):
-        line_config = config['line']
-        self.token = line_config['token']
-        self.user_id = line_config['user_id']
-        self.channel_secret = line_config['channel_secret']
+    def __init__(self, config_manager: ConfigManager):
+        self.enabled = config_manager.get('line.enabled', False)
+        self.token = config_manager.get('line.token')
+        self.user_id = config_manager.get('line.user_id')
+        self.channel_secret = config_manager.get('line.channel_secret')
         
-        # LINE Messaging APIの設定
-        configuration = Configuration(
-            access_token=self.token
-        )
-        self.api_client = ApiClient(configuration)
-        self.messaging_api = MessagingApi(self.api_client)
-        self.handler = WebhookHandler(self.channel_secret)
+        if not self.enabled:
+            logger.info("LINE service is disabled in config.")
+            self.messaging_api = None
+            return
+            
+        if not self.token or self.token == 'YOUR_LINE_NOTIFY_TOKEN':
+            logger.warning("LINE token not found or is set to default value. LineService may not function.")
+            self.messaging_api = None
+            return
+
+        try:
+            configuration = Configuration(access_token=self.token)
+            self.api_client = ApiClient(configuration)
+            self.messaging_api = MessagingApi(self.api_client)
+            logger.info("LineService initialized successfully.")
+        except Exception as e:
+            logger.error(f"Failed to initialize LINE Messaging API: {e}")
+            self.messaging_api = None
 
     def send_message(self, message):
+        if not self.enabled:
+            logger.debug("LINE service is disabled. Message not sent.")
+            return
+            
+        if not self.messaging_api:
+            logger.error("LINE Messaging API not initialized. Cannot send message.")
+            return
+            
+        if not self.user_id or self.user_id == 'YOUR_LINE_USER_ID':
+            logger.error("LINE user_id not configured or is set to default. Cannot send message.")
+            return
+
         try:
             request = PushMessageRequest(
                 to=self.user_id,

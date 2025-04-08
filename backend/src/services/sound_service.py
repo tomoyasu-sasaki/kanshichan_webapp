@@ -1,12 +1,12 @@
-import os
 import platform
+import os
 import threading
-from backend.src.utils.logger import setup_logger
+from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
 class SoundService:
-    def __init__(self, config):
+    def __init__(self):
         self.base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
         self.sound_dir = os.path.join(self.base_dir, 'backend', 'src', 'sounds')
         logger.info(f"Sound directory: {self.sound_dir}")

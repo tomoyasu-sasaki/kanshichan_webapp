@@ -1,6 +1,7 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
-from backend.src.utils.logger import setup_logger
+import openai
+from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -33,7 +34,8 @@ class LLMService:
             # トークナイズと生成
             inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
             outputs = self.model.generate(
-                **inputs,
+                input_ids=inputs.input_ids, 
+                attention_mask=inputs.attention_mask,
                 max_new_tokens=100,
                 temperature=0.7,
                 do_sample=True
