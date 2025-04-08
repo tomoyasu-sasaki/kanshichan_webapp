@@ -8,6 +8,7 @@ from core.detection_manager import DetectionManager
 from core.state_manager import StateManager
 from services.alert_service import AlertService
 from services.alert_manager import AlertManager
+from services.schedule_manager import ScheduleManager  # ScheduleManagerをインポート
 from utils.config_manager import ConfigManager # ConfigManager をインポート
 from utils.logger import setup_logger
 
@@ -43,6 +44,9 @@ if __name__ == '__main__':
         alert_service = AlertService(config_manager)
         alert_manager = AlertManager(alert_service)
         state_manager = StateManager(config_manager, alert_manager)
+        # ScheduleManagerのインスタンス化
+        schedule_manager = ScheduleManager(config_manager)
+        logger.info("ScheduleManager を初期化しました。")
         # --- ここまで ---
 
         # Monitor インスタンスの作成 (ConfigManager を渡す)
@@ -52,7 +56,8 @@ if __name__ == '__main__':
             detector=detector,
             detection_manager=detection_manager,
             state_manager=state_manager,
-            alert_manager=alert_manager
+            alert_manager=alert_manager,
+            schedule_manager=schedule_manager  # ScheduleManager を追加
         )
         logger.info("Monitor インスタンスを作成しました。")
 
@@ -61,7 +66,8 @@ if __name__ == '__main__':
         # ただし、他の場所で app.config['config_manager'] を参照しているなら設定しておく。
         app.config['monitor_instance'] = monitor
         app.config['config_manager'] = config_manager # 念のため設定
-        logger.info("Flask アプリケーションに Monitor と ConfigManager を設定しました。")
+        app.config['schedule_manager'] = schedule_manager # ScheduleManagerを設定
+        logger.info("Flask アプリケーションに Monitor, ConfigManager, ScheduleManager を設定しました。")
         # --- ここまで ---
 
         # モニターを別スレッドで開始

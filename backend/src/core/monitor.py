@@ -1,13 +1,14 @@
 import time
 import cv2
 import threading
+import datetime
 from utils.logger import setup_logger
 from core.camera import Camera
 from core.detector import Detector
 from services.alert_manager import AlertManager
 from core.state_manager import StateManager
 from core.detection_manager import DetectionManager
-from web.websocket import broadcast_status
+from web.websocket import broadcast_status, socketio
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import platform
@@ -23,7 +24,8 @@ class Monitor:
                  detector: Detector,
                  detection_manager: DetectionManager,
                  state_manager: StateManager,
-                 alert_manager: AlertManager):
+                 alert_manager: AlertManager,
+                 schedule_manager=None):
         """モニターの初期化 (依存性注入・ConfigManager 版)"""
         self.config_manager = config_manager
         self.camera = camera
@@ -31,6 +33,7 @@ class Monitor:
         self.detection_manager = detection_manager
         self.state_manager = state_manager
         self.alert_manager = alert_manager
+        self.schedule_manager = schedule_manager
         
         # 延長時間を管理する変数
         self.extension_display_time = 0
@@ -54,6 +57,12 @@ class Monitor:
             'smartphoneAlert': False
         }
         self.detection_lock = threading.Lock()
+        
+        # スケジュールチェック用の変数
+        self.last_schedule_check_time = 0
+        self.schedule_check_interval = 10  # 10秒ごとにチェック
+        self.executed_schedules = set()  # 実行済みスケジュールを記録（同じ分に複数回実行されないように）
+        
         logger.info("Monitor initialized with dependency injection and ConfigManager.")
 
     def update_detection_results(self, results):
@@ -223,6 +232,62 @@ class Monitor:
                 # raise KeyboardInterrupt # 強制的に例外を発生させて終了させる場合
                 # self.stop_requested = True # フラグを使う場合 (runループ側でチェック)
 
+    def _check_schedules(self):
+        """
+        現在時刻に実行すべきスケジュールがあるかチェックし、
+        該当するスケジュールがあれば通知を送信する
+        """
+        if not self.schedule_manager:
+            return False  # スケジュールマネージャーが設定されていない場合は何もしない
+        
+        # 現在時刻を取得（HH:MM形式）
+        now = datetime.datetime.now()
+        current_time = now.strftime("%H:%M")
+        current_minute = now.strftime("%H:%M")  # 分単位で記録
+        
+        # 同じ分に既にチェック済みなら処理をスキップ
+        if current_minute in self.executed_schedules:
+            return False
+        
+        # スケジュール一覧を取得
+        schedules = self.schedule_manager.get_schedules()
+        notification_sent = False
+        
+        for schedule in schedules:
+            schedule_time = schedule.get("time")
+            
+            # 時刻が一致するスケジュールを探す
+            if schedule_time == current_time:
+                logger.info(f"Schedule triggered: {schedule}")
+                
+                # アラート音を再生（AlertManagerを使用）
+                if self.alert_manager:
+                    self.alert_manager.alert_service.trigger_alert(f"スケジュール通知: {schedule.get('content')}")
+                
+                # WebSocketで通知を送信
+                notification_data = {
+                    "type": "schedule_alert",
+                    "content": schedule.get("content"),
+                    "time": schedule_time
+                }
+                
+                try:
+                    socketio.emit("schedule_alert", notification_data)
+                    logger.info(f"Schedule notification sent via WebSocket: {notification_data}")
+                    notification_sent = True
+                except Exception as e:
+                    logger.error(f"Error sending schedule notification: {e}")
+        
+        # 実行済みとして記録
+        if notification_sent:
+            self.executed_schedules.add(current_minute)
+            
+            # 翌日に備えて、セットのサイズが大きくなりすぎないように古い記録をクリア
+            if len(self.executed_schedules) > 100:
+                self.executed_schedules.clear()
+        
+        return notification_sent
+
     def run(self):
         try:
             while True:
@@ -239,8 +304,17 @@ class Monitor:
                 self._update_frame_buffer(frame)
                 self._broadcast_status()
 
-                # OpenCVウィンドウ表示 (現在無効化中)
+                # OpenCVウィンドウ表示
                 self._display_frame(frame)
+                
+                # スケジュールチェック（一定間隔ごとに実行）
+                current_time = time.time()
+                if (current_time - self.last_schedule_check_time) >= self.schedule_check_interval:
+                    self._check_schedules()
+                    self.last_schedule_check_time = current_time
+                
+                # 短い sleep を入れることでCPU使用率を下げる
+                time.sleep(0.01)
 
         finally:
             self.cleanup()

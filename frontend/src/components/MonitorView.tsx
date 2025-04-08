@@ -1,14 +1,7 @@
 import { Box, VStack, Text, HStack, Badge, IconButton, useToast } from '@chakra-ui/react';
 import { useEffect, useRef, useState } from 'react';
-import { io } from 'socket.io-client';
 import { FaExpand, FaCompress } from 'react-icons/fa';
-
-interface DetectionStatus {
-  personDetected: boolean;
-  smartphoneDetected: boolean;
-  absenceTime: number;
-  smartphoneUseTime: number;
-}
+import { websocketManager, DetectionStatus } from '../utils/websocket';
 
 export const MonitorView = () => {
   const videoRef = useRef<HTMLImageElement>(null);
@@ -23,20 +16,11 @@ export const MonitorView = () => {
   });
 
   useEffect(() => {
-    // WebSocketの設定
-    const socket = io('http://localhost:5001', {
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000
-    });
+    // WebSocketマネージャーを初期化
+    websocketManager.initialize();
     
-    socket.on('connect', () => {
-      console.log('WebSocket connected');
-    });
-
-    socket.on('connect_error', (error) => {
-      console.error('WebSocket connection error:', error);
+    // 接続エラーのハンドリング
+    const errorUnsubscribe = websocketManager.onError(() => {
       toast({
         title: '接続エラー',
         description: 'サーバーとの接続に失敗しました',
@@ -46,12 +30,17 @@ export const MonitorView = () => {
       });
     });
 
-    socket.on('status_update', (newStatus: DetectionStatus) => {
-      setStatus(newStatus);
+    // ステータス更新のハンドリング
+    const statusUnsubscribe = websocketManager.onStatusUpdate((newStatus) => {
+      if (newStatus) {
+        setStatus(newStatus);
+      }
     });
 
+    // クリーンアップ関数
     return () => {
-      socket.disconnect();
+      errorUnsubscribe();
+      statusUnsubscribe();
     };
   }, [toast]);
 
@@ -61,14 +50,6 @@ export const MonitorView = () => {
       // キャッシュ無効化のタイムスタンプは不要
       videoRef.current.src = 'http://localhost:5001/api/video_feed';
     }
-
-    // クリーンアップ関数（必要であれば）
-    // return () => {
-    //   if (videoRef.current) {
-    //     // ストリームの切断などが必要な場合の処理
-    //     videoRef.current.src = '';
-    //   }
-    // };
   }, []); // マウント時に一度だけ実行
 
   const toggleFullscreen = async () => {

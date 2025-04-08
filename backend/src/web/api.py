@@ -146,4 +146,72 @@ def video_feed():
             logger.info("Video stream generation finished.")
 
     return Response(generate(),
-                   mimetype='multipart/x-mixed-replace; boundary=frame') 
+                   mimetype='multipart/x-mixed-replace; boundary=frame')
+
+# スケジュール関連のAPIエンドポイント
+@api.route('/schedules', methods=['GET'])
+def get_schedules():
+    """登録されているスケジュール一覧を取得する"""
+    schedule_manager = current_app.config.get('schedule_manager')
+    
+    if schedule_manager is None:
+        logger.error("ScheduleManager not found in app config")
+        return jsonify({'error': 'ScheduleManager not initialized'}), 500
+    
+    try:
+        schedules = schedule_manager.get_schedules()
+        return jsonify(schedules)
+    except Exception as e:
+        logger.error(f"Error getting schedules: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@api.route('/schedules', methods=['POST'])
+def add_schedule():
+    """新しいスケジュールを登録する"""
+    schedule_manager = current_app.config.get('schedule_manager')
+    
+    if schedule_manager is None:
+        logger.error("ScheduleManager not found in app config")
+        return jsonify({'error': 'ScheduleManager not initialized'}), 500
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+            
+        time = data.get('time')
+        content = data.get('content')
+        
+        if not time or not content:
+            return jsonify({'error': 'Time and content are required'}), 400
+        
+        new_schedule = schedule_manager.add_schedule(time, content)
+        if not new_schedule:
+            return jsonify({'error': 'Failed to add schedule'}), 500
+        
+        return jsonify(new_schedule), 201
+    except Exception as e:
+        logger.error(f"Error adding schedule: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@api.route('/schedules/<schedule_id>', methods=['DELETE'])
+def delete_schedule(schedule_id):
+    """指定されたIDのスケジュールを削除する"""
+    schedule_manager = current_app.config.get('schedule_manager')
+    
+    if schedule_manager is None:
+        logger.error("ScheduleManager not found in app config")
+        return jsonify({'error': 'ScheduleManager not initialized'}), 500
+    
+    try:
+        if not schedule_id:
+            return jsonify({'error': 'Schedule ID is required'}), 400
+        
+        success = schedule_manager.delete_schedule(schedule_id)
+        if not success:
+            return jsonify({'error': 'Schedule not found or could not be deleted'}), 404
+        
+        return '', 204
+    except Exception as e:
+        logger.error(f"Error deleting schedule: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500 
