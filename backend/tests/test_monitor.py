@@ -1,6 +1,7 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, PropertyMock, ANY
 import time
+from datetime import datetime
 from core.monitor import Monitor
 from services.alert_service import AlertService
 # 依存コンポーネントのクラスをインポート
@@ -10,6 +11,9 @@ from core.detection_manager import DetectionManager
 from core.state_manager import StateManager
 from services.alert_manager import AlertManager
 from utils.config_manager import ConfigManager # ConfigManager をインポート
+from services.object_detection_service import ObjectDetectionService
+from services.schedule_manager import ScheduleManager  # 追加
+from utils.constants import DetectionStatus
 
 # Monitor インスタンスをリセットするヘルパーフィクスチャ
 @pytest.fixture(autouse=True)
@@ -110,3 +114,208 @@ def test_analyze_behavior(monitor_instance, mock_dependencies):
 async def test_create_context(monitor_instance, mock_dependencies):
     """コンテキスト生成テスト（非同期対応）(要リファクタリング)"""
     pass 
+
+# スケジュール関連のテストを追加
+def test_check_schedules_match_found(monkeypatch):
+    """時刻が一致するスケジュールが見つかった場合のテスト"""
+    # 現在時刻のモック
+    current_time = "14:30"
+    mock_now = MagicMock()
+    mock_now.strftime.return_value = current_time
+    monkeypatch.setattr(datetime, 'now', MagicMock(return_value=mock_now))
+    
+    # 依存関係のモック
+    mock_config = MagicMock(spec=ConfigManager)
+    mock_alert = MagicMock(spec=AlertService)
+    mock_detector = MagicMock(spec=ObjectDetectionService)
+    mock_state = MagicMock(spec=StateManager)
+    mock_schedule = MagicMock(spec=ScheduleManager)
+    
+    # スケジュール一覧を設定
+    mock_schedule.get_schedules.return_value = [
+        {"id": "test-id-1", "time": "09:00", "content": "朝のミーティング"},
+        {"id": "test-id-2", "time": current_time, "content": "定期報告"},
+        {"id": "test-id-3", "time": "17:00", "content": "退勤"}
+    ]
+    
+    # ソケットのモック
+    mock_socket = MagicMock()
+    
+    # Monitorインスタンスを作成
+    monitor = Monitor(
+        config_manager=mock_config,
+        alert_service=mock_alert,
+        object_detection_service=mock_detector,
+        state_manager=mock_state,
+        schedule_manager=mock_schedule
+    )
+    
+    # _socketフィールドをセット
+    monitor._socket = mock_socket
+    
+    # テスト対象メソッドを実行
+    monitor._check_schedules()
+    
+    # アラート音が再生されたことを確認
+    mock_alert.play_alert.assert_called_once()
+    
+    # WebSocketで通知が送信されたことを確認
+    mock_socket.emit.assert_called_with('schedule_alert', {
+        'time': current_time,
+        'content': '定期報告'
+    })
+
+def test_check_schedules_no_match(monkeypatch):
+    """時刻が一致するスケジュールがない場合のテスト"""
+    # 現在時刻のモック
+    current_time = "14:30"
+    mock_now = MagicMock()
+    mock_now.strftime.return_value = current_time
+    monkeypatch.setattr(datetime, 'now', MagicMock(return_value=mock_now))
+    
+    # 依存関係のモック
+    mock_config = MagicMock(spec=ConfigManager)
+    mock_alert = MagicMock(spec=AlertService)
+    mock_detector = MagicMock(spec=ObjectDetectionService)
+    mock_state = MagicMock(spec=StateManager)
+    mock_schedule = MagicMock(spec=ScheduleManager)
+    
+    # スケジュール一覧を設定（現在時刻と一致するものはない）
+    mock_schedule.get_schedules.return_value = [
+        {"id": "test-id-1", "time": "09:00", "content": "朝のミーティング"},
+        {"id": "test-id-2", "time": "12:00", "content": "昼食"},
+        {"id": "test-id-3", "time": "17:00", "content": "退勤"}
+    ]
+    
+    # ソケットのモック
+    mock_socket = MagicMock()
+    
+    # Monitorインスタンスを作成
+    monitor = Monitor(
+        config_manager=mock_config,
+        alert_service=mock_alert,
+        object_detection_service=mock_detector,
+        state_manager=mock_state,
+        schedule_manager=mock_schedule
+    )
+    
+    # _socketフィールドをセット
+    monitor._socket = mock_socket
+    
+    # テスト対象メソッドを実行
+    monitor._check_schedules()
+    
+    # アラート音が再生されないことを確認
+    mock_alert.play_alert.assert_not_called()
+    
+    # WebSocketで通知が送信されないことを確認
+    assert not mock_socket.emit.called or not any(call[0][0] == 'schedule_alert' for call in mock_socket.emit.call_args_list)
+
+def test_check_schedules_multiple_matches(monkeypatch):
+    """同じ時刻に複数のスケジュールがある場合のテスト"""
+    # 現在時刻のモック
+    current_time = "14:30"
+    mock_now = MagicMock()
+    mock_now.strftime.return_value = current_time
+    monkeypatch.setattr(datetime, 'now', MagicMock(return_value=mock_now))
+    
+    # 依存関係のモック
+    mock_config = MagicMock(spec=ConfigManager)
+    mock_alert = MagicMock(spec=AlertService)
+    mock_detector = MagicMock(spec=ObjectDetectionService)
+    mock_state = MagicMock(spec=StateManager)
+    mock_schedule = MagicMock(spec=ScheduleManager)
+    
+    # スケジュール一覧を設定（同じ時刻に複数のスケジュール）
+    mock_schedule.get_schedules.return_value = [
+        {"id": "test-id-1", "time": "09:00", "content": "朝のミーティング"},
+        {"id": "test-id-2", "time": current_time, "content": "定期報告1"},
+        {"id": "test-id-3", "time": current_time, "content": "定期報告2"},
+        {"id": "test-id-4", "time": "17:00", "content": "退勤"}
+    ]
+    
+    # ソケットのモック
+    mock_socket = MagicMock()
+    
+    # Monitorインスタンスを作成
+    monitor = Monitor(
+        config_manager=mock_config,
+        alert_service=mock_alert,
+        object_detection_service=mock_detector,
+        state_manager=mock_state,
+        schedule_manager=mock_schedule
+    )
+    
+    # _socketフィールドをセット
+    monitor._socket = mock_socket
+    
+    # モニターの既に通知済みスケジュールIDセットをクリア
+    monitor._notified_schedule_ids = set()
+    
+    # テスト対象メソッドを実行
+    monitor._check_schedules()
+    
+    # アラート音が複数回再生されたことを確認
+    assert mock_alert.play_alert.call_count == 2
+    
+    # WebSocketで複数の通知が送信されたことを確認
+    assert mock_socket.emit.call_count >= 2
+    
+    # 両方のスケジュールが通知されたことを確認
+    found_notifications = []
+    for call in mock_socket.emit.call_args_list:
+        if call[0][0] == 'schedule_alert':
+            found_notifications.append(call[0][1]['content'])
+    
+    assert "定期報告1" in found_notifications
+    assert "定期報告2" in found_notifications
+
+def test_check_schedules_already_notified(monkeypatch):
+    """既に通知済みのスケジュールがある場合のテスト"""
+    # 現在時刻のモック
+    current_time = "14:30"
+    mock_now = MagicMock()
+    mock_now.strftime.return_value = current_time
+    monkeypatch.setattr(datetime, 'now', MagicMock(return_value=mock_now))
+    
+    # 依存関係のモック
+    mock_config = MagicMock(spec=ConfigManager)
+    mock_alert = MagicMock(spec=AlertService)
+    mock_detector = MagicMock(spec=ObjectDetectionService)
+    mock_state = MagicMock(spec=StateManager)
+    mock_schedule = MagicMock(spec=ScheduleManager)
+    
+    # スケジュール一覧を設定
+    test_schedule = {"id": "test-id-2", "time": current_time, "content": "定期報告"}
+    mock_schedule.get_schedules.return_value = [
+        {"id": "test-id-1", "time": "09:00", "content": "朝のミーティング"},
+        test_schedule,
+        {"id": "test-id-3", "time": "17:00", "content": "退勤"}
+    ]
+    
+    # ソケットのモック
+    mock_socket = MagicMock()
+    
+    # Monitorインスタンスを作成
+    monitor = Monitor(
+        config_manager=mock_config,
+        alert_service=mock_alert,
+        object_detection_service=mock_detector,
+        state_manager=mock_state,
+        schedule_manager=mock_schedule
+    )
+    
+    # _socketフィールドをセット
+    monitor._socket = mock_socket
+    
+    # 既に通知済みとしてスケジュールIDを設定
+    monitor._notified_schedule_ids = {test_schedule["id"]}
+    
+    # テスト対象メソッドを実行
+    monitor._check_schedules()
+    
+    # アラート音が再生されないことを確認
+    mock_alert.play_alert.assert_not_called()
+    
+    # WebSocketで通知が送信されないことを確認
+    assert not mock_socket.emit.called or not any(call[0][0] == 'schedule_alert' for call in mock_socket.emit.call_args_list) 
