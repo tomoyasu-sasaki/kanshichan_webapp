@@ -8,6 +8,10 @@ from linebot.v3.messaging import (
 )
 from utils.logger import setup_logger
 from utils.config_manager import ConfigManager
+from utils.exceptions import (
+    LineAPIError, APIError, ConfigError, InitializationError,
+    AlertDeliveryError, wrap_exception
+)
 
 logger = setup_logger(__name__)
 
@@ -34,7 +38,16 @@ class LineService:
             self.messaging_api = MessagingApi(self.api_client)
             logger.info("LineService initialized successfully.")
         except Exception as e:
-            logger.error(f"Failed to initialize LINE Messaging API: {e}")
+            line_init_error = wrap_exception(
+                e, LineAPIError,
+                "Failed to initialize LINE Messaging API",
+                details={
+                    'token_configured': bool(self.token and self.token != 'YOUR_LINE_NOTIFY_TOKEN'),
+                    'user_id_configured': bool(self.user_id and self.user_id != 'YOUR_LINE_USER_ID'),
+                    'enabled': self.enabled
+                }
+            )
+            logger.error(f"LINE API initialization error: {line_init_error.to_dict()}")
             self.messaging_api = None
 
     def send_message(self, message):
@@ -58,4 +71,13 @@ class LineService:
             self.messaging_api.push_message(request)
             logger.info("LINE message sent successfully")
         except Exception as e:
-            logger.error(f"Error sending LINE message: {e}")
+            line_send_error = wrap_exception(
+                e, LineAPIError,
+                "Error sending LINE message",
+                details={
+                    'message_length': len(message),
+                    'user_id': self.user_id,
+                    'api_initialized': bool(self.messaging_api)
+                }
+            )
+            logger.error(f"LINE message sending error: {line_send_error.to_dict()}")

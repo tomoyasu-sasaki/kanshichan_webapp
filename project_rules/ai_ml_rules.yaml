@@ -1,0 +1,373 @@
+# KanshiChan - AI/ML 開発規約
+# =============================================
+# 対象: AI/ML機能（YOLO, MediaPipe, 画像処理）
+# 参照: main_rules.yaml, backend_rules.yaml
+
+# ===========================================
+# 1. AI/ML アーキテクチャ規約
+# ===========================================
+ai_architecture:
+  design_principles:
+    modular: "検出器ごとの独立したモジュール設計"
+    configurable: "設定による機能の有効/無効化"
+    fallback: "AI機能障害時の適切なフォールバック"
+    performance: "リアルタイム処理を考慮した最適化"
+    
+  model_management:
+    storage: "プロジェクト内またはダウンロード管理"
+    versioning: "モデルバージョンの明示的管理"
+    caching: "モデルの効率的なメモリ使用"
+    
+  processing_pipeline:
+    input: "フレーム前処理 → AI推論 → 後処理 → 結果統合"
+    threading: "メインスレッドのブロッキング回避"
+    error_recovery: "部分的な機能停止でも継続動作"
+
+# ===========================================
+# 2. 物体検出（YOLO）規約
+# ===========================================
+yolo_detection:
+  model_selection:
+    current: "YOLOv8n (nano) - 軽量版"
+    rationale: "リアルタイム処理とのバランス"
+    upgrade_path: "必要に応じてYOLOv8s, YOLOv8m へ"
+    
+  configuration:
+    confidence_threshold: "0.5 (設定可能)"
+    device_selection: "GPU > MPS > CPU の優先順位"
+    batch_processing: "単一フレーム処理"
+    
+  target_objects:
+    smartphone: "cell phone クラス"
+    person: "person クラス"
+    laptop: "laptop クラス"
+    book: "book クラス"
+    
+  implementation_pattern: |
+    def detect_objects(self, frame: np.ndarray) -> Dict[str, Any]:
+        """物体検出の標準実装パターン
+        
+        Args:
+            frame: 入力画像フレーム (BGR形式)
+            
+        Returns:
+            検出結果辞書
+        """
+        if not self.use_yolo or not hasattr(self, 'model'):
+            return {}
+            
+        try:
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = self.model(rgb_frame, verbose=False)[0]
+            
+            return self._process_yolo_results(results)
+            
+        except Exception as e:
+            logger.error(f"YOLO detection failed: {e}", exc_info=True)
+            return {}
+
+# ===========================================
+# 3. 姿勢検出（MediaPipe）規約
+# ===========================================
+mediapipe_detection:
+  components:
+    pose: "姿勢ランドマーク検出"
+    hands: "手のランドマーク検出"
+    face_mesh: "顔のランドマーク検出"
+    
+  configuration:
+    model_complexity: "0 (軽量) | 1 (標準) | 2 (高精度)"
+    confidence_thresholds:
+      detection: "0.5 - 0.7"
+      tracking: "0.5 - 0.7"
+    performance_mode: "static_image_mode: False (動画用)"
+    
+  error_handling:
+    initialization: "コンポーネント別の初期化エラー処理"
+    runtime: "個別コンポーネントの実行時エラー処理"
+    graceful_degradation: "一部機能停止時の継続動作"
+    
+  implementation_guidelines:
+    resource_management: |
+      # MediaPipe リソース管理
+      try:
+          self.pose = self.mp_pose.Pose(
+              static_image_mode=False,
+              model_complexity=0,
+              smooth_landmarks=True,
+              min_detection_confidence=0.7,
+              min_tracking_confidence=0.7
+          )
+      except Exception as e:
+          logger.error(f"Failed to initialize MediaPipe Pose: {e}")
+          self.use_mediapipe = False
+          
+    detection_processing: |
+      def process_pose_landmarks(self, rgb_frame):
+          """姿勢ランドマーク処理"""
+          try:
+              results = self.pose.process(rgb_frame)
+              if results and results.pose_landmarks:
+                  return results.pose_landmarks
+          except Exception as e:
+              logger.error(f"Pose detection error: {e}")
+          return None
+
+# ===========================================
+# 4. 画像処理規約
+# ===========================================
+image_processing:
+  color_space:
+    input: "BGR (OpenCV標準)"
+    ai_processing: "RGB (AI models)"
+    conversion: "cv2.cvtColor による適切な変換"
+    
+  frame_handling:
+    validation: "フレームの null/empty チェック"
+    copying: "必要に応じた適切なフレームコピー"
+    memory: "大きなフレームのメモリ使用量考慮"
+    
+  preprocessing:
+    normalization: "AI model 要求に応じた正規化"
+    resizing: "必要に応じたフレームリサイズ"
+    format_conversion: "適切なデータ型変換"
+    
+  drawing_operations:
+    landmarks: "MediaPipe ランドマークの描画"
+    bounding_boxes: "YOLO 検出ボックスの描画"
+    color_coding: "状態に応じた色分け"
+    
+  examples:
+    frame_validation: |
+      def validate_frame(self, frame: np.ndarray) -> bool:
+          """フレーム妥当性検証"""
+          if frame is None or frame.size == 0:
+              logger.warning("Invalid frame received")
+              return False
+          return True
+          
+    safe_drawing: |
+      def draw_landmarks_safely(self, frame, landmarks, color, thickness):
+          """安全なランドマーク描画"""
+          try:
+              if landmarks and self.landmark_settings.get('enabled', False):
+                  self.mp_drawing.draw_landmarks(
+                      frame, landmarks, self.mp_pose.POSE_CONNECTIONS,
+                      landmark_drawing_spec=DrawingSpec(color=color, thickness=thickness)
+                  )
+          except Exception as e:
+              logger.error(f"Drawing error: {e}")
+
+# ===========================================
+# 5. パフォーマンス最適化規約
+# ===========================================
+performance_optimization:
+  frame_rate:
+    target: "15+ FPS"
+    measurement: "フレーム処理時間の定期的監視"
+    optimization: "処理時間がボトルネックとなる場合の対策"
+    
+  resource_usage:
+    gpu_memory: "GPU メモリの効率的使用"
+    cpu_utilization: "マルチコア活用とバランス"
+    model_caching: "モデルの適切なキャッシュ"
+    
+  processing_optimization:
+    model_warmup: "初回実行時のウォームアップ"
+    batch_processing: "可能な場合のバッチ処理"
+    frame_skipping: "必要に応じたフレームスキップ"
+    
+  monitoring:
+    fps_tracking: |
+      class PerformanceMonitor:
+          def __init__(self):
+              self.frame_times = collections.deque(maxlen=30)
+              
+          def update(self, processing_time):
+              self.frame_times.append(processing_time)
+              
+          def get_avg_fps(self):
+              if not self.frame_times:
+                  return 0
+              avg_time = sum(self.frame_times) / len(self.frame_times)
+              return 1.0 / avg_time if avg_time > 0 else 0
+
+# ===========================================
+# 6. 設定管理規約
+# ===========================================
+ai_configuration:
+  structure:
+    detector_flags: "use_mediapipe, use_yolo"
+    model_parameters: "confidence_threshold, model_complexity"
+    landmark_settings: "コンポーネント別の有効化とスタイル"
+    detection_objects: "オブジェクト別の設定"
+    
+  dynamic_configuration:
+    hot_reload: "設定変更の動的反映（将来実装）"
+    validation: "設定値の妥当性検証"
+    fallback: "無効な設定値のフォールバック"
+    
+  example_structure: |
+    detector:
+      use_mediapipe: true
+      use_yolo: true
+      mediapipe_options:
+        pose:
+          min_detection_confidence: 0.5
+          min_tracking_confidence: 0.5
+        hands:
+          min_detection_confidence: 0.5
+          min_tracking_confidence: 0.5
+    
+    detection_objects:
+      smartphone:
+        enabled: true
+        confidence_threshold: 0.5
+        alert_threshold: 3.0
+        class_name: "cell phone"
+
+# ===========================================
+# 7. エラーハンドリング規約
+# ===========================================
+ai_error_handling:
+  model_initialization:
+    yolo_download: "モデルダウンロード失敗時の対処"
+    mediapipe_init: "MediaPipe 初期化失敗時の対処"
+    device_selection: "GPU利用不可時のCPUフォールバック"
+    
+  runtime_errors:
+    detection_failure: "個別検出失敗時の継続動作"
+    memory_error: "メモリ不足時の処理軽減"
+    hardware_error: "ハードウェア関連エラーの対処"
+    
+  graceful_degradation:
+    partial_functionality: "一部機能停止での継続動作"
+    fallback_modes: "AI機能無効時の基本動作"
+    user_notification: "機能制限のユーザー通知"
+    
+  implementation_examples: |
+    def robust_detection(self, frame):
+        """堅牢な検出処理"""
+        results = {
+            'detections': {},
+            'pose_landmarks': None,
+            'person_detected': False
+        }
+        
+        # YOLO検出（エラー時はスキップ）
+        if self.use_yolo:
+            try:
+                yolo_results = self._yolo_detect(frame)
+                results.update(yolo_results)
+            except Exception as e:
+                logger.error(f"YOLO detection failed: {e}")
+                
+        # MediaPipe検出（エラー時はスキップ）
+        if self.use_mediapipe:
+            try:
+                mp_results = self._mediapipe_detect(frame)
+                results.update(mp_results)
+            except Exception as e:
+                logger.error(f"MediaPipe detection failed: {e}")
+                
+        return results
+
+# ===========================================
+# 8. テスト規約
+# ===========================================
+ai_testing:
+  test_data:
+    synthetic: "合成テストフレームの使用"
+    real_samples: "実際の使用シーンのサンプル"
+    edge_cases: "異常条件でのテスト"
+    
+  unit_testing:
+    model_loading: "モデル読み込みテスト"
+    detection_logic: "検出ロジックテスト"
+    error_handling: "エラーハンドリングテスト"
+    
+  integration_testing:
+    pipeline: "検出パイプライン全体テスト"
+    performance: "パフォーマンステスト"
+    configuration: "設定変更テスト"
+    
+  test_examples: |
+    def test_yolo_detection_with_valid_frame():
+        """YOLO検出の正常系テスト"""
+        detector = Detector()
+        frame = create_test_frame_with_person()
+        
+        results = detector.detect_objects(frame)
+        
+        assert 'detections' in results
+        assert results['person_detected'] is True
+        
+    def test_detection_with_empty_frame():
+        """空フレームでの異常系テスト"""
+        detector = Detector()
+        empty_frame = np.array([])
+        
+        results = detector.detect_objects(empty_frame)
+        
+        assert results['person_detected'] is False
+        assert 'detections' in results
+
+# ===========================================
+# 9. モデル管理規約
+# ===========================================
+model_management:
+  versioning:
+    tracking: "使用モデルのバージョン記録"
+    compatibility: "モデル互換性の管理"
+    migration: "モデル更新時の移行手順"
+    
+  storage:
+    location: "プロジェクトルート（.gitignore 対象）"
+    download: "自動ダウンロード機能"
+    verification: "モデルファイルの整合性確認"
+    
+  lifecycle:
+    initialization: "アプリ起動時のモデル読み込み"
+    hot_swap: "実行時のモデル切り替え（将来実装）"
+    cleanup: "リソース解放とクリーンアップ"
+    
+  examples: |
+    def setup_yolo_model(self):
+        """YOLO モデルセットアップ"""
+        model_path = "yolov8n.pt"
+        
+        if not os.path.exists(model_path):
+            logger.info("Downloading YOLO model...")
+            self.model = YOLO("yolov8n.pt")  # 自動ダウンロード
+        else:
+            logger.info("Loading existing YOLO model...")
+            self.model = YOLO(model_path)
+            
+        # デバイス設定
+        device = self._select_optimal_device()
+        self.model.to(device)
+        logger.info(f"YOLO model loaded on {device}")
+
+# ===========================================
+# 10. 品質保証規約
+# ===========================================
+ai_quality_assurance:
+  accuracy_monitoring:
+    metrics: "検出精度、偽陽性/偽陰性率"
+    benchmarking: "定期的な精度評価"
+    improvement: "精度向上のための継続的改善"
+    
+  performance_monitoring:
+    realtime_metrics: "リアルタイム処理性能"
+    resource_usage: "CPU/GPU使用率"
+    bottleneck_analysis: "パフォーマンスボトルネック分析"
+    
+  robustness_testing:
+    environmental: "照明条件、カメラ角度の変化"
+    hardware: "異なるハードウェア環境での動作"
+    edge_cases: "極端な条件での動作確認"
+    
+  documentation:
+    model_specs: "使用モデルの仕様書"
+    performance_benchmarks: "パフォーマンスベンチマーク"
+    known_limitations: "既知の制限事項" 

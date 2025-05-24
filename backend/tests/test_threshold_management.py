@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock, call
 import time
 from core.monitor import Monitor
-from core.state_manager import StateManager
+from core.state import StateManager
 from flask import json, Flask
 from services.alert_manager import AlertManager
 from services.alert_service import AlertService
@@ -56,17 +56,17 @@ def app(tmp_path):
     mock_alert_service = AlertService(config_manager=config_manager) # ConfigManager を渡す
     alert_manager = AlertManager(alert_service=mock_alert_service)
     # StateManager のインスタンス化 (ConfigManager を渡す)
-    state_manager = StateManager(config_manager=config_manager, alert_manager=alert_manager)
+    state = StateManager(config_manager=config_manager, alert_manager=alert_manager)
     # Monitor のインスタンス化 (テストによっては不要かもしれない)
     mock_camera = MagicMock(spec='core.camera.Camera') # spec を文字列で指定
     mock_detector = MagicMock(spec='core.detector.Detector')
-    mock_detection_manager = MagicMock(spec='core.detection_manager.DetectionManager')
+    mock_detection = MagicMock(spec='core.detection.DetectionManager')
     monitor = Monitor(
         config_manager=config_manager,
         camera=mock_camera,
         detector=mock_detector,
-        detection_manager=mock_detection_manager,
-        state_manager=state_manager,
+        detection=mock_detection,
+        state=state,
         alert_manager=alert_manager
     )
     app.config['monitor_instance'] = monitor # Monitor インスタンスも設定
@@ -80,10 +80,10 @@ def client(app):
 
 def test_threshold_initialization(app):
     """StateManager の閾値が ConfigManager から正しく初期化されるかテスト"""
-    state_manager = app.config['monitor_instance'].state_manager
+    state = app.config['monitor_instance'].state
     # app fixture で設定された値を確認 (initial_test_config の値)
-    assert state_manager.absence_threshold == 5.0
-    assert state_manager.smartphone_threshold == 3.0
+    assert state.absence_threshold == 5.0
+    assert state.smartphone_threshold == 3.0
 
 def test_config_loading(tmp_path):
     """ConfigManager が設定ファイルを正しく読み込むかテスト"""
@@ -144,7 +144,7 @@ def test_get_settings_api(client, app):
 # update_settings API のテストを修正
 def test_update_settings_api(client, app):
     """/api/settings POST が ConfigManager と StateManager を更新し、保存するかテスト"""
-    state_manager = app.config['monitor_instance'].state_manager
+    state = app.config['monitor_instance'].state
     config_manager = app.config['config_manager']
     
     # 重要: patch の順序を変更し、ConfigManager.save を直接パッチする
@@ -161,8 +161,8 @@ def test_update_settings_api(client, app):
             assert data['status'] == 'success'
 
             # StateManager の値を確認
-            assert state_manager.absence_threshold == 10.5
-            assert state_manager.smartphone_threshold == 7.2
+            assert state.absence_threshold == 10.5
+            assert state.smartphone_threshold == 7.2
 
             # ConfigManager.set が正しい引数で呼ばれたか確認
             expected_calls = [
@@ -186,9 +186,9 @@ def test_update_settings_api_invalid_value(client):
 # キーが存在しない場合のテスト
 def test_update_settings_api_missing_key(client, app):
     config_manager = app.config['config_manager']
-    state_manager = app.config['monitor_instance'].state_manager
-    initial_absence = state_manager.absence_threshold
-    initial_smartphone = state_manager.smartphone_threshold
+    state = app.config['monitor_instance'].state
+    initial_absence = state.absence_threshold
+    initial_smartphone = state.smartphone_threshold
 
     with patch.object(config_manager, 'save') as mock_save:
         update_data = {'other_setting': 123}
@@ -197,7 +197,7 @@ def test_update_settings_api_missing_key(client, app):
         data = json.loads(response.data)
         assert data['status'] == 'success'
         # 値が変わっていないことを確認
-        assert state_manager.absence_threshold == initial_absence
-        assert state_manager.smartphone_threshold == initial_smartphone
+        assert state.absence_threshold == initial_absence
+        assert state.smartphone_threshold == initial_smartphone
         # save が呼ばれていないことを確認
         mock_save.assert_not_called()

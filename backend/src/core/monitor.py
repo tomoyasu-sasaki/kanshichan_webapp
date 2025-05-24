@@ -6,8 +6,8 @@ from utils.logger import setup_logger
 from core.camera import Camera
 from core.detector import Detector
 from services.alert_manager import AlertManager
-from core.state_manager import StateManager
-from core.detection_manager import DetectionManager
+from core.state import StateManager
+from core.detection import DetectionManager
 from web.websocket import broadcast_status, socketio
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
@@ -15,303 +15,103 @@ import platform
 import os
 from utils.config_manager import ConfigManager
 
+# 新しく分割されたクラスをインポート
+from core.frame_processor import FrameProcessor
+from core.status_broadcaster import StatusBroadcaster
+from core.schedule_checker import ScheduleChecker
+from core.threshold_manager import ThresholdManager
+
 logger = setup_logger(__name__)
 
+
 class Monitor:
+    """
+    メイン制御クラス（リファクタリング済み）
+    - 各専門クラスの統合管理
+    - メインループの制御
+    - 初期化とクリーンアップ
+    """
+    
     def __init__(self,
                  config_manager: ConfigManager,
                  camera: Camera,
                  detector: Detector,
-                 detection_manager: DetectionManager,
-                 state_manager: StateManager,
+                 detection: DetectionManager,
+                 state: StateManager,
                  alert_manager: AlertManager,
                  schedule_manager=None):
         """モニターの初期化 (依存性注入・ConfigManager 版)"""
         self.config_manager = config_manager
         self.camera = camera
         self.detector = detector
-        self.detection_manager = detection_manager
-        self.state_manager = state_manager
+        self.detection = detection
+        self.state = state
         self.alert_manager = alert_manager
         self.schedule_manager = schedule_manager
         
-        # 延長時間を管理する変数
-        self.extension_display_time = 0
-        self.extension_applied_at = None
+        # 専門クラスのインスタンス化
+        self.frame_processor = FrameProcessor(
+            camera=camera,
+            detection_manager=detection,
+            state_manager=state
+        )
         
-        # フレームバッファの初期化
-        self.frame_buffer = None
-        self.frame_lock = threading.Lock()
+        self.status_broadcaster = StatusBroadcaster(
+            detector=detector,
+            state_manager=state,
+            camera=camera,
+            config_manager=config_manager
+        )
         
-        # 検出結果の初期化
-        self.detection_results = {
-            'person_detected': False,
-            'smartphone_detected': False,
-            'person_bbox': None,
-            'phone_bbox': None,
-            'landmarks': None,
-            'detections': {},
-            'absenceTime': 0,
-            'smartphoneUseTime': 0,
-            'absenceAlert': False,
-            'smartphoneAlert': False
-        }
-        self.detection_lock = threading.Lock()
+        self.schedule_checker = ScheduleChecker(
+            schedule_manager=schedule_manager,
+            alert_manager=alert_manager,
+            check_interval=10
+        )
         
-        # スケジュールチェック用の変数
-        self.last_schedule_check_time = 0
-        self.schedule_check_interval = 10  # 10秒ごとにチェック
-        self.executed_schedules = set()  # 実行済みスケジュールを記録（同じ分に複数回実行されないように）
+        self.threshold_manager = ThresholdManager(
+            state_manager=state,
+            config_manager=config_manager
+        )
         
-        logger.info("Monitor initialized with dependency injection and ConfigManager.")
+        logger.info("Monitor initialized with refactored architecture.")
 
     def update_detection_results(self, results):
-        """検出結果を更新"""
-        with self.detection_lock:
-            self.detection_results = results
+        """検出結果を更新（互換性のため）"""
+        self.frame_processor.update_stored_detection_results(results)
 
     def get_current_frame(self):
-        """WebUIで使用する描画済みのフレームを取得"""
-        frame_to_encode = None
-        with self.frame_lock:
-            if self.frame_buffer is not None:
-                # 現在のフレームバッファをコピー
-                frame_copy = self.frame_buffer.copy()
-                # 最新の検出/ステータス結果を取得
-                with self.detection_lock:
-                    results_copy = self.detection_results.copy()
-
-                # self.detection_results['landmarks'] からランドマークデータを取得し、
-                # detector.py が認識できるキー (pose_landmarks など) に戻す
-                landmarks = results_copy.get('landmarks', {}) # これは {'pose': ..., 'hands': ..., 'face': ...}
-                if isinstance(landmarks, dict):
-                    if 'pose' in landmarks:
-                        results_copy['pose_landmarks'] = landmarks.get('pose')
-                    if 'hands' in landmarks:
-                        results_copy['hands_landmarks'] = landmarks.get('hands')
-                    if 'face' in landmarks:
-                        results_copy['face_landmarks'] = landmarks.get('face')
-                # 不要になった 'landmarks' キーは削除してもよい（任意）
-                # if 'landmarks' in results_copy:
-                #     del results_copy['landmarks']
-
-                # Detectorに描画を依頼 (修正済みの results_copy を使用)
-                frame_to_encode = self.detector.draw_detections(frame_copy, results_copy)
-
-        if frame_to_encode is not None:
-            # JPEG形式にエンコード
-            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
-            _, buffer = cv2.imencode('.jpg', frame_to_encode, encode_param)
-            return buffer.tobytes()
-        else:
-            # フレームがない場合は空のバイト列などを返すか、Noneを返す
-            return None
+        """WebUIで使用する描画済みのフレームを取得（互換性のため）"""
+        detection_results = self.frame_processor.get_detection_results()
+        return self.status_broadcaster.get_current_frame(detection_results)
 
     def extend_absence_threshold(self, extension_time):
-        """absence_thresholdを延長するメソッド"""
-        try:
-            self.state_manager.absence_threshold += extension_time
-            self.extension_display_time = extension_time
-            self.extension_applied_at = time.time()
-            logger.info(f"Absence threshold updated to: {self.state_manager.absence_threshold}")
-            logger.info(f"Extension time set to: {self.extension_display_time}")
-            
-        except Exception as e:
-            logger.error(f"Error extending threshold: {e}")
-
-    def _process_frame(self):
-        """フレームを取得し、検出を実行、StateManager を更新する"""
-        frame = self.camera.get_frame()
-        if frame is None:
-            return None
-
-        # 検出処理の実行 (DetectionManagerを使用)
-        detections_list = self.detection_manager.detect(frame)
-
-        # StateManager への情報連携
-        self.state_manager.update_detection_state(detections_list)
-
-        # StateManager を使った状態更新とアラートチェック
-        person_now_detected = self.state_manager.person_detected
-        if person_now_detected:
-            self.state_manager.handle_person_presence()
-        else:
-            self.state_manager.handle_person_absence()
-
-        smartphone_found_in_current_frame = any(det.get('label') == 'smartphone' for det in detections_list)
-        self.state_manager.handle_smartphone_usage(smartphone_found_in_current_frame)
-        
-        return frame, detections_list
-
-    def _update_monitor_results(self, detections_list):
-        """Monitor 内部の検出結果を更新する"""
-        # StateManager から最新の状態を取得 (描画用)
-        person_now_detected = self.state_manager.person_detected
-        smartphone_now_in_use_for_drawing = self.state_manager.smartphone_in_use
-        # StateManagerからステータスサマリーを取得
-        status_summary = self.state_manager.get_status_summary()
-
-        # detections_list を draw_detections が期待する形式 (クラス名ごとの辞書) に変換
-        detections_dict_for_draw = {}
-        for det in detections_list:
-            label = det.get('label')
-            if label == 'landmarks': continue
-            if label:
-                if label not in detections_dict_for_draw:
-                    detections_dict_for_draw[label] = []
-                det_info = {'bbox': det.get('box'), 'confidence': det.get('confidence')}
-                det_info = {k: v for k, v in det_info.items() if v is not None and k in ['bbox', 'confidence']}
-                if 'bbox' in det_info:
-                     detections_dict_for_draw[label].append(det_info)
-
-        # detections_list からランドマーク情報を抽出
-        current_landmarks = None
-        for item in detections_list:
-            if item.get('label') == 'landmarks':
-                # シンプルにデータを取得
-                current_landmarks = item.get('data')
-                break
-
-        with self.detection_lock:
-            self.detection_results = {
-                'person_detected': person_now_detected,
-                'smartphone_detected': smartphone_now_in_use_for_drawing,
-                'person_bbox': None,
-                'phone_bbox': None,
-                'landmarks': current_landmarks,
-                'detections': detections_dict_for_draw,
-                'absenceTime': status_summary.get('absenceTime', 0),
-                'smartphoneUseTime': status_summary.get('smartphoneUseTime', 0),
-                'absenceAlert': status_summary.get('absenceAlert', False),
-                'smartphoneAlert': status_summary.get('smartphoneAlert', False)
-            }
-
-    def _update_frame_buffer(self, frame):
-        """フレームバッファを更新する"""
-        if frame is not None:
-            with self.frame_lock:
-                self.frame_buffer = frame.copy()
-                
-    def _broadcast_status(self):
-        """現在のステータスをWebSocketでブロードキャストする"""
-        status = self.state_manager.get_status_summary()
-        broadcast_status(status)
-
-    def _display_frame(self, frame):
-        """OpenCVウィンドウにフレームを表示する（設定が有効な場合）"""
-        if self.config_manager.get('display.show_opencv_window', True):
-            display_frame = frame.copy()
-            # 更新された self.detection_results を使って描画
-            with self.detection_lock:
-                 results_for_draw = self.detection_results.copy()
-                 
-                 # self.detection_results['landmarks'] からランドマークデータを取得し、
-                 # detector.py が認識できるキー (pose_landmarks など) に戻す
-                 landmarks = results_for_draw.get('landmarks', {}) # これは {'pose': ..., 'hands': ..., 'face': ...}
-                 if isinstance(landmarks, dict):
-                     if 'pose' in landmarks:
-                         results_for_draw['pose_landmarks'] = landmarks.get('pose')
-                     if 'hands' in landmarks:
-                         results_for_draw['hands_landmarks'] = landmarks.get('hands')
-                     if 'face' in landmarks:
-                         results_for_draw['face_landmarks'] = landmarks.get('face')
-                 # 不要になった 'landmarks' キーは削除してもよい（任意）
-                 # if 'landmarks' in results_for_draw:
-                 #     del results_for_draw['landmarks']
-                 
-            # draw_detections にステータス情報が含まれたデータを渡す (修正済みの results_for_draw を使用)
-            self.detector.draw_detections(display_frame, results_for_draw)
-            # 再度有効化
-            self.camera.show_frame(display_frame)
-            
-            # q キーでの終了処理も復活
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                logger.info("'q' key pressed, stopping monitor.")
-                # スレッドを安全に停止させるためのフラグなどを設定する
-                # (現状は直接ループを抜ける仕組みがないため、ログ表示のみ)
-                # raise KeyboardInterrupt # 強制的に例外を発生させて終了させる場合
-                # self.stop_requested = True # フラグを使う場合 (runループ側でチェック)
-
-    def _check_schedules(self):
-        """
-        現在時刻に実行すべきスケジュールがあるかチェックし、
-        該当するスケジュールがあれば通知を送信する
-        """
-        if not self.schedule_manager:
-            return False  # スケジュールマネージャーが設定されていない場合は何もしない
-        
-        # 現在時刻を取得（HH:MM形式）
-        now = datetime.datetime.now()
-        current_time = now.strftime("%H:%M")
-        current_minute = now.strftime("%H:%M")  # 分単位で記録
-        
-        # 同じ分に既にチェック済みなら処理をスキップ
-        if current_minute in self.executed_schedules:
-            return False
-        
-        # スケジュール一覧を取得
-        schedules = self.schedule_manager.get_schedules()
-        notification_sent = False
-        
-        for schedule in schedules:
-            schedule_time = schedule.get("time")
-            
-            # 時刻が一致するスケジュールを探す
-            if schedule_time == current_time:
-                logger.info(f"Schedule triggered: {schedule}")
-                
-                # アラート音を再生（AlertManagerを使用）
-                if self.alert_manager:
-                    self.alert_manager.alert_service.trigger_alert(f"スケジュール通知: {schedule.get('content')}")
-                
-                # WebSocketで通知を送信
-                notification_data = {
-                    "type": "schedule_alert",
-                    "content": schedule.get("content"),
-                    "time": schedule_time
-                }
-                
-                try:
-                    socketio.emit("schedule_alert", notification_data)
-                    logger.info(f"Schedule notification sent via WebSocket: {notification_data}")
-                    notification_sent = True
-                except Exception as e:
-                    logger.error(f"Error sending schedule notification: {e}")
-        
-        # 実行済みとして記録
-        if notification_sent:
-            self.executed_schedules.add(current_minute)
-            
-            # 翌日に備えて、セットのサイズが大きくなりすぎないように古い記録をクリア
-            if len(self.executed_schedules) > 100:
-                self.executed_schedules.clear()
-        
-        return notification_sent
+        """absence_thresholdを延長するメソッド（互換性のため）"""
+        return self.threshold_manager.extend_absence_threshold(extension_time)
 
     def run(self):
+        """メインループ"""
         try:
             while True:
                 # フレーム処理と状態更新
-                processed_data = self._process_frame()
+                processed_data = self.frame_processor.process_frame()
                 if processed_data is None:
                     continue
                 frame, detections_list = processed_data
 
-                # Monitor内部結果の更新
-                self._update_monitor_results(detections_list)
+                # フレーム処理結果の更新
+                self.frame_processor.update_detection_results(detections_list)
+                detection_results = self.frame_processor.get_detection_results()
 
                 # フレームバッファ更新とステータスブロードキャスト
-                self._update_frame_buffer(frame)
-                self._broadcast_status()
+                self.status_broadcaster.update_frame_buffer(frame)
+                self.status_broadcaster.broadcast_status()
 
                 # OpenCVウィンドウ表示
-                self._display_frame(frame)
+                self.status_broadcaster.display_frame(frame, detection_results)
                 
                 # スケジュールチェック（一定間隔ごとに実行）
-                current_time = time.time()
-                if (current_time - self.last_schedule_check_time) >= self.schedule_check_interval:
-                    self._check_schedules()
-                    self.last_schedule_check_time = current_time
+                self.schedule_checker.check_if_needed()
                 
                 # 短い sleep を入れることでCPU使用率を下げる
                 time.sleep(0.01)
@@ -320,11 +120,13 @@ class Monitor:
             self.cleanup()
 
     def cleanup(self):
+        """リソースのクリーンアップ"""
         self.camera.release()
         cv2.destroyAllWindows()
+        logger.info("Monitor cleanup completed.")
 
     def draw_detection_results(self, frame):
-        """検出結果を画面に描画する"""
+        """検出結果を画面に描画する（互換性のため）"""
         # PILイメージに変換
         pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         draw = ImageDraw.Draw(pil_image)
@@ -340,32 +142,24 @@ class Monitor:
         status_text = []
         
         # 基本的な状態表示
-        if self.state_manager.person_detected:
+        if self.state.person_detected:
             status_text.append("人物検出中")
         else:
             status_text.append("人物未検出")
         
-        if self.state_manager.smartphone_in_use:
+        if self.state.smartphone_in_use:
             status_text.append("スマホ使用中")
         
         # 警告状態
-        if self.state_manager.alert_triggered_absence:
+        if self.state.alert_triggered_absence:
             status_text.append("不在警告中")
-        if self.state_manager.alert_triggered_smartphone:
+        if self.state.alert_triggered_smartphone:
             status_text.append("スマホ使用警告中")
 
         # 延長時間の表示（閾値の更新状態）
-        current_time = time.time()
-        if self.extension_applied_at is not None:
-            display_duration = 5
-            if current_time - self.extension_applied_at < display_duration:
-                status_text.append(f"しきい値延長: +{self.extension_display_time}秒")
-                logger.info(f"表示中の延長時間: {self.extension_display_time}秒")
-            else:
-                # 表示期間が終了したらリセット
-                logger.info("延長時間の表示期間が終了")
-                self.extension_display_time = 0
-                self.extension_applied_at = None
+        display_info = self.threshold_manager.get_extension_display_info()
+        if display_info['should_display']:
+            status_text.append(f"しきい値延長: +{display_info['extension_time']}秒")
 
         # テキストを描画
         for i, text in enumerate(status_text):
@@ -382,60 +176,57 @@ class Monitor:
                 font_paths = [
                     "C:\\Windows\\Fonts\\msgothic.ttc",  # MSゴシック
                     "C:\\Windows\\Fonts\\meiryo.ttc",    # メイリオ
-                    "C:\\Windows\\Fonts\\yugothic.ttf"   # 游ゴシック
+                    "C:\\Windows\\Fonts\\arial.ttf"      # Arial
                 ]
             elif system == "Darwin":  # macOS
                 font_paths = [
-                    "/System/Library/Fonts/ヒラギノ角ゴシック W4.ttc",
-                    "/System/Library/Fonts/AppleGothic.ttf"
+                    "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
+                    "/System/Library/Fonts/Arial.ttf",
+                    "/System/Library/Fonts/Helvetica.ttc"
                 ]
             else:  # Linux
                 font_paths = [
-                    "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
-                    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+                    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                    "/usr/share/fonts/TTF/arial.ttf"
                 ]
-
-            # 利用可能なフォントを探す
+            
+            # 利用可能なフォントを検索
             for font_path in font_paths:
                 if os.path.exists(font_path):
                     return font_path
-
+            
+            # フォールバック: デフォルトフォント用のパス
+            return font_paths[0] if font_paths else ""
+            
         except Exception as e:
-            logger.warning(f"Error loading system font: {e}")
-        
-        return None
+            logger.warning(f"システムフォント取得中にエラー: {e}")
+            return ""
 
     def analyze_behavior(self, frame, person_detected, smartphone_in_use):
-        """行動分析と適切なアドバイスの生成"""
-        current_time = time.time()
-        if current_time - self.last_analysis_time < self.analysis_interval:
-            return
-
-        try:
-            # コンテキストの生成
-            context = self._create_context(person_detected, smartphone_in_use)
-            # LLMからの応答を取得
-            response = self.llm_service.generate_response(context)
-            
-            if response:
-                logger.info(f"LLM Response: {response}")  # デバッグ用ログ
-                self.current_llm_response = response
-                # 重要なメッセージの場合のみ通知
-                if "警告" in response or "注意" in response:
-                    self.alert_manager.trigger_alert(response)
-            
-            self.last_analysis_time = current_time
-            
-        except Exception as e:
-            logger.error(f"行動分析中にエラーが発生: {e}")
+        """行動分析（互換性のため維持）"""
+        # この機能は現在未実装のため、ログのみ出力
+        logger.debug(f"Behavior analysis: person={person_detected}, smartphone={smartphone_in_use}")
 
     def _create_context(self, person_detected, smartphone_in_use):
-        context = []
-        if not person_detected:
-            context.append("ユーザーが席を離れています")
-        elif smartphone_in_use:
-            context.append("ユーザーがスマートフォンを使用しています")
-        else:
-            context.append("ユーザーが勉強に集中しています")
+        """コンテキスト作成（互換性のため維持）"""
+        return {
+            "person_detected": person_detected,
+            "smartphone_in_use": smartphone_in_use,
+            "timestamp": time.time()
+        }
 
-        return " ".join(context)
+    def get_status_summary(self):
+        """統合ステータス情報を取得"""
+        base_status = self.state.get_status_summary()
+        
+        # 各専門クラスの状態を追加
+        status = base_status.copy()
+        status.update({
+            'frame_processor_status': self.frame_processor.get_detection_results(),
+            'frame_buffer_status': self.status_broadcaster.get_frame_buffer_status(),
+            'schedule_checker_status': self.schedule_checker.get_status(),
+            'threshold_manager_status': self.threshold_manager.get_status()
+        })
+        
+        return status

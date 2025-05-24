@@ -1,5 +1,8 @@
 from flask_socketio import SocketIO, emit
 from utils.logger import setup_logger
+from utils.exceptions import (
+    NetworkError, InitializationError, wrap_exception
+)
 
 logger = setup_logger(__name__)
 socketio = SocketIO()
@@ -21,4 +24,12 @@ def broadcast_status(status):
     try:
         socketio.emit('status_update', status)
     except Exception as e:
-        logger.error(f"Error broadcasting status: {e}") 
+        broadcast_error = wrap_exception(
+            e, NetworkError,
+            "Error broadcasting status update via WebSocket",
+            details={
+                'status': status,
+                'socketio_initialized': socketio is not None
+            }
+        )
+        logger.error(f"WebSocket broadcast error: {broadcast_error.to_dict()}") 

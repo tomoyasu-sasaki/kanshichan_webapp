@@ -3,6 +3,9 @@ from utils.logger import setup_logger
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3 import WebhookHandler
 from typing import Optional
+from utils.exceptions import (
+    APIError, LineAPIError, ValidationError, wrap_exception
+)
 
 logger = setup_logger(__name__)
 
@@ -15,15 +18,34 @@ def setup_handlers(app, line_handler: Optional[WebhookHandler]):
     def callback():
         signature = request.headers.get('X-Line-Signature', '')
         body = request.get_data(as_text=True)
-        logger.debug(f"Request body: {body}")
+        logger.info(f"LINE Webhook received. Request body: {body}")
+        logger.info(f"LINE Webhook headers: {dict(request.headers)}")
 
         try:
             line_handler.handle(body, signature)
-        except InvalidSignatureError:
-            logger.warning("Invalid LINE signature received.")
+            logger.info("LINE Webhook処理完了")
+        except InvalidSignatureError as e:
+            signature_error = wrap_exception(
+                e, ValidationError,
+                "Invalid LINE signature received",
+                details={
+                    'signature_present': bool(signature),
+                    'body_length': len(body) if body else 0
+                }
+            )
+            logger.warning(f"LINE signature validation error: {signature_error.to_dict()}")
             abort(400)
         except Exception as e:
-            logger.error(f"Error handling webhook: {e}", exc_info=True)
+            webhook_error = wrap_exception(
+                e, LineAPIError,
+                "Error handling LINE webhook",
+                details={
+                    'body_length': len(body) if body else 0,
+                    'signature_present': bool(signature),
+                    'handler_available': line_handler is not None
+                }
+            )
+            logger.error(f"LINE webhook handling error: {webhook_error.to_dict()}")
             return 'OK', 200
 
         return 'OK', 200

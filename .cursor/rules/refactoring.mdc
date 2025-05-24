@@ -1,0 +1,286 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 🔧 KanshiChan リファクタリング専用ルール
+
+## 📋 このルールの目的
+KanshiChan（監視ちゃん）プロジェクトにおけるリファクタリング作業を効率的かつ安全に実行するための専用ルールです。
+
+## 🎯 リファクタリング方針
+
+### 📌 必須確認事項
+リファクタリング開始前に以下の規約を必ず参照してください：
+- **[project_rules/main_rules.yaml](mdc:project_rules/main_rules.yaml)** - プロジェクト全体規約
+- **[project_rules/backend_rules.yaml](mdc:project_rules/backend_rules.yaml)** - Python/Flask 規約
+- **[project_rules/frontend_rules.yaml](mdc:project_rules/frontend_rules.yaml)** - React/TypeScript 規約
+- **[project_rules/ai_ml_rules.yaml](mdc:project_rules/ai_ml_rules.yaml)** - AI/ML 規約
+
+### 🔍 リファクタリング対象の優先順位
+1. **パフォーマンス改善** - AI処理15+ FPS, API応答<200ms
+2. **技術的負債解消** - Type hint完全対応、ESLintエラー解消
+3. **コード重複削除** - DRY原則の徹底
+4. **可読性向上** - 命名規則統一、コメント整備
+5. **保守性向上** - モジュール化、依存関係整理
+
+---
+
+## 🔄 リファクタリングプロセス
+
+### 1. 事前分析（必須）
+```markdown
+### リファクタリング対象分析
+- **対象ファイル/モジュール**: [ファイルパスを記載]
+- **現在の問題点**: [具体的な問題を列挙]
+- **期待される改善効果**: [パフォーマンス向上、保守性向上等]
+- **影響範囲**: [変更が影響する他のモジュール]
+- **リスク評価**: [破壊的変更の可能性、テスト範囲]
+```
+
+### 2. バックアップとブランチ作成
+```bash
+# 必ずブランチを作成してからリファクタリング開始
+git checkout -b refactor/[機能名]-[改善内容]
+```
+
+### 3. リファクタリング実行
+
+#### 🐍 Backend (Python/Flask) リファクタリング
+**優先項目**:
+- Type hint 100%対応（mypy通過）
+- Black + Flake8 準拠
+- クラス設計の改善（Single Responsibility Principle）
+- エラーハンドリングの統一
+- ログ出力の標準化
+
+**実行手順**:
+1. 既存テストの動作確認
+2. Type hint追加・修正
+3. 命名規則の統一（snake_case厳守）
+4. 重複コードの共通化
+5. 設定管理の集約
+6. テスト追加・修正
+
+#### ⚛️ Frontend (React/TypeScript) リファクタリング
+**優先項目**:
+- TypeScript strict mode対応
+- React Hooks最適化（useMemo, useCallback活用）
+- コンポーネント分割と再利用性向上
+- Props型定義の強化
+- Chakra UI設計システム準拠
+
+**実行手順**:
+1. 既存テストの動作確認
+2. TypeScript型エラー解消
+3. コンポーネント責務の明確化
+4. 不要なre-render防止
+5. アクセシビリティ改善
+6. バンドルサイズ最適化（<2MB厳守）
+
+#### 🤖 AI/ML リファクタリング
+**優先項目**:
+- YOLO処理の最適化（15+ FPS達成）
+- MediaPipe統合の改善
+- GPU利用効率化
+- メモリ使用量削減
+- エラー耐性強化
+
+**実行手順**:
+1. 現在のFPS計測
+2. ボトルネック特定
+3. 並列処理の最適化
+4. メモリリーク検出・修正
+5. エラーハンドリング強化
+
+### 4. テスト実行とパフォーマンス検証
+```bash
+# Backend テスト
+cd backend && python -m pytest tests/ -v --cov=src --cov-report=html
+
+# Frontend テスト  
+cd frontend && npm run test:coverage
+
+# 型チェック
+cd backend && mypy src/
+cd frontend && npm run type-check
+
+# パフォーマンステスト
+# AI処理のFPS計測を実行
+```
+
+### 5. コードレビュー準備
+- **変更内容の要約**作成
+- **パフォーマンス改善結果**の計測データ添付
+- **破壊的変更**の有無確認
+- **テストカバレッジ**維持確認（80%以上）
+
+---
+
+## 📊 品質基準
+
+### ✅ リファクタリング完了条件
+- [ ] すべてのテストがパス（カバレッジ80%以上維持）
+- [ ] 型チェックエラーゼロ（mypy, TypeScript）
+- [ ] リント エラーゼロ（Black, Flake8, ESLint）
+- [ ] パフォーマンス基準クリア
+  - [ ] AI処理: 15+ FPS
+  - [ ] API応答: <200ms
+  - [ ] JSバンドル: <2MB
+- [ ] セキュリティ脆弱性なし
+- [ ] ドキュメント更新完了
+
+### 🚫 禁止事項
+- **API仕様の破壊的変更**（事前承認なし）
+- **外部依存関係の無断追加**
+- **設定ファイルの構造変更**（事前承認なし）
+- **データベーススキーマ変更**（事前承認なし）
+- **UI/UXの大幅変更**（事前承認なし）
+
+---
+
+## 🔧 よくあるリファクタリングパターン
+
+### 1. Python関数の最適化
+```python
+# ❌ Before
+def detect_objects(frame):
+    # Type hintなし、エラーハンドリングなし
+    results = model.predict(frame)
+    return results
+
+# ✅ After  
+def detect_objects(self, frame: np.ndarray) -> Dict[str, Any]:
+    """物体検出を実行
+    
+    Args:
+        frame: 入力フレーム (H, W, C)
+        
+    Returns:
+        検出結果辞書
+        
+    Raises:
+        ValueError: 無効なフレーム形状
+        DetectionError: 検出処理失敗
+    """
+    if not self._validate_frame(frame):
+        raise ValueError(f"Invalid frame shape: {frame.shape}")
+        
+    try:
+        results = self.model.predict(frame)
+        return self._format_results(results)
+    except Exception as e:
+        logger.error(f"Detection failed: {e}", exc_info=True)
+        raise DetectionError(f"Detection processing failed: {e}") from e
+```
+
+### 2. React コンポーネントの最適化
+```typescript
+// ❌ Before
+function MonitorView(props: any) {
+  const [data, setData] = useState();
+  // 不適切な依存関係、any型使用
+  useEffect(() => {
+    fetchData();
+  });
+  
+  return <div>{data}</div>;
+}
+
+// ✅ After
+interface MonitorViewProps {
+  readonly isFullscreen?: boolean;
+  readonly onToggleFullscreen: () => void;
+}
+
+export const MonitorView: React.FC<MonitorViewProps> = React.memo(({
+  isFullscreen = false,
+  onToggleFullscreen
+}) => {
+  const [status, setStatus] = useState<DetectionStatus>({
+    personDetected: false,
+    smartphoneDetected: false,
+    absenceTime: 0,
+    smartphoneUseTime: 0
+  });
+
+  const handleStatusUpdate = useCallback((newStatus: DetectionStatus) => {
+    setStatus(newStatus);
+  }, []);
+
+  return (
+    <Box position="relative" width="100%" height="100vh" bg="black">
+      {/* 最適化されたコンテンツ */}
+    </Box>
+  );
+});
+
+MonitorView.displayName = 'MonitorView';
+```
+
+---
+
+## 📝 リファクタリング完了報告テンプレート
+
+```markdown
+# 🔧 リファクタリング完了報告
+
+## 📋 概要
+- **対象**: [リファクタリング対象]
+- **期間**: [開始日] ~ [完了日]
+- **担当**: [担当者名]
+
+## 🎯 実施内容
+### 改善項目
+- [ ] パフォーマンス改善
+- [ ] 技術的負債解消  
+- [ ] コード重複削除
+- [ ] 可読性向上
+- [ ] 保守性向上
+
+### 具体的変更
+1. [変更内容1]
+2. [変更内容2]
+...
+
+## 📊 改善結果
+### パフォーマンス
+- **AI処理FPS**: [改善前] → [改善後]
+- **API応答時間**: [改善前] → [改善後]  
+- **メモリ使用量**: [改善前] → [改善後]
+
+### コード品質
+- **テストカバレッジ**: [改善前] → [改善後]
+- **型エラー数**: [改善前] → [改善後]
+- **リントエラー数**: [改善前] → [改善後]
+
+## ⚠️ 影響と注意点
+- [破壊的変更があれば記載]
+- [移行手順があれば記載]
+- [今後の注意点があれば記載]
+
+## ✅ 品質確認
+- [ ] 全テスト通過
+- [ ] 型チェック通過
+- [ ] リント通過
+- [ ] パフォーマンス基準クリア
+- [ ] セキュリティチェック通過
+```
+
+---
+
+## 🚀 継続的改善
+
+### 定期的なリファクタリング対象
+- **月次**: パフォーマンス計測とボトルネック特定
+- **四半期**: 技術的負債の棚卸しと優先度付け
+- **半年**: アーキテクチャ見直しと大規模リファクタリング計画
+
+### メトリクス監視
+- AI処理FPS の定期計測
+- API応答時間の監視
+- テストカバレッジの維持
+- バンドルサイズの監視
+- 技術的負債の定量評価
+
+このリファクタリングルールに従い、KanshiChanプロジェクトの品質と保守性を継続的に向上させていきます。

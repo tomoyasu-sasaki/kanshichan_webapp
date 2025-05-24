@@ -1,0 +1,92 @@
+{
+  "app": {
+    "title": "KanshiChan",
+    "subtitle": "AI Work Focus Assistant"
+  },
+  "tabs": {
+    "monitor": "Monitor",
+    "settings": "Settings",
+    "schedule": "Schedule"
+  },
+  "monitor": {
+    "status": {
+      "present": "Present",
+      "absent": "Absent",
+      "unknown": "Unknown"
+    },
+    "performance": {
+      "fps": "FPS",
+      "inference": "Inference Time",
+      "memory": "Memory Usage",
+      "skip_rate": "Skip Rate"
+    },
+    "fullscreen": {
+      "enter": "Enter Fullscreen",
+      "exit": "Exit Fullscreen",
+      "error": "Failed to enter fullscreen mode"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "loading": "Loading settings...",
+    "save": "Save",
+    "saving": "Saving...",
+    "saved": "Settings saved successfully",
+    "error": "Failed to save settings",
+    "thresholds": {
+      "title": "Threshold Settings",
+      "absence": "Absence Detection Time (seconds)",
+      "smartphone": "Smartphone Usage Detection Time (seconds)"
+    },
+    "landmarks": {
+      "title": "Landmark Settings",
+      "pose": "Pose Detection",
+      "hands": "Hand Detection",
+      "face": "Face Detection",
+      "enabled": "Enabled"
+    },
+    "detection": {
+      "title": "Object Detection Settings",
+      "smartphone": "Smartphone",
+      "laptop": "Laptop",
+      "book": "Book",
+      "enabled": "Enabled",
+      "threshold": "Confidence Threshold"
+    },
+    "performance": {
+      "title": "Performance Settings",
+      "optimization": "Optimization",
+      "target_fps": "Target FPS",
+      "memory_limit": "Memory Limit (MB)"
+    },
+    "language": {
+      "title": "Language Settings",
+      "japanese": "日本語",
+      "english": "English"
+    }
+  },
+  "schedule": {
+    "title": "Schedule",
+    "loading": "Loading schedules...",
+    "no_schedules": "No schedules available",
+    "add": "Add",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "time": "Time",
+    "message": "Message",
+    "sound": "Sound File",
+    "enabled": "Enabled"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "success": "Success",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "ok": "OK",
+    "yes": "Yes",
+    "no": "No"
+  }
+} 

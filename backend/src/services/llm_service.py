@@ -2,6 +2,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 import openai
 from utils.logger import setup_logger
+from utils.exceptions import (
+    LLMError, ModelInitializationError, ModelInferenceError,
+    HardwareError, wrap_exception
+)
 
 logger = setup_logger(__name__)
 
@@ -13,8 +17,8 @@ class LLMService:
 
     def _initialize_model(self):
         try:
-            # TinyLlama-1.1B-Chatを使用
-            model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+            # モデル名を指定
+            model_name = "huggingface.co/elyza/Llama-3-ELYZA-JP-8B-GGUF:latest"
             self.tokenizer = AutoTokenizer.from_pretrained(model_name)
             self.model = AutoModelForCausalLM.from_pretrained(
                 model_name,
@@ -23,8 +27,18 @@ class LLMService:
             )
             logger.info(f"LLM initialized on device: {self.device}")
         except Exception as e:
-            logger.error(f"Error initializing LLM: {e}")
-            raise
+            llm_init_error = wrap_exception(
+                e, ModelInitializationError,
+                "Error initializing LLM model",
+                details={
+                    'model_name': model_name,
+                    'device': self.device,
+                    'torch_dtype': 'float16',
+                    'mps_available': torch.backends.mps.is_available()
+                }
+            )
+            logger.error(f"LLM initialization error: {llm_init_error.to_dict()}")
+            raise llm_init_error
 
     def generate_response(self, context):
         try:
@@ -44,7 +58,16 @@ class LLMService:
             response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             return self._extract_response(response)
         except Exception as e:
-            logger.error(f"Error generating response: {e}")
+            llm_inference_error = wrap_exception(
+                e, ModelInferenceError,
+                "Error generating LLM response",
+                details={
+                    'context_length': len(context) if context else 0,
+                    'device': self.device,
+                    'model_loaded': hasattr(self, 'model') and self.model is not None
+                }
+            )
+            logger.error(f"LLM inference error: {llm_inference_error.to_dict()}")
             return "申し訳ありません。応答の生成に失敗しました。"
 
     def _create_prompt(self, context):
@@ -60,5 +83,11 @@ class LLMService:
         # システムプロンプトと入力を除去して応答のみを抽出
         try:
             return response.split("<|assistant|>")[-1].strip()
-        except:
+        except Exception as e:
+            extract_error = wrap_exception(
+                e, LLMError,
+                "Error extracting LLM response",
+                details={'response_length': len(response) if response else 0}
+            )
+            logger.warning(f"Response extraction error: {extract_error.to_dict()}")
             return response 

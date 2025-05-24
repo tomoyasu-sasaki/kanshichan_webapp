@@ -1,0 +1,715 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 📚 KanshiChan ドキュメント専用ルール
+
+## 📋 このルールの目的
+KanshiChan（監視ちゃん）プロジェクトにおけるドキュメント作成・更新を効率的かつ品質高く実行するための専用ルールです。
+
+## 🎯 ドキュメント方針
+
+### 📌 必須確認事項
+ドキュメント作成開始前に以下の規約を必ず参照してください：
+- **[project_rules/main_rules.yaml](mdc:project_rules/main_rules.yaml)** - プロジェクト全体規約
+- **[project_rules/backend_rules.yaml](mdc:project_rules/backend_rules.yaml)** - Python/Flask 規約
+- **[project_rules/frontend_rules.yaml](mdc:project_rules/frontend_rules.yaml)** - React/TypeScript 規約
+- **[project_rules/ai_ml_rules.yaml](mdc:project_rules/ai_ml_rules.yaml)** - AI/ML 規約
+
+### 🎯 ドキュメント品質目標
+- **正確性**: 実装と100%一致する内容
+- **完全性**: 必要な情報の網羅
+- **可読性**: 技術レベルに応じた適切な説明
+- **保守性**: 継続的な更新が容易な構造
+- **アクセシビリティ**: 検索・参照しやすい構成
+
+---
+
+## 📖 ドキュメント体系
+
+### 🏗️ ドキュメント階層構造
+```
+docs/
+├── README.md                    # プロジェクト概要
+├── GETTING_STARTED.md          # 開始ガイド
+├── ARCHITECTURE.md             # アーキテクチャ設計
+├── API_REFERENCE.md            # API仕様書
+├── DEPLOYMENT.md               # デプロイメントガイド
+├── TROUBLESHOOTING.md          # トラブルシューティング
+├── CHANGELOG.md                # 変更履歴
+├── CONTRIBUTING.md             # 貢献ガイド
+├── backend/                    # バックエンド専用ドキュメント
+│   ├── api/
+│   │   ├── detection.md        # 検出API仕様
+│   │   ├── monitoring.md       # 監視API仕様
+│   │   └── configuration.md    # 設定API仕様
+│   ├── models/
+│   │   ├── yolo.md            # YOLO モデル仕様
+│   │   └── mediapipe.md       # MediaPipe 仕様
+│   └── development/
+│       ├── setup.md           # 開発環境構築
+│       └── testing.md         # テスト実行方法
+├── frontend/                   # フロントエンド専用ドキュメント
+│   ├── components/
+│   │   ├── monitor-view.md    # MonitorView コンポーネント
+│   │   └── status-panel.md    # StatusPanel コンポーネント
+│   ├── hooks/
+│   │   └── use-detection.md   # useDetection Hook
+│   └── development/
+│       ├── setup.md           # 開発環境構築
+│       └── styling.md         # スタイリングガイド
+└── assets/                     # 画像・図表
+    ├── architecture/
+    ├── screenshots/
+    └── diagrams/
+```
+
+### 📝 ドキュメント種別と目的
+
+#### 🎯 ユーザー向けドキュメント
+- **README.md**: プロジェクト概要と基本的な使用方法
+- **GETTING_STARTED.md**: 初回セットアップと基本操作
+- **USER_GUIDE.md**: 詳細な使用方法とベストプラクティス
+
+#### 🔧 開発者向けドキュメント
+- **ARCHITECTURE.md**: システム設計と技術選択の理由
+- **API_REFERENCE.md**: 全APIエンドポイントの詳細仕様
+- **DEVELOPMENT.md**: 開発環境構築と開発フロー
+
+#### 🚀 運用者向けドキュメント
+- **DEPLOYMENT.md**: デプロイメント手順と設定
+- **MONITORING.md**: 監視・ログ・アラート設定
+- **TROUBLESHOOTING.md**: よくある問題と解決方法
+
+---
+
+## 🔄 ドキュメント作成プロセス
+
+### 1. 計画立案（10分）
+```markdown
+### ドキュメント作成計画テンプレート
+- **ドキュメント名**: [ファイル名.md]
+- **対象読者**: [開発者/ユーザー/運用者]
+- **目的**: [このドキュメントで解決したい課題]
+- **スコープ**: [含める内容と含めない内容]
+- **関連ドキュメント**: [参照・更新が必要な既存ドキュメント]
+- **完成予定日**: [日付]
+
+### 構成案
+1. [セクション1]
+2. [セクション2]
+...
+
+### 必要な素材
+- [ ] スクリーンショット
+- [ ] 図表・ダイアグラム
+- [ ] コードサンプル
+- [ ] 設定ファイル例
+```
+
+### 2. 情報収集と整理（20分）
+
+#### 🔍 情報収集チェックリスト
+```markdown
+### 技術情報収集
+- [ ] **コード分析**: 実装内容の正確な把握
+- [ ] **設定ファイル**: 現在の設定値と推奨値
+- [ ] **API仕様**: エンドポイント、パラメータ、レスポンス
+- [ ] **依存関係**: 必要なライブラリとバージョン
+- [ ] **環境要件**: OS、ハードウェア、ソフトウェア要件
+
+### ユーザー体験収集
+- [ ] **使用シナリオ**: 典型的な使用パターン
+- [ ] **よくある質問**: サポート履歴から抽出
+- [ ] **エラーパターン**: 頻発する問題と解決方法
+- [ ] **パフォーマンス**: 期待値と実測値
+
+### 既存ドキュメント確認
+- [ ] **重複内容**: 既存ドキュメントとの重複回避
+- [ ] **リンク関係**: 相互参照の整理
+- [ ] **更新履歴**: 過去の変更パターン分析
+```
+
+#### 📊 情報の構造化
+```markdown
+### 情報分類マトリクス
+| 情報種別 | 重要度 | 緊急度 | 対象読者 | 更新頻度 |
+|---------|--------|--------|----------|----------|
+| API仕様 | High   | High   | 開発者   | 毎リリース |
+| 設定方法 | High   | Medium | 運用者   | 四半期 |
+| 使用例  | Medium | Low    | ユーザー | 半年 |
+```
+
+### 3. 執筆（40分）
+
+#### 📝 執筆ガイドライン
+
+##### 文書構造の統一
+```markdown
+# タイトル（H1は1つのみ）
+
+## 概要
+[このドキュメントの目的と対象読者を明記]
+
+## 前提条件
+[必要な知識、環境、準備事項]
+
+## 手順/内容
+[メインコンテンツ]
+
+## トラブルシューティング
+[よくある問題と解決方法]
+
+## 関連リンク
+[参考資料、関連ドキュメント]
+
+## 更新履歴
+[変更日、変更内容、変更者]
+```
+
+##### コードブロックの記述規則
+```markdown
+### Python コード例
+```python
+# ファイル: backend/src/core/detector.py
+from typing import Dict, Any
+import numpy as np
+
+class Detector:
+    def __init__(self, config_path: str) -> None:
+        """検出器の初期化
+        
+        Args:
+            config_path: 設定ファイルのパス
+        """
+        self.config = self._load_config(config_path)
+    
+    def detect_objects(self, frame: np.ndarray) -> Dict[str, Any]:
+        """物体検出を実行
+        
+        Args:
+            frame: 入力画像フレーム
+            
+        Returns:
+            検出結果を含む辞書
+        """
+        # 実装内容...
+        pass
+```
+
+### TypeScript コード例
+```typescript
+// ファイル: frontend/src/hooks/useDetection.ts
+import { useState, useCallback } from 'react';
+
+interface DetectionStatus {
+  readonly personDetected: boolean;
+  readonly smartphoneDetected: boolean;
+  readonly absenceTime: number;
+  readonly smartphoneUseTime: number;
+}
+
+export const useDetection = () => {
+  const [status, setStatus] = useState<DetectionStatus>({
+    personDetected: false,
+    smartphoneDetected: false,
+    absenceTime: 0,
+    smartphoneUseTime: 0
+  });
+
+  const startDetection = useCallback(async () => {
+    try {
+      // 検出開始処理...
+    } catch (error) {
+      console.error('Detection start failed:', error);
+    }
+  }, []);
+
+  return { status, startDetection };
+};
+```
+
+### 設定ファイル例
+```yaml
+# ファイル: backend/src/config/config.yaml
+detection:
+  yolo:
+    model_path: "yolov8n.pt"
+    confidence_threshold: 0.5
+    nms_threshold: 0.4
+  
+  mediapipe:
+    model_complexity: 1
+    min_detection_confidence: 0.5
+    min_tracking_confidence: 0.5
+
+monitoring:
+  fps_target: 15
+  log_level: "INFO"
+  save_detections: true
+```
+```
+
+##### API ドキュメントの記述規則
+```markdown
+### API エンドポイント仕様
+
+#### POST /api/detection/start
+検出処理を開始します。
+
+**リクエスト**
+```json
+{
+  "camera_id": "string (optional)",
+  "detection_types": ["person", "smartphone"]
+}
+```
+
+**レスポンス**
+- **200 OK**: 検出開始成功
+```json
+{
+  "status": "started",
+  "detection_id": "uuid-string",
+  "message": "Detection started successfully"
+}
+```
+
+- **400 Bad Request**: 不正なリクエスト
+```json
+{
+  "error": "Invalid request",
+  "details": "camera_id must be a valid string"
+}
+```
+
+- **500 Internal Server Error**: サーバーエラー
+```json
+{
+  "error": "Internal server error",
+  "message": "Failed to initialize detection model"
+}
+```
+
+**使用例**
+```bash
+curl -X POST http://localhost:5000/api/detection/start \
+  -H "Content-Type: application/json" \
+  -d '{"detection_types": ["person", "smartphone"]}'
+```
+
+```python
+import requests
+
+response = requests.post(
+    'http://localhost:5000/api/detection/start',
+    json={'detection_types': ['person', 'smartphone']}
+)
+
+if response.status_code == 200:
+    data = response.json()
+    detection_id = data['detection_id']
+    print(f"Detection started: {detection_id}")
+```
+```
+
+#### 🖼️ 図表・スクリーンショットの活用
+```markdown
+### アーキテクチャ図の挿入
+![システムアーキテクチャ](mdc:../assets/architecture/system-overview.png)
+
+*図1: KanshiChan システム全体構成*
+
+### 手順のスクリーンショット
+1. ブラウザで `http://localhost:3000` にアクセス
+   
+   ![ホーム画面](mdc:../assets/screenshots/home-screen.png)
+   
+2. 「監視開始」ボタンをクリック
+   
+   ![監視開始](mdc:../assets/screenshots/start-monitoring.png)
+
+### シーケンス図（Mermaid記法）
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant F as Frontend
+    participant B as Backend
+    participant AI as AI Engine
+
+    U->>F: 監視開始ボタンクリック
+    F->>B: POST /api/detection/start
+    B->>AI: モデル初期化
+    AI-->>B: 初期化完了
+    B-->>F: detection_id返却
+    F-->>U: 監視開始画面表示
+    
+    loop リアルタイム検出
+        F->>B: GET /api/detection/status
+        B->>AI: フレーム解析
+        AI-->>B: 検出結果
+        B-->>F: ステータス更新
+        F-->>U: 結果表示
+    end
+```
+```
+
+### 4. レビューと品質確認（15分）
+
+#### ✅ ドキュメント品質チェックリスト
+```markdown
+### 内容の正確性
+- [ ] **コード例**: 実際に動作することを確認
+- [ ] **API仕様**: 最新の実装と一致
+- [ ] **設定値**: 推奨値と制限値が正確
+- [ ] **手順**: ステップバイステップで実行可能
+
+### 構成と可読性
+- [ ] **見出し構造**: 論理的な階層構造
+- [ ] **文章の明確性**: 曖昧な表現の排除
+- [ ] **専門用語**: 適切な説明と統一
+- [ ] **コードフォーマット**: シンタックスハイライト適用
+
+### 完全性
+- [ ] **前提条件**: 必要な情報を網羅
+- [ ] **エラーケース**: 想定される問題を記載
+- [ ] **関連リンク**: 必要な参照先を提供
+- [ ] **更新情報**: 変更履歴を記録
+
+### アクセシビリティ
+- [ ] **目次**: 長いドキュメントには目次を追加
+- [ ] **検索性**: 適切なキーワードを含む
+- [ ] **リンク**: 内部・外部リンクが有効
+- [ ] **画像**: alt テキストを設定
+```
+
+#### 🔍 自動チェックツール
+```bash
+# Markdown リンクチェック
+npm install -g markdown-link-check
+markdown-link-check docs/**/*.md
+
+# スペルチェック
+npm install -g cspell
+cspell "docs/**/*.md"
+
+# Markdown フォーマットチェック
+npm install -g markdownlint-cli
+markdownlint docs/**/*.md
+```
+
+### 5. 公開と配布（10分）
+
+#### 📤 ドキュメント公開フロー
+```markdown
+### Git コミット
+1. **ブランチ作成**: `docs/update-api-reference`
+2. **変更コミット**: 明確なコミットメッセージ
+3. **プルリクエスト**: レビュー依頼
+4. **マージ**: 承認後にメインブランチへ
+
+### 自動デプロイ
+- **GitHub Pages**: 静的サイト生成
+- **Confluence**: 社内wiki更新
+- **Slack通知**: チームへの更新通知
+```
+
+---
+
+## 📋 ドキュメント種別別ガイド
+
+### 🎯 README.md 作成ガイド
+```markdown
+# プロジェクト名
+
+## 📋 概要
+[プロジェクトの目的と主要機能を1-2段落で説明]
+
+## ✨ 主要機能
+- 🔍 リアルタイム物体検出（YOLO v8）
+- 👤 人物検出と姿勢分析（MediaPipe）
+- 📱 スマートフォン使用検出
+- 📊 監視データの可視化
+- ⚡ 高速処理（15+ FPS）
+
+## 🚀 クイックスタート
+### 前提条件
+- Python 3.9+
+- Node.js 18+
+- CUDA対応GPU（推奨）
+
+### インストール
+```bash
+# リポジトリクローン
+git clone https://github.com/your-org/kanshi-chan.git
+cd kanshi-chan
+
+# バックエンド環境構築
+cd backend
+pip install -r requirements.txt
+
+# フロントエンド環境構築
+cd ../frontend
+npm install
+```
+
+### 実行
+```bash
+# バックエンド起動
+cd backend
+python -m src.main
+
+# フロントエンド起動（別ターミナル）
+cd frontend
+npm start
+```
+
+## 📖 ドキュメント
+- [📚 詳細ドキュメント](mdc:docs)
+- [🔧 API リファレンス](mdc:docs/API_REFERENCE.md)
+- [🏗️ アーキテクチャ](mdc:docs/ARCHITECTURE.md)
+- [🚀 デプロイメント](mdc:docs/DEPLOYMENT.md)
+
+## 🤝 コントリビューション
+[CONTRIBUTING.md](mdc:CONTRIBUTING.md) をご覧ください。
+
+## 📄 ライセンス
+MIT License - 詳細は [LICENSE](mdc:LICENSE) をご覧ください。
+```
+
+### 🔧 API リファレンス作成ガイド
+```markdown
+# API リファレンス
+
+## 📋 概要
+KanshiChan REST API の完全なリファレンスです。
+
+## 🔗 ベースURL
+```
+http://localhost:5000/api
+```
+
+## 🔐 認証
+現在のバージョンでは認証は不要です。
+
+## 📊 レスポンス形式
+すべてのレスポンスはJSON形式です。
+
+### 成功レスポンス
+```json
+{
+  "status": "success",
+  "data": { ... },
+  "message": "Operation completed successfully"
+}
+```
+
+### エラーレスポンス
+```json
+{
+  "status": "error",
+  "error": "Error type",
+  "message": "Detailed error message",
+  "code": 400
+}
+```
+
+## 🎯 エンドポイント一覧
+
+### 検出関連
+| メソッド | エンドポイント | 説明 |
+|---------|---------------|------|
+| POST | `/detection/start` | 検出開始 |
+| GET | `/detection/status/{id}` | 検出状態取得 |
+| POST | `/detection/stop/{id}` | 検出停止 |
+
+### 設定関連
+| メソッド | エンドポイント | 説明 |
+|---------|---------------|------|
+| GET | `/config` | 設定取得 |
+| PUT | `/config` | 設定更新 |
+
+## 📝 詳細仕様
+
+### POST /detection/start
+[詳細な仕様を記載]
+```
+
+### 🏗️ アーキテクチャドキュメント作成ガイド
+```markdown
+# システムアーキテクチャ
+
+## 📋 概要
+KanshiChan のシステム設計と技術選択について説明します。
+
+## 🎯 設計原則
+1. **リアルタイム性**: 15+ FPS での検出処理
+2. **スケーラビリティ**: 複数カメラ対応
+3. **保守性**: モジュラー設計
+4. **拡張性**: 新しい検出機能の追加容易性
+
+## 🏗️ システム構成
+
+### 全体アーキテクチャ
+```mermaid
+graph TB
+    subgraph "Frontend (React)"
+        UI[ユーザーインターフェース]
+        WS[WebSocket Client]
+    end
+    
+    subgraph "Backend (Python/Flask)"
+        API[REST API]
+        WS_SERVER[WebSocket Server]
+        DETECTOR[Detection Engine]
+    end
+    
+    subgraph "AI/ML"
+        YOLO[YOLO v8]
+        MP[MediaPipe]
+    end
+    
+    UI --> API
+    WS --> WS_SERVER
+    API --> DETECTOR
+    DETECTOR --> YOLO
+    DETECTOR --> MP
+```
+
+### 技術スタック選択理由
+
+#### フロントエンド: React + TypeScript
+- **React**: コンポーネントベース開発
+- **TypeScript**: 型安全性とIDE支援
+- **Chakra UI**: 一貫したデザインシステム
+
+#### バックエンド: Python + Flask
+- **Python**: AI/MLライブラリの豊富さ
+- **Flask**: 軽量で柔軟なWebフレームワーク
+- **WebSocket**: リアルタイム通信
+
+#### AI/ML: YOLO + MediaPipe
+- **YOLO v8**: 高精度・高速な物体検出
+- **MediaPipe**: リアルタイム姿勢検出
+```
+
+---
+
+## 🔄 ドキュメント保守プロセス
+
+### 📅 定期更新スケジュール
+```markdown
+### 毎リリース（必須）
+- [ ] **API仕様書**: 新規・変更されたエンドポイント
+- [ ] **CHANGELOG**: 変更内容の記録
+- [ ] **README**: 新機能の追加
+
+### 月次更新
+- [ ] **トラブルシューティング**: 新しい問題と解決方法
+- [ ] **FAQ**: よくある質問の追加
+- [ ] **パフォーマンス情報**: ベンチマーク結果更新
+
+### 四半期更新
+- [ ] **アーキテクチャ**: 設計変更の反映
+- [ ] **開発ガイド**: 新しいベストプラクティス
+- [ ] **デプロイメント**: 環境・手順の更新
+```
+
+### 🔍 品質監視
+```markdown
+### 自動チェック（CI/CD）
+- **リンク切れ**: 内部・外部リンクの有効性
+- **スペルチェック**: 英語・日本語の誤字脱字
+- **フォーマット**: Markdown記法の統一
+
+### 手動レビュー（月次）
+- **内容の正確性**: 実装との整合性確認
+- **情報の完全性**: 不足している情報の特定
+- **ユーザビリティ**: 読みやすさと理解しやすさ
+```
+
+---
+
+## 📊 ドキュメント分析とKPI
+
+### 📈 測定指標
+```markdown
+### アクセス分析
+- **ページビュー**: 最も参照されるドキュメント
+- **滞在時間**: ドキュメントの理解度指標
+- **離脱率**: 情報不足や分かりにくさの指標
+
+### ユーザーフィードバック
+- **GitHub Issues**: ドキュメント関連の問題報告
+- **プルリクエスト**: コミュニティからの改善提案
+- **サポート問い合わせ**: ドキュメントで解決できない問題
+
+### 品質指標
+- **更新頻度**: 情報の鮮度維持
+- **エラー率**: リンク切れ、誤情報の発生率
+- **完成度**: 必要な情報の網羅率
+```
+
+---
+
+## 📝 ドキュメント作成報告テンプレート
+
+```markdown
+# 📚 ドキュメント作成・更新報告
+
+## 📋 基本情報
+- **作成日**: [日付]
+- **作成者**: [名前]
+- **ドキュメント種別**: [新規作成/更新/削除]
+- **対象ファイル**: [ファイルパス]
+
+## 🎯 作成・更新内容
+### 目的
+- [なぜこのドキュメントが必要か]
+
+### 対象読者
+- [想定する読者層]
+
+### 主な変更点
+1. [変更点1]
+2. [変更点2]
+...
+
+## 📊 品質確認
+### チェック項目
+- [ ] 内容の正確性確認
+- [ ] リンクの動作確認
+- [ ] スペルチェック実行
+- [ ] フォーマット統一
+
+### レビュー結果
+- **レビュアー**: [名前]
+- **承認日**: [日付]
+- **指摘事項**: [あれば記載]
+
+## 📈 期待効果
+- [このドキュメントによって解決される問題]
+- [ユーザー体験の改善点]
+
+## 🔄 今後の予定
+- [継続的な更新計画]
+- [関連ドキュメントの作成予定]
+```
+
+---
+
+## 🚀 継続的改善
+
+### ドキュメント戦略見直し
+- **月次**: ユーザーフィードバック分析
+- **四半期**: ドキュメント構造の最適化
+- **半年**: ツール・プロセスの改善
+
+### 新技術導入検討
+- **自動生成**: コードからのAPI仕様自動生成
+- **インタラクティブ**: 実行可能なコード例
+- **多言語対応**: 国際化への対応
+- **検索機能**: 高度な検索・フィルタリング
+
+このドキュメントルールに従い、KanshiChanプロジェクトの知識共有と開発効率向上を実現していきます。

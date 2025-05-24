@@ -11,7 +11,6 @@ common_requires = [
     "openai",
     "flask",
     "line-bot-sdk",
-    "twilio",
     "pyyaml",
     "Pillow",
     "screeninfo",

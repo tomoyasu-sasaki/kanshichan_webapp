@@ -1,0 +1,299 @@
+# KanshiChan - バックエンド開発規約
+# =============================================
+# 対象: Python/Flask バックエンド開発
+# 参照: main_rules.yaml
+
+# ===========================================
+# 1. Python コーディング規約
+# ===========================================
+python_coding:
+  style_guide: "PEP 8 + Black formatting"
+  line_length: 88
+  encoding: "UTF-8"
+  
+  imports:
+    order:
+      - "標準ライブラリ"
+      - "サードパーティライブラリ"
+      - "ローカルモジュール"
+    style: "isort で自動整理"
+    
+  type_hints:
+    usage: "推奨（特に公開API）"
+    examples:
+      - "def detect_objects(self, frame: np.ndarray) -> Dict[str, Any]:"
+      - "class ConfigManager:"
+      
+  docstrings:
+    format: "Google style"
+    required_for:
+      - "public classes"
+      - "public methods"
+      - "complex functions"
+    example: |
+      def setup_object_detector(self) -> None:
+          """物体検出器の初期化
+          
+          YOLOv8モデルをロードし、適切なデバイス（GPU/CPU）に配置します。
+          モデルファイルが存在しない場合は自動的にダウンロードを行います。
+          
+          Raises:
+              RuntimeError: モデルの初期化に失敗した場合
+          """
+
+# ===========================================
+# 2. プロジェクト構造規約
+# ===========================================
+directory_structure:
+  src:
+    config:
+      purpose: "設定ファイル管理"
+      files:
+        - "config.yaml: メイン設定"
+        - "schedules.json: スケジュール設定"
+        - "__init__.py: パッケージ初期化"
+        
+    core:
+      purpose: "コア機能実装"
+      modules:
+        camera: "カメラ制御とフレーム取得"
+        detector: "AI検出エンジン（YOLO, MediaPipe）"
+        detection: "検出処理の統合管理"
+        monitor: "監視機能のメインロジック"
+        state: "状態管理（不在、スマホ使用等）"
+        
+    services:
+      purpose: "外部サービス連携"
+      modules:
+        alert_manager: "アラート通知の統合管理"
+        alert_service: "アラート処理の抽象化"
+        line_service: "LINE Notify 連携"
+        llm_service: "LLM（GPT）連携"
+        schedule_manager: "スケジュール管理"
+        sound_service: "音声再生"
+        
+    web:
+      purpose: "Web API と WebSocket"
+      modules:
+        api: "Flask REST API エンドポイント"
+        app: "Flask アプリケーション設定"
+        handlers: "ルートハンドラー"
+        websocket: "WebSocket通信"
+        
+    utils:
+      purpose: "共通ユーティリティ"
+      modules:
+        config_manager: "設定ファイル読み込み・管理"
+        logger: "ロガー設定"
+        yaml_utils: "YAML操作ユーティリティ"
+        
+    sounds:
+      purpose: "アラート音声ファイル"
+      formats: ["wav"]
+
+# ===========================================
+# 3. クラス設計規約
+# ===========================================
+class_design:
+  naming: "PascalCase"
+  
+  structure:
+    initialization: "__init__ メソッドでの適切な初期化"
+    error_handling: "try-except での例外処理"
+    logging: "適切なログ出力"
+    
+  examples:
+    detector: |
+      class Detector:
+          def __init__(self, config_manager=None):
+              """初期化時にconfig_managerから設定を取得"""
+              try:
+                  self.config_manager = config_manager
+                  self.setup_models()
+              except Exception as e:
+                  logger.error(f"Error initializing Detector: {e}")
+                  
+    service: |
+      class AlertService:
+          def send_alert(self, message: str) -> bool:
+              """アラート送信（戻り値で成功/失敗を示す）"""
+              
+# ===========================================
+# 4. エラーハンドリング規約
+# ===========================================
+error_handling:
+  logging:
+    logger_setup: "utils.logger.setup_logger(__name__)"
+    levels:
+      DEBUG: "詳細なデバッグ情報"
+      INFO: "正常な動作ログ"
+      WARNING: "警告（処理は継続）"
+      ERROR: "エラー（処理に影響）"
+      CRITICAL: "致命的エラー（停止必要）"
+      
+  exception_handling:
+    specific_exceptions: "具体的な例外クラスをキャッチ"
+    generic_fallback: "Exception は最後の手段"
+    logging: "例外発生時は必ずログ出力"
+    user_feedback: "ユーザーに分かりやすいメッセージ"
+    
+  examples:
+    detection_error: |
+      try:
+          results = self.model(frame)
+      except torch.cuda.OutOfMemoryError:
+          logger.error("GPU memory insufficient, falling back to CPU")
+          self.model.to('cpu')
+      except Exception as e:
+          logger.error(f"Detection failed: {e}", exc_info=True)
+          return default_results
+
+# ===========================================
+# 5. 設定管理規約
+# ===========================================
+configuration:
+  format: "YAML"
+  structure:
+    hierarchical: "ネストした構造でグループ化"
+    validation: "ConfigManager による型検証"
+    defaults: "デフォルト値の明示"
+    
+  access_pattern:
+    manager: "ConfigManager を通じた一元アクセス"
+    caching: "設定値のキャッシュ"
+    hot_reload: "設定変更の動的反映（将来実装）"
+    
+  example:
+    yaml_structure: |
+      detector:
+        use_mediapipe: true
+        use_yolo: true
+        mediapipe_options:
+          pose:
+            min_detection_confidence: 0.5
+            
+    access_code: |
+      confidence = config_manager.get('detector.mediapipe_options.pose.min_detection_confidence', 0.5)
+
+# ===========================================
+# 6. API 設計規約
+# ===========================================
+api_design:
+  rest_endpoints:
+    naming: "kebab-case"
+    versioning: "/api/v1/"
+    structure:
+      - "/api/status - システム状態"
+      - "/api/config - 設定管理"
+      - "/api/video_feed - 映像ストリーム"
+      
+  response_format:
+    success: |
+      {
+        "status": "success",
+        "data": {...},
+        "timestamp": "ISO 8601"
+      }
+    error: |
+      {
+        "status": "error",
+        "error": "Human readable message",
+        "code": "MACHINE_READABLE_CODE",
+        "timestamp": "ISO 8601"
+      }
+      
+  websocket:
+    events:
+      status_update: "リアルタイム状態更新"
+      alert_triggered: "アラート発生通知"
+      
+# ===========================================
+# 7. テスト規約
+# ===========================================
+testing:
+  framework: "pytest"
+  structure:
+    unit_tests: "tests/test_*.py"
+    fixtures: "tests/conftest.py"
+    mock_data: "tests/fixtures/"
+    
+  naming_convention:
+    test_files: "test_<module_name>.py"
+    test_methods: "test_<function_name>_<condition>_<expected_result>"
+    
+  coverage:
+    minimum: "80%"
+    measurement: "pytest-cov"
+    
+  examples:
+    unit_test: |
+      def test_detect_objects_with_valid_frame_returns_results():
+          # Arrange
+          detector = Detector()
+          frame = np.zeros((480, 640, 3), dtype=np.uint8)
+          
+          # Act
+          results = detector.detect_objects(frame)
+          
+          # Assert
+          assert 'detections' in results
+          assert isinstance(results['detections'], dict)
+
+# ===========================================
+# 8. 依存関係管理
+# ===========================================
+dependencies:
+  management:
+    file: "requirements.txt"
+    versioning: "固定バージョン指定（>=x.y.z）"
+    security: "定期的な脆弱性チェック"
+    
+  categories:
+    ai_libraries:
+      - "torch>=1.9.0"
+      - "ultralytics"
+      - "mediapipe>=0.8.0"
+      - "opencv-python>=4.5.0"
+      
+    web_framework:
+      - "Flask>=2.0.0"
+      - "Flask-SocketIO"
+      
+    utilities:
+      - "PyYAML"
+      - "Pillow"
+      - "numpy"
+
+# ===========================================
+# 9. パフォーマンス規約
+# ===========================================
+performance:
+  ai_processing:
+    frame_rate: "15 FPS 以上を目標"
+    memory_management: "適切なメモリ解放"
+    gpu_utilization: "GPU利用可能時の最適化"
+    
+  web_api:
+    response_time: "200ms 以下"
+    concurrent_requests: "複数リクエストの適切な処理"
+    
+  monitoring:
+    metrics: "レスポンス時間、メモリ使用量、FPS"
+    logging: "パフォーマンス関連ログ"
+
+# ===========================================
+# 10. セキュリティ規約
+# ===========================================
+security:
+  input_validation:
+    frame_data: "画像データの検証"
+    config_data: "設定値の型・範囲チェック"
+    api_requests: "リクエストデータのサニタイズ"
+    
+  secrets_management:
+    env_vars: "機密情報は環境変数"
+    config_exclusion: "設定ファイルから機密情報除外"
+    
+  camera_access:
+    permission: "カメラアクセス権限の適切な管理"
+    privacy: "映像データの適切な取り扱い" 

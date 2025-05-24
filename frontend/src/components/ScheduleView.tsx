@@ -1,6 +1,6 @@
 import { Box, Heading, Divider, Text, useColorModeValue, FormControl, FormLabel, Input, Button, HStack, VStack, useToast, Table, Thead, Tbody, Tr, Th, Td, IconButton } from '@chakra-ui/react'
 import { DeleteIcon } from '@chakra-ui/icons'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { websocketManager, ScheduleAlert } from '../utils/websocket'
 
 interface Schedule {
@@ -57,13 +57,8 @@ export const ScheduleView: React.FC = () => {
     }
   }, [toast])
 
-  // コンポーネントのマウント時にスケジュール一覧を取得
-  useEffect(() => {
-    fetchSchedules()
-  }, [])
-
   // スケジュール一覧を取得する関数
-  const fetchSchedules = async () => {
+  const fetchSchedules = useCallback(async () => {
     setIsLoading(true)
     setError(null)
     try {
@@ -86,7 +81,12 @@ export const ScheduleView: React.FC = () => {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [toast])
+
+  // コンポーネントのマウント時にスケジュール一覧を取得
+  useEffect(() => {
+    fetchSchedules()
+  }, [fetchSchedules])
 
   // 新しいスケジュールを追加する関数
   const addSchedule = async () => {

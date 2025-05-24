@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/setuptests.ts","./src/theme.ts","./src/components/monitorview.tsx","./src/components/scheduleview.tsx","./src/components/settingspanel.tsx","./src/components/__tests__/scheduleview.test.tsx","./src/utils/websocket.ts"],"errors":true,"version":"5.7.3"}
