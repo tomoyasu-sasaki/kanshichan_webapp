@@ -27,12 +27,6 @@ def config():
             'user_id': 'test_user_id',
             'channel_secret': 'test_secret'
         },
-        'twilio': {
-            'account_sid': 'test_sid',
-            'auth_token': 'test_token',
-            'from_number': 'test_number',
-            'to_number': 'test_number'
-        },
         'conditions': {
             'absence': {'threshold_seconds': 5},
             'smartphone_usage': {'threshold_seconds': 3}

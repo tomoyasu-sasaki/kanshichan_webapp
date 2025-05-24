@@ -5,6 +5,10 @@ import numpy as np
 from screeninfo import get_monitors
 from utils.logger import setup_logger
 from utils.config_manager import ConfigManager
+from utils.exceptions import (
+    CameraError, CameraInitializationError, CameraFrameError,
+    ConfigError, HardwareError, wrap_exception
+)
 
 logger = setup_logger(__name__)
 
@@ -38,6 +42,13 @@ class Camera:
             self.screen_width, self.screen_height = 640, 480
             # OpenCVのVideoCaptureをダミーで初期化
             self.cap = None
+            # カスタム例外としてリログ（ダミーモードで継続するため、raiseはしない）
+            camera_error = wrap_exception(
+                e, CameraInitializationError,
+                "Camera initialization failed, falling back to dummy mode",
+                details={'dummy_mode': True, 'screen_size': (640, 480)}
+            )
+            logger.warning(f"Camera error details: {camera_error.to_dict()}")
 
     def _initialize_camera(self):
         """OSに応じたカメラの初期化"""
@@ -56,6 +67,17 @@ class Camera:
                 return cv2.VideoCapture(0)
             except Exception as e2:
                 logger.error(f"Fallback camera initialization also failed: {e2}")
+                # 詳細なエラー情報をログ
+                fallback_error = wrap_exception(
+                    e2, CameraInitializationError,
+                    "Both primary and fallback camera initialization failed",
+                    details={
+                        'primary_error': str(e),
+                        'fallback_error': str(e2),
+                        'platform': platform.system()
+                    }
+                )
+                logger.error(f"Complete camera failure: {fallback_error.to_dict()}")
                 # ダミーモードを使用
                 return cv2.VideoCapture()
 
@@ -67,7 +89,12 @@ class Camera:
                 primary = monitors[0]
                 return primary.width, primary.height
         except Exception as e:
-            logger.warning(f"Failed to get screen dimensions: {e}")
+            screen_error = wrap_exception(
+                e, HardwareError,
+                "Failed to get screen dimensions, using defaults",
+                details={'default_size': (1280, 720)}
+            )
+            logger.warning(f"Screen dimension error: {screen_error.to_dict()}")
         
         # デフォルト値
         return 1280, 720
@@ -101,7 +128,12 @@ class Camera:
                 
                 logger.info("Display window setup enabled per configuration")
             except Exception as e:
-                logger.error(f"Error setting up window: {e}")
+                window_error = wrap_exception(
+                    e, CameraError,
+                    "Error setting up camera display window",
+                    details={'window_disabled': True}
+                )
+                logger.error(f"Window setup error: {window_error.to_dict()}")
                 self.show_window = False
         else:
             logger.info("Display window setup disabled per configuration")
@@ -124,7 +156,12 @@ class Camera:
             frame = self._resize_frame(frame)
             return frame
         except Exception as e:
-            logger.error(f"Error getting frame: {e}")
+            frame_error = wrap_exception(
+                e, CameraFrameError,
+                "Error capturing frame from camera",
+                details={'fallback_to_dummy': True}
+            )
+            logger.error(f"Frame capture error: {frame_error.to_dict()}")
             return self._create_dummy_frame()
 
     def _resize_frame(self, frame):
@@ -157,7 +194,12 @@ class Camera:
                 # 表示せずにUI更新だけ行う
                 cv2.waitKey(1)
         except Exception as e:
-            logger.error(f"Error processing frame: {e}")
+            display_error = wrap_exception(
+                e, CameraError,
+                "Error displaying frame",
+                details={'show_window': self.show_window}
+            )
+            logger.error(f"Frame display error: {display_error.to_dict()}")
 
     def release(self):
         """カメラリソースを解放する"""
@@ -167,7 +209,12 @@ class Camera:
             cv2.destroyAllWindows()
             logger.info("Camera resources released")
         except Exception as e:
-            logger.error(f"Error releasing camera resources: {e}")
+            release_error = wrap_exception(
+                e, CameraError,
+                "Error releasing camera resources",
+                details={'cleanup_partial': True}
+            )
+            logger.error(f"Resource release error: {release_error.to_dict()}")
 
     def _create_dummy_frame(self):
         """カメラが使用できない場合のダミーフレームを生成"""

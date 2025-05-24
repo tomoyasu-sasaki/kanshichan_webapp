@@ -1,10 +1,13 @@
 import asyncio
 from services.line_service import LineService
 from services.sound_service import SoundService
-from services.twilio_service import TwilioService
 from utils.logger import setup_logger
 import requests
 from utils.config_manager import ConfigManager
+from utils.exceptions import (
+    AlertError, AlertDeliveryError, NetworkError,
+    HTTPError, ConfigError, wrap_exception
+)
 
 logger = setup_logger(__name__)
 
@@ -22,7 +25,6 @@ class AlertService:
         logger.info("AlertService initialized with ConfigManager.")
         self.line_service = LineService(config_manager)
         self.sound_service = SoundService()
-        self.twilio_service = TwilioService(config_manager)
 
     def _send_line_notify(self, message):
         """LINE Notifyにメッセージを送信する"""
@@ -45,9 +47,27 @@ class AlertService:
             response.raise_for_status()
             logger.info("LINE Notify sent successfully.")
         except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to send LINE Notify: {e}")
+            request_error = wrap_exception(
+                e, NetworkError,
+                "Failed to send LINE Notify due to network error",
+                details={
+                    'url': url,
+                    'message_length': len(message),
+                    'timeout': 10
+                }
+            )
+            logger.error(f"LINE Notify network error: {request_error.to_dict()}")
         except Exception as e:
-            logger.error(f"An unexpected error occurred while sending LINE Notify: {e}")
+            alert_error = wrap_exception(
+                e, AlertDeliveryError,
+                "Unexpected error occurred while sending LINE Notify",
+                details={
+                    'message_length': len(message),
+                    'line_enabled': line_enabled,
+                    'token_configured': bool(line_token and line_token != 'YOUR_LINE_NOTIFY_TOKEN')
+                }
+            )
+            logger.error(f"LINE Notify delivery error: {alert_error.to_dict()}")
 
     def trigger_alert(self, message):
         """汎用的なアラートをトリガーする"""

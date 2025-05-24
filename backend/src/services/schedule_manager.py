@@ -4,6 +4,11 @@ import uuid
 from typing import List, Dict, Any, Optional
 from utils.logger import setup_logger
 from utils.config_manager import ConfigManager
+from utils.exceptions import (
+    ScheduleError, ScheduleValidationError, ScheduleExecutionError,
+    JSONParsingError, FileOperationError, FileReadError, FileWriteError,
+    ValidationError, wrap_exception
+)
 
 logger = setup_logger(__name__)
 
@@ -41,11 +46,27 @@ class ScheduleManager:
             logger.info(f"Loaded {len(self.schedules)} schedules from {self.schedules_file}")
             return True
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse schedules file: {e}")
+            json_error = wrap_exception(
+                e, JSONParsingError,
+                "Failed to parse schedules JSON file",
+                details={
+                    'file_path': self.schedules_file,
+                    'file_size': os.path.getsize(self.schedules_file) if os.path.exists(self.schedules_file) else 0
+                }
+            )
+            logger.error(f"Schedule JSON parsing error: {json_error.to_dict()}")
             self.schedules = []
             return False
         except Exception as e:
-            logger.error(f"Error loading schedules: {e}")
+            load_error = wrap_exception(
+                e, FileReadError,
+                "Error loading schedules from file",
+                details={
+                    'file_path': self.schedules_file,
+                    'fallback_schedules': []
+                }
+            )
+            logger.error(f"Schedule loading error: {load_error.to_dict()}")
             self.schedules = []
             return False
 
@@ -64,7 +85,16 @@ class ScheduleManager:
             logger.info(f"Saved {len(self.schedules)} schedules to {self.schedules_file}")
             return True
         except Exception as e:
-            logger.error(f"Error saving schedules: {e}")
+            save_error = wrap_exception(
+                e, FileWriteError,
+                "Error saving schedules to file",
+                details={
+                    'file_path': self.schedules_file,
+                    'schedules_count': len(self.schedules),
+                    'config_dir_exists': os.path.exists(self.config_dir)
+                }
+            )
+            logger.error(f"Schedule saving error: {save_error.to_dict()}")
             return False
 
     def get_schedules(self) -> List[Dict[str, str]]:
@@ -86,17 +116,30 @@ class ScheduleManager:
         """
         # 入力値のバリデーション
         if not time or not content:
-            logger.error("Time and content must not be empty")
+            validation_error = ValidationError(
+                "Time and content must not be empty",
+                details={'time': time, 'content': content}
+            )
+            logger.error(f"Schedule validation error: {validation_error.to_dict()}")
             return None
         
         # 時刻のフォーマットチェック (HH:MM)
         try:
             hours, minutes = time.split(':')
             if not (0 <= int(hours) <= 23 and 0 <= int(minutes) <= 59):
-                logger.error(f"Invalid time format: {time}")
+                time_validation_error = ScheduleValidationError(
+                    f"Invalid time range: {time}",
+                    details={'time': time, 'hours': hours, 'minutes': minutes}
+                )
+                logger.error(f"Schedule time validation error: {time_validation_error.to_dict()}")
                 return None
-        except ValueError:
-            logger.error(f"Invalid time format: {time}")
+        except ValueError as e:
+            time_format_error = wrap_exception(
+                e, ScheduleValidationError,
+                f"Invalid time format: {time}",
+                details={'time': time, 'expected_format': 'HH:MM'}
+            )
+            logger.error(f"Schedule time format error: {time_format_error.to_dict()}")
             return None
         
         # 新しいスケジュールの作成
@@ -127,7 +170,11 @@ class ScheduleManager:
             bool: 削除が成功したかどうか
         """
         if not schedule_id:
-            logger.error("Schedule ID must not be empty")
+            id_validation_error = ValidationError(
+                "Schedule ID must not be empty",
+                details={'schedule_id': schedule_id}
+            )
+            logger.error(f"Schedule ID validation error: {id_validation_error.to_dict()}")
             return False
         
         # 該当するスケジュールを探す

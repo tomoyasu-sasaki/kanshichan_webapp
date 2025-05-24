@@ -1,0 +1,394 @@
+# KanshiChan - フロントエンド開発規約
+# =============================================
+# 対象: React/TypeScript フロントエンド開発
+# 参照: main_rules.yaml
+
+# ===========================================
+# 1. TypeScript コーディング規約
+# ===========================================
+typescript_coding:
+  style_guide: "ESLint + Prettier"
+  line_length: 80
+  indentation: "2 spaces"
+  semicolons: true
+  quotes: "single"
+  
+  type_safety:
+    strict_mode: true
+    no_any: "可能な限り避ける"
+    explicit_types: "パブリックAPIは明示的な型定義"
+    
+  imports:
+    order:
+      - "React関連"
+      - "サードパーティライブラリ"
+      - "内部モジュール"
+      - "相対パス"
+    style: "ESLint による自動整理"
+    
+  naming:
+    interfaces: "PascalCase (I prefix なし)"
+    types: "PascalCase"
+    enums: "PascalCase"
+    constants: "UPPER_SNAKE_CASE"
+    
+# ===========================================
+# 2. React コンポーネント規約
+# ===========================================
+react_components:
+  structure:
+    functional: "関数コンポーネント優先"
+    hooks: "カスタムフック活用"
+    typescript: "Props/State の型定義必須"
+    
+  naming:
+    components: "PascalCase"
+    files: "PascalCase.tsx"
+    props: "camelCase"
+    handlers: "handle + 動作名"
+    
+  organization:
+    single_responsibility: "1コンポーネント1責務"
+    composition: "コンポーネント合成パターン"
+    reusability: "再利用可能な設計"
+    
+  examples:
+    component_definition: |
+      interface MonitorViewProps {
+        isFullscreen?: boolean;
+        onToggleFullscreen: () => void;
+      }
+      
+      export const MonitorView: React.FC<MonitorViewProps> = ({
+        isFullscreen = false,
+        onToggleFullscreen
+      }) => {
+        // Implementation
+      };
+      
+    custom_hook: |
+      interface UseWebSocketResult {
+        status: DetectionStatus;
+        isConnected: boolean;
+        error: string | null;
+      }
+      
+      export const useWebSocket = (): UseWebSocketResult => {
+        // Implementation
+      };
+
+# ===========================================
+# 3. プロジェクト構造規約
+# ===========================================
+directory_structure:
+  src:
+    components:
+      purpose: "React コンポーネント"
+      structure:
+        shared: "共通コンポーネント"
+        feature: "機能別コンポーネント"
+        tests: "__tests__ サブディレクトリ"
+      naming: "PascalCase"
+      
+    utils:
+      purpose: "ユーティリティ関数"
+      files:
+        - "websocket.ts: WebSocket通信"
+        - "api.ts: API通信ヘルパー"
+        - "constants.ts: 定数定義"
+      naming: "camelCase"
+      
+    assets:
+      purpose: "静的アセット"
+      types: ["images", "icons", "fonts"]
+      
+    styles:
+      purpose: "スタイル関連（将来実装）"
+      approach: "Chakra UI テーマシステム優先"
+      
+  file_structure:
+    component_file: |
+      // MonitorView.tsx
+      import { ... } from '...';
+      
+      interface Props { ... }
+      
+      export const MonitorView: React.FC<Props> = () => {
+        // Component logic
+      };
+      
+    index_exports: |
+      // components/index.ts
+      export { MonitorView } from './MonitorView';
+      export { SettingsPanel } from './SettingsPanel';
+
+# ===========================================
+# 4. State 管理規約
+# ===========================================
+state_management:
+  local_state:
+    hooks: "useState, useReducer"
+    scope: "コンポーネント内部状態"
+    
+  global_state:
+    approach: "Context API（必要に応じて）"
+    current: "WebSocket経由でのリアルタイム状態"
+    
+  server_state:
+    method: "WebSocket + HTTP API"
+    caching: "必要に応じてReact Query導入検討"
+    
+  examples:
+    local_state: |
+      const [isFullscreen, setIsFullscreen] = useState(false);
+      
+    context_usage: |
+      const ConfigContext = createContext<ConfigContextType | null>(null);
+      
+      export const useConfig = () => {
+        const context = useContext(ConfigContext);
+        if (!context) {
+          throw new Error('useConfig must be used within ConfigProvider');
+        }
+        return context;
+      };
+
+# ===========================================
+# 5. UI/UX デザイン規約
+# ===========================================
+ui_design:
+  design_system: "Chakra UI"
+  
+  theme:
+    colors:
+      primary: "プライマリーカラー"
+      secondary: "セカンダリーカラー"
+      success: "成功状態（緑系）"
+      warning: "警告状態（黄系）"
+      error: "エラー状態（赤系）"
+      
+  spacing:
+    unit: "Chakra UI spacing scale (4px base)"
+    consistency: "統一されたスペーシング"
+    
+  typography:
+    scale: "Chakra UI typography scale"
+    hierarchy: "明確な情報階層"
+    
+  responsive:
+    breakpoints: "Chakra UI デフォルトブレークポイント"
+    mobile_first: "モバイルファースト設計"
+    
+  accessibility:
+    aria_labels: "適切なARIAラベル"
+    keyboard_navigation: "キーボードナビゲーション"
+    color_contrast: "十分なコントラスト比"
+    
+  examples:
+    chakra_usage: |
+      <Box
+        position="relative"
+        width="100%"
+        height="100vh"
+        bg="black"
+      >
+        <VStack spacing={4} align="start">
+          <Badge colorScheme={status.personDetected ? 'green' : 'red'}>
+            {status.personDetected ? '在席中' : '不在'}
+          </Badge>
+        </VStack>
+      </Box>
+
+# ===========================================
+# 6. API 通信規約
+# ===========================================
+api_communication:
+  http_client: "axios (必要に応じて)"
+  websocket: "socket.io-client"
+  
+  error_handling:
+    user_feedback: "useToast でのエラー表示"
+    retry_logic: "接続エラー時の再試行"
+    fallback: "適切なフォールバック状態"
+    
+  data_flow:
+    websocket: "リアルタイムデータ"
+    rest: "設定変更等の操作"
+    
+  examples:
+    websocket_setup: |
+      useEffect(() => {
+        websocketManager.initialize();
+        
+        const errorUnsubscribe = websocketManager.onError(() => {
+          toast({
+            title: '接続エラー',
+            description: 'サーバーとの接続に失敗しました',
+            status: 'error',
+            duration: 3000,
+            isClosable: true,
+          });
+        });
+        
+        return () => {
+          errorUnsubscribe();
+        };
+      }, [toast]);
+
+# ===========================================
+# 7. テスト規約
+# ===========================================
+testing:
+  framework: "Jest + React Testing Library"
+  
+  test_types:
+    unit: "コンポーネント単体テスト"
+    integration: "ユーザーインタラクション"
+    snapshot: "UI回帰テスト（必要に応じて）"
+    
+  file_structure:
+    location: "src/**/__tests__/*.test.tsx"
+    naming: "<ComponentName>.test.tsx"
+    
+  testing_principles:
+    user_behavior: "ユーザーの実際の使用方法をテスト"
+    implementation_agnostic: "実装詳細に依存しない"
+    accessible: "アクセシブルな要素でのクエリ"
+    
+  examples:
+    component_test: |
+      import { render, screen, fireEvent } from '@testing-library/react';
+      import { MonitorView } from '../MonitorView';
+      
+      describe('MonitorView', () => {
+        test('全画面ボタンクリックで全画面表示が切り替わる', () => {
+          const handleToggle = jest.fn();
+          render(<MonitorView onToggleFullscreen={handleToggle} />);
+          
+          const toggleButton = screen.getByLabelText('Toggle fullscreen');
+          fireEvent.click(toggleButton);
+          
+          expect(handleToggle).toHaveBeenCalledTimes(1);
+        });
+      });
+
+# ===========================================
+# 8. パフォーマンス規約
+# ===========================================
+performance:
+  bundle_optimization:
+    code_splitting: "React.lazy による動的インポート"
+    tree_shaking: "不要なコードの削除"
+    chunk_splitting: "Vite による最適化"
+    
+  runtime_optimization:
+    memo: "React.memo で不要な再レンダリング防止"
+    callback_memo: "useCallback, useMemo の適切な使用"
+    virtual_dom: "効率的なDOM更新"
+    
+  image_optimization:
+    formats: "WebP, AVIF 対応"
+    lazy_loading: "画像の遅延読み込み"
+    sizing: "適切なサイズ指定"
+    
+  examples:
+    memo_usage: |
+      const StatusBadge = React.memo<StatusBadgeProps>(({ status }) => {
+        return (
+          <Badge colorScheme={status ? 'green' : 'red'}>
+            {status ? '在席中' : '不在'}
+          </Badge>
+        );
+      });
+      
+    callback_memo: |
+      const handleToggleFullscreen = useCallback(async () => {
+        try {
+          if (!document.fullscreenElement) {
+            await containerRef.current?.requestFullscreen();
+          } else {
+            await document.exitFullscreen();
+          }
+        } catch (error) {
+          console.error('エラー:', error);
+        }
+      }, []);
+
+# ===========================================
+# 9. アクセシビリティ規約
+# ===========================================
+accessibility:
+  standards: "WCAG 2.1 AA レベル準拠"
+  
+  implementation:
+    semantic_html: "適切なHTML要素の使用"
+    aria_attributes: "必要なARIA属性の付与"
+    keyboard_support: "キーボード操作のサポート"
+    screen_reader: "スクリーンリーダー対応"
+    
+  testing:
+    tools: "axe-core, WAVE"
+    manual: "キーボードナビゲーション確認"
+    
+  examples:
+    accessible_button: |
+      <IconButton
+        aria-label="Toggle fullscreen"
+        icon={isFullscreen ? <FaCompress /> : <FaExpand />}
+        onClick={toggleFullscreen}
+      />
+      
+    status_announcement: |
+      <Box role="status" aria-live="polite">
+        {status.personDetected ? '在席中' : '不在'}
+      </Box>
+
+# ===========================================
+# 10. 開発環境規約
+# ===========================================
+development_environment:
+  build_tool: "Vite"
+  
+  scripts:
+    dev: "npm run dev - 開発サーバー起動"
+    build: "npm run build - プロダクションビルド"
+    test: "npm test - テスト実行"
+    lint: "npm run lint - コード品質チェック"
+    
+  hot_reload: "Vite による高速リロード"
+  
+  debugging:
+    browser_devtools: "React Developer Tools"
+    source_maps: "開発時のソースマップ"
+    
+  code_quality:
+    pre_commit: "ESLint + Prettier 実行"
+    ci_cd: "GitHub Actions での自動チェック"
+
+# ===========================================
+# 11. 型定義規約
+# ===========================================
+type_definitions:
+  location: "src/types/ (将来実装)"
+  
+  structure:
+    api_types: "API レスポンス型"
+    component_props: "コンポーネントProps型"
+    utility_types: "共通ユーティリティ型"
+    
+  examples:
+    detection_status: |
+      export interface DetectionStatus {
+        personDetected: boolean;
+        smartphoneDetected: boolean;
+        absenceTime: number;
+        smartphoneUseTime: number;
+      }
+      
+    api_response: |
+      export interface ApiResponse<T> {
+        status: 'success' | 'error';
+        data?: T;
+        error?: string;
+        timestamp: string;
+      } 

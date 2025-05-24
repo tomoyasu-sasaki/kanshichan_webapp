@@ -4,8 +4,8 @@ from web.app import create_app # create_app をインポート
 from core.monitor import Monitor
 from core.camera import Camera
 from core.detector import Detector
-from core.detection_manager import DetectionManager
-from core.state_manager import StateManager
+from core.detection import DetectionManager
+from core.state import StateManager
 from services.alert_service import AlertService
 from services.alert_manager import AlertManager
 from services.schedule_manager import ScheduleManager  # ScheduleManagerをインポート
@@ -39,11 +39,11 @@ if __name__ == '__main__':
         logger.info("依存コンポーネントを初期化中...")
         camera = Camera(config_manager) # Cameraにも ConfigManager を渡す
         detector = Detector(config_manager) # Detector に ConfigManager を渡す
-        detection_manager = DetectionManager(detector)
+        detection = DetectionManager(detector)
         # AlertService と StateManager に config_manager を渡す
         alert_service = AlertService(config_manager)
         alert_manager = AlertManager(alert_service)
-        state_manager = StateManager(config_manager, alert_manager)
+        state = StateManager(config_manager, alert_manager)
         # ScheduleManagerのインスタンス化
         schedule_manager = ScheduleManager(config_manager)
         logger.info("ScheduleManager を初期化しました。")
@@ -54,8 +54,8 @@ if __name__ == '__main__':
             config_manager=config_manager, # config の代わりに config_manager を渡す
             camera=camera,
             detector=detector,
-            detection_manager=detection_manager,
-            state_manager=state_manager,
+            detection=detection,
+            state=state,
             alert_manager=alert_manager,
             schedule_manager=schedule_manager  # ScheduleManager を追加
         )

@@ -1,0 +1,267 @@
+# 監視ちゃん (KanshiChan) - プロジェクト規約
+# ================================================
+# バージョン: 1.0
+# 作成日: 2024-12-XX
+# 概要: 一貫したアプリケーション開発のための総合規約
+
+project_info:
+  name: "KanshiChan (監視ちゃん)"
+  version: "0.1.0"
+  description: "AIベースの作業集中支援ツール"
+  architecture: "Python/Flask + React/TypeScript"
+  
+# ===========================================
+# 1. 技術スタック規約
+# ===========================================
+technology_stack:
+  backend:
+    language: "Python"
+    version: ">=3.9"
+    framework: "Flask >=2.0"
+    ai_libraries:
+      - "OpenCV >=4.5"
+      - "MediaPipe >=0.8"
+      - "YOLOv8 (ultralytics)"
+      - "torch"
+    web_libraries:
+      - "Flask >=2.0"
+      - "socketio"
+    utilities:
+      - "PyYAML"
+      - "Pillow"
+      - "numpy"
+    code_style: "Black + Flake8"
+    testing: "pytest"
+    
+  frontend:
+    language: "TypeScript"
+    version: ">=4.5"
+    framework: "React >=18"
+    ui_library: "Chakra UI >=2.8"
+    build_tool: "Vite >=6.0"
+    testing: "Jest + React Testing Library"
+    code_style: "ESLint + Prettier"
+    
+# ===========================================
+# 2. プロジェクト構造規約
+# ===========================================
+project_structure:
+  backend:
+    base_path: "backend/"
+    source_path: "backend/src/"
+    structure:
+      config: "設定ファイル (.yaml, .json)"
+      core: "コア機能 (カメラ、検出、状態管理)"
+      services: "外部サービス連携 (アラート、LLM、LINE)"
+      web: "Web API と WebSocket"
+      utils: "共通ユーティリティ"
+      sounds: "アラート音声ファイル"
+    test_path: "backend/tests/"
+    
+  frontend:
+    base_path: "frontend/"
+    source_path: "frontend/src/"
+    structure:
+      components: "React コンポーネント"
+      utils: "ユーティリティ関数"
+      assets: "静的アセット"
+    test_path: "frontend/src/**/__tests__/"
+    
+# ===========================================
+# 3. 命名規約
+# ===========================================
+naming_conventions:
+  files:
+    python: "snake_case.py"
+    typescript: "PascalCase.tsx (components), camelCase.ts (utils)"
+    config: "snake_case.yaml"
+    test: "test_*.py, *.test.tsx"
+    
+  directories:
+    general: "snake_case"
+    components: "PascalCase (React components only)"
+    
+  variables:
+    python: "snake_case"
+    typescript: "camelCase"
+    constants: "UPPER_SNAKE_CASE"
+    
+  functions:
+    python: "snake_case"
+    typescript: "camelCase"
+    
+  classes:
+    python: "PascalCase"
+    typescript: "PascalCase"
+    
+# ===========================================
+# 4. コーディング規約
+# ===========================================
+coding_standards:
+  general:
+    encoding: "UTF-8"
+    indentation: "4 spaces (Python), 2 spaces (TypeScript)"
+    line_length: "88 characters (Python), 80 characters (TypeScript)"
+    
+  python:
+    formatter: "Black"
+    linter: "Flake8"
+    type_checker: "mypy (推奨)"
+    docstring: "Google style"
+    imports: "isort"
+    
+  typescript:
+    formatter: "Prettier"
+    linter: "ESLint"
+    strict_mode: true
+    no_any: "避ける（型安全性のため）"
+    
+# ===========================================
+# 5. API 設計規約
+# ===========================================
+api_conventions:
+  rest_api:
+    base_url: "http://localhost:5001/api"
+    versioning: "URL パス (/api/v1/)"
+    naming: "kebab-case"
+    http_methods:
+      GET: "データ取得"
+      POST: "データ作成・処理"
+      PUT: "データ更新（完全）"
+      PATCH: "データ更新（部分）"
+      DELETE: "データ削除"
+      
+  websocket:
+    namespace: "/"
+    events: "snake_case"
+    
+  response_format:
+    success: |
+      {
+        "status": "success",
+        "data": {...},
+        "message": "Optional message"
+      }
+    error: |
+      {
+        "status": "error",
+        "error": "Error description",
+        "code": "ERROR_CODE"
+      }
+      
+# ===========================================
+# 6. 設定管理規約
+# ===========================================
+configuration:
+  format: "YAML"
+  location: "backend/src/config/"
+  main_file: "config.yaml"
+  structure:
+    - "ネストした設定でグループ化"
+    - "environment 別設定の分離"
+    - "デフォルト値の明示"
+    - "設定説明のコメント記載"
+    
+  validation:
+    - "起動時の設定検証必須"
+    - "型安全性の確保"
+    - "必須設定項目のチェック"
+    
+# ===========================================
+# 7. エラーハンドリング規約
+# ===========================================
+error_handling:
+  logging:
+    format: "structured logging"
+    levels: ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    output: "ファイル + コンソール"
+    rotation: "日次ローテーション"
+    
+  exceptions:
+    custom: "業務固有例外クラスの定義"
+    propagation: "適切なレベルでキャッチ"
+    user_feedback: "ユーザーフレンドリーなメッセージ"
+    
+# ===========================================
+# 8. テスト規約
+# ===========================================
+testing:
+  coverage:
+    minimum: "80%"
+    target: "90%"
+    
+  types:
+    unit: "関数・メソッド単位"
+    integration: "モジュール間連携"
+    e2e: "フロントエンド操作"
+    
+  naming:
+    python: "test_*.py"
+    typescript: "*.test.tsx, *.test.ts"
+    
+  structure:
+    arrange: "テストデータ準備"
+    act: "テスト対象実行"
+    assert: "結果検証"
+    
+# ===========================================
+# 9. Git 運用規約
+# ===========================================
+git_workflow:
+  branching:
+    main: "本番環境リリース用"
+    develop: "開発統合ブランチ"
+    feature: "feature/機能名"
+    bugfix: "fix/問題概要"
+    hotfix: "hotfix/緊急修正"
+    
+  commit_message:
+    format: "type(scope): description"
+    types: ["feat", "fix", "docs", "style", "refactor", "test", "chore"]
+    examples:
+      - "feat(detector): YOLOv8モデルの追加"
+      - "fix(api): WebSocket接続エラーの修正"
+      - "docs(readme): インストール手順の更新"
+      
+  pull_request:
+    template: "必須（理由、変更内容、テスト結果）"
+    review: "最低1名のレビュー必須"
+    merge: "Squash merge推奨"
+    
+# ===========================================
+# 10. セキュリティ規約
+# ===========================================
+security:
+  secrets:
+    storage: "環境変数または安全な設定ファイル"
+    git_exclusion: ".gitignore での除外必須"
+    examples: ["API keys", "tokens", "passwords"]
+    
+  input_validation:
+    sanitization: "全入力データのサニタイズ"
+    type_checking: "型検証の実施"
+    size_limits: "適切なサイズ制限"
+    
+  dependencies:
+    scanning: "定期的な脆弱性スキャン"
+    updates: "セキュリティパッチの迅速適用"
+    minimal: "最小限の依存関係"
+
+# ===========================================
+# 11. パフォーマンス規約
+# ===========================================
+performance:
+  backend:
+    response_time: "API レスポンス < 200ms"
+    memory_usage: "メモリ使用量監視"
+    error_recovery: "エラー時の適切な回復処理"
+    
+  frontend:
+    bundle_size: "JS bundle < 2MB"
+    loading_time: "初期読み込み < 3秒"
+    responsiveness: "ユーザー操作応答性"
+    
+  ai_processing:
+    real_time: "フレーム処理 >= 15 FPS"
+    accuracy: "検出精度の定期的な評価"
+    resource_optimization: "GPU/CPU使用量の最適化" 

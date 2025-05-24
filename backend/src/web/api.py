@@ -2,6 +2,10 @@ from flask import Blueprint, jsonify, request, Response, current_app
 import cv2
 import time
 from utils.logger import setup_logger
+from utils.exceptions import (
+    APIError, ConfigError, ValidationError, ScheduleError,
+    InitializationError, wrap_exception, create_error_response
+)
 # 古いインポートを削除
 # from config.message_settings import message_sound_mapping
 # from config.display_settings import landmark_settings, detection_objects
@@ -11,12 +15,16 @@ api = Blueprint('api', __name__)
 
 @api.route('/settings', methods=['GET'])
 def get_settings():
-    state_manager = current_app.config.get('monitor_instance', {}).state_manager
+    state = current_app.config.get('monitor_instance', {}).state
     config_manager = current_app.config.get('config_manager')
 
-    if state_manager is None or config_manager is None:
-        logger.error("StateManager or ConfigManager not found in app config.")
-        return jsonify({'error': 'StateManager or ConfigManager not initialized'}), 500
+    if state is None or config_manager is None:
+        init_error = InitializationError(
+            "StateManager or ConfigManager not found in app config",
+            details={'state_available': state is not None, 'config_manager_available': config_manager is not None}
+        )
+        logger.error(f"API initialization error: {init_error.to_dict()}")
+        return jsonify(create_error_response(init_error, include_details=True)), 500
 
     # 設定をすべてConfigManagerから取得する
     message_sound_mapping = config_manager.get_message_sound_mapping()
@@ -36,12 +44,16 @@ def get_settings():
 
 @api.route('/settings', methods=['POST'])
 def update_settings():
-    state_manager = current_app.config.get('monitor_instance', {}).state_manager
+    state = current_app.config.get('monitor_instance', {}).state
     config_manager = current_app.config.get('config_manager')
 
-    if state_manager is None or config_manager is None:
-        logger.error("StateManager or ConfigManager not found in app config.")
-        return jsonify({'error': 'StateManager or ConfigManager not initialized'}), 500
+    if state is None or config_manager is None:
+        init_error = InitializationError(
+            "StateManager or ConfigManager not found in app config",
+            details={'state_available': state is not None, 'config_manager_available': config_manager is not None}
+        )
+        logger.error(f"API initialization error: {init_error.to_dict()}")
+        return jsonify(create_error_response(init_error, include_details=True)), 500
 
     data = request.get_json()
     config_updated = False
@@ -50,20 +62,32 @@ def update_settings():
         try:
             new_threshold = float(data['absence_threshold'])
             config_manager.set('conditions.absence.threshold_seconds', new_threshold)
-            state_manager.absence_threshold = new_threshold
+            state.absence_threshold = new_threshold
             config_updated = True
             logger.info(f"Absence threshold updated to {new_threshold} (memory & StateManager)")
-        except ValueError:
-            return jsonify({'error': 'Invalid value for absence_threshold'}), 400
+        except ValueError as e:
+            validation_error = wrap_exception(
+                e, ValidationError,
+                "Invalid value for absence_threshold",
+                details={'value': data['absence_threshold'], 'expected_type': 'float'}
+            )
+            logger.error(f"Absence threshold validation error: {validation_error.to_dict()}")
+            return jsonify(create_error_response(validation_error)), 400
     if 'smartphone_threshold' in data:
         try:
             new_threshold = float(data['smartphone_threshold'])
             config_manager.set('conditions.smartphone_usage.threshold_seconds', new_threshold)
-            state_manager.smartphone_threshold = new_threshold
+            state.smartphone_threshold = new_threshold
             config_updated = True
             logger.info(f"Smartphone threshold updated to {new_threshold} (memory & StateManager)")
-        except ValueError:
-            return jsonify({'error': 'Invalid value for smartphone_threshold'}), 400
+        except ValueError as e:
+            validation_error = wrap_exception(
+                e, ValidationError,
+                "Invalid value for smartphone_threshold",
+                details={'value': data['smartphone_threshold'], 'expected_type': 'float'}
+            )
+            logger.error(f"Smartphone threshold validation error: {validation_error.to_dict()}")
+            return jsonify(create_error_response(validation_error)), 400
     
     if 'message_extensions' in data:
         message_sound_mapping = config_manager.get_message_sound_mapping()
@@ -74,8 +98,13 @@ def update_settings():
                     new_extension = int(extension)
                     config_manager.set(f'message_sound_mapping.{message}.extension', new_extension)
                     config_updated = True
-                except ValueError:
-                    logger.warning(f"Invalid extension value for {message}: {extension}")
+                except ValueError as e:
+                    validation_error = wrap_exception(
+                        e, ValidationError,
+                        f"Invalid extension value for {message}",
+                        details={'message': message, 'extension': extension, 'expected_type': 'int'}
+                    )
+                    logger.warning(f"Extension validation error: {validation_error.to_dict()}")
     
     if 'landmark_settings' in data:
         for key, settings in data['landmark_settings'].items():
@@ -192,6 +221,48 @@ def add_schedule():
         return jsonify(new_schedule), 201
     except Exception as e:
         logger.error(f"Error adding schedule: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@api.route('/performance', methods=['GET'])
+def get_performance_stats():
+    """パフォーマンス統計を取得する"""
+    monitor = current_app.config.get('monitor_instance')
+    
+    if monitor is None:
+        logger.error("Monitor instance not found in app config for performance stats")
+        return jsonify({'error': 'Monitor not initialized'}), 500
+    
+    try:
+        # ObjectDetectorからパフォーマンス統計を取得
+        if hasattr(monitor, 'detector') and hasattr(monitor.detector, 'get_detection_status'):
+            status = monitor.detector.get_detection_status()
+            performance_data = status.get('performance', {})
+            
+            # デフォルト値を設定
+            default_stats = {
+                'fps': 0.0,
+                'avg_inference_ms': 0.0,
+                'memory_mb': 0.0,
+                'skip_rate': 1,
+                'optimization_active': False
+            }
+            
+            # 実際のデータで更新
+            default_stats.update(performance_data)
+            
+            return jsonify(default_stats)
+        else:
+            logger.warning("Detector or performance stats not available")
+            return jsonify({
+                'fps': 0.0,
+                'avg_inference_ms': 0.0,
+                'memory_mb': 0.0,
+                'skip_rate': 1,
+                'optimization_active': False
+            })
+            
+    except Exception as e:
+        logger.error(f"Error getting performance stats: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 @api.route('/schedules/<schedule_id>', methods=['DELETE'])

@@ -1,4 +1,4 @@
-import React from 'react';
+// React import is handled by JSX runtime
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChakraProvider, useToast } from '@chakra-ui/react';

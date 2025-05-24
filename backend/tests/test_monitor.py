@@ -7,8 +7,8 @@ from services.alert_service import AlertService
 # 依存コンポーネントのクラスをインポート
 from core.camera import Camera
 from core.detector import Detector
-from core.detection_manager import DetectionManager
-from core.state_manager import StateManager
+from core.detection import DetectionManager
+from core.state import StateManager
 from services.alert_manager import AlertManager
 from utils.config_manager import ConfigManager # ConfigManager をインポート
 from services.object_detection_service import ObjectDetectionService
@@ -42,19 +42,19 @@ def mock_dependencies(tmp_path):
     alert_manager = AlertManager(alert_service=mock_alert_service)
 
     # StateManager は実際のインスタンスを使う
-    state_manager = StateManager(config_manager=mock_config_manager, alert_manager=alert_manager)
+    state = StateManager(config_manager=mock_config_manager, alert_manager=alert_manager)
 
     # その他のモック
     mock_camera = MagicMock(spec='core.camera.Camera')
     mock_detector = MagicMock(spec='core.detector.Detector')
-    mock_detection_manager = MagicMock(spec='core.detection_manager.DetectionManager')
+    mock_detection = MagicMock(spec='core.detection.DetectionManager')
 
     deps = {
         'config_manager': mock_config_manager,
         'camera': mock_camera,
         'detector': mock_detector,
-        'detection_manager': mock_detection_manager,
-        'state_manager': state_manager,
+        'detection': mock_detection,
+        'state': state,
         'alert_manager': alert_manager,
     }
     return deps # alert_service を含まない辞書を返す
@@ -71,38 +71,38 @@ def test_monitor_initialization(monitor_instance, mock_dependencies):
     assert monitor_instance.config_manager == mock_dependencies['config_manager']
     assert monitor_instance.camera == mock_dependencies['camera']
     assert monitor_instance.detector == mock_dependencies['detector']
-    assert monitor_instance.detection_manager == mock_dependencies['detection_manager']
-    assert monitor_instance.state_manager == mock_dependencies['state_manager']
+    assert monitor_instance.detection == mock_dependencies['detection']
+    assert monitor_instance.state == mock_dependencies['state']
     assert monitor_instance.alert_manager == mock_dependencies['alert_manager']
 
 def test_handle_person_absence(monitor_instance, mock_dependencies):
     """不在検知が正しく動作するかテスト (StateManager経由)"""
     # StateManager の alert_manager の trigger_absence_alert をモック化
-    with patch.object(monitor_instance.state_manager.alert_manager, 'trigger_absence_alert') as mock_trigger:
+    with patch.object(monitor_instance.state.alert_manager, 'trigger_absence_alert') as mock_trigger:
         # ★★★ 事前条件: person_detected を True に設定 ★★★
-        monitor_instance.state_manager.person_detected = True
-        assert not monitor_instance.state_manager.alert_triggered_absence
+        monitor_instance.state.person_detected = True
+        assert not monitor_instance.state.alert_triggered_absence
         # 閾値超えの状態にする
-        monitor_instance.state_manager.last_seen_time = time.time() - (monitor_instance.state_manager.absence_threshold + 1)
+        monitor_instance.state.last_seen_time = time.time() - (monitor_instance.state.absence_threshold + 1)
         # StateManager のメソッドを呼び出す
-        monitor_instance.state_manager.handle_person_absence()
+        monitor_instance.state.handle_person_absence()
         # モックが呼ばれたか確認
         mock_trigger.assert_called_once()
 
 def test_handle_phone_detection(monitor_instance, mock_dependencies):
     """スマートフォン検知のテスト修正版 (StateManager経由)"""
     # StateManager の alert_manager の trigger_smartphone_alert をモック化
-    with patch.object(monitor_instance.state_manager.alert_manager, 'trigger_smartphone_alert') as mock_trigger:
-        assert not monitor_instance.state_manager.alert_triggered_smartphone
-        monitor_instance.state_manager.smartphone_in_use = True
+    with patch.object(monitor_instance.state.alert_manager, 'trigger_smartphone_alert') as mock_trigger:
+        assert not monitor_instance.state.alert_triggered_smartphone
+        monitor_instance.state.smartphone_in_use = True
         # 閾値超えの状態にする
-        # monitor_instance.state_manager.last_phone_detection_time = time.time() - (monitor_instance.state_manager.smartphone_threshold + 1)
+        # monitor_instance.state.last_phone_detection_time = time.time() - (monitor_instance.state.smartphone_threshold + 1)
         # StateManager のメソッドを呼び出す (smartphone_detected=True は不要かも？ handle_smartphone_usage は内部で時間をチェックする)
-        # monitor_instance.state_manager.handle_smartphone_usage(smartphone_detected=True)
+        # monitor_instance.state.handle_smartphone_usage(smartphone_detected=True)
         # 代わりに、時間経過をシミュレートして再度 handle_smartphone_usage を呼ぶか、
         # または内部状態を直接設定する
-        monitor_instance.state_manager.smartphone_start_time = time.time() - (monitor_instance.state_manager.smartphone_threshold + 1)
-        monitor_instance.state_manager.handle_smartphone_usage(smartphone_detected=True) # 再度呼び出し
+        monitor_instance.state.smartphone_start_time = time.time() - (monitor_instance.state.smartphone_threshold + 1)
+        monitor_instance.state.handle_smartphone_usage(smartphone_detected=True) # 再度呼び出し
         # モックが呼ばれたか確認
         mock_trigger.assert_called_once()
 
@@ -146,7 +146,7 @@ def test_check_schedules_match_found(monkeypatch):
         config_manager=mock_config,
         alert_service=mock_alert,
         object_detection_service=mock_detector,
-        state_manager=mock_state,
+        state=mock_state,
         schedule_manager=mock_schedule
     )
     
@@ -195,7 +195,7 @@ def test_check_schedules_no_match(monkeypatch):
         config_manager=mock_config,
         alert_service=mock_alert,
         object_detection_service=mock_detector,
-        state_manager=mock_state,
+        state=mock_state,
         schedule_manager=mock_schedule
     )
     
@@ -242,7 +242,7 @@ def test_check_schedules_multiple_matches(monkeypatch):
         config_manager=mock_config,
         alert_service=mock_alert,
         object_detection_service=mock_detector,
-        state_manager=mock_state,
+        state=mock_state,
         schedule_manager=mock_schedule
     )
     
@@ -301,7 +301,7 @@ def test_check_schedules_already_notified(monkeypatch):
         config_manager=mock_config,
         alert_service=mock_alert,
         object_detection_service=mock_detector,
-        state_manager=mock_state,
+        state=mock_state,
         schedule_manager=mock_schedule
     )
     

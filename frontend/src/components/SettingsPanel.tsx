@@ -19,10 +19,9 @@ import {
   Tbody,
   Tr,
   Th,
-  Td,
-  HStack
+  Td
 } from '@chakra-ui/react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
 interface Settings {
@@ -55,11 +54,7 @@ export const SettingsPanel = () => {
   });
   const toast = useToast();
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
-
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
     try {
       const response = await axios.get('/api/settings');
       setSettings({
@@ -69,7 +64,8 @@ export const SettingsPanel = () => {
         landmark_settings: response.data.landmark_settings,
         detection_objects: response.data.detection_objects
       });
-    } catch (error) {
+    } catch (err) {
+      console.error('Settings fetch error:', err);
       toast({
         title: 'エラー',
         description: '設定の取得に失敗しました',
@@ -78,7 +74,11 @@ export const SettingsPanel = () => {
         isClosable: true,
       });
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
 
   const handleSave = async () => {
     try {
@@ -96,7 +96,8 @@ export const SettingsPanel = () => {
         duration: 3000,
         isClosable: true,
       });
-    } catch (error) {
+    } catch (err) {
+      console.error('Settings save error:', err);
       toast({
         title: 'エラー',
         description: '設定の保存に失敗しました',

@@ -1,0 +1,937 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 🧪 KanshiChan テスト専用ルール
+
+## 📋 このルールの目的
+KanshiChan（監視ちゃん）プロジェクトにおけるテスト作成・実行を効率的かつ品質高く実行するための専用ルールです。
+
+## 🎯 テスト方針
+
+### 📌 必須確認事項
+テスト作成開始前に以下の規約を必ず参照してください：
+- **[project_rules/main_rules.yaml](mdc:project_rules/main_rules.yaml)** - プロジェクト全体規約
+- **[project_rules/backend_rules.yaml](mdc:project_rules/backend_rules.yaml)** - Python/Flask 規約
+- **[project_rules/frontend_rules.yaml](mdc:project_rules/frontend_rules.yaml)** - React/TypeScript 規約
+- **[project_rules/ai_ml_rules.yaml](mdc:project_rules/ai_ml_rules.yaml)** - AI/ML 規約
+
+### 🎯 テスト品質目標
+- **カバレッジ**: 80%以上（ライン・ブランチ・関数）
+- **実行時間**: 単体テスト <5秒、結合テスト <30秒
+- **信頼性**: Flaky test 0%
+- **保守性**: テストコードも規約準拠
+
+---
+
+## 🧪 テスト戦略
+
+### 🔺 テストピラミッド
+```
+        /\
+       /E2E\     <- 少数（重要なユーザーフロー）
+      /____\
+     /      \
+    /Integration\ <- 中程度（API・コンポーネント連携）
+   /__________\
+  /            \
+ /   Unit Tests  \ <- 多数（個別機能・ロジック）
+/________________\
+```
+
+#### 単体テスト (70%)
+- **Backend**: 個別関数・クラスのテスト
+- **Frontend**: コンポーネント・Hook・ユーティリティのテスト
+- **AI/ML**: 検出アルゴリズム・画像処理のテスト
+
+#### 結合テスト (20%)
+- **Backend**: API エンドポイントのテスト
+- **Frontend**: 複数コンポーネント連携のテスト
+- **AI/ML**: モデル統合・パイプラインのテスト
+
+#### E2Eテスト (10%)
+- **重要フロー**: 監視開始〜検出〜通知の完全フロー
+- **ユーザビリティ**: 主要な操作シナリオ
+
+---
+
+## 🐍 Backend テスト (Python/pytest)
+
+### 📁 テストファイル構造
+```
+backend/tests/
+├── unit/                    # 単体テスト
+│   ├── core/
+│   │   ├── test_detector.py
+│   │   └── test_monitor.py
+│   ├── services/
+│   │   ├── test_detection_service.py
+│   │   └── test_notification_service.py
+│   ├── utils/
+│   │   └── test_image_utils.py
+│   └── web/
+│       └── test_api.py
+├── integration/             # 結合テスト
+│   ├── test_api_endpoints.py
+│   └── test_detection_pipeline.py
+├── e2e/                     # E2Eテスト
+│   └── test_full_workflow.py
+├── fixtures/                # テストデータ
+│   ├── images/
+│   └── configs/
+└── conftest.py             # pytest設定
+```
+
+### 🧪 単体テストパターン
+
+#### クラステスト例
+```python
+# backend/tests/unit/core/test_detector.py
+import pytest
+import numpy as np
+from unittest.mock import Mock, patch, MagicMock
+from src.core.detector import Detector, DetectionError
+
+
+class TestDetector:
+    """物体検出器のテストクラス"""
+    
+    @pytest.fixture
+    def mock_config(self):
+        """設定のモックフィクスチャ"""
+        config = Mock()
+        config.yolo_model_path = "yolov8n.pt"
+        config.confidence_threshold = 0.5
+        config.nms_threshold = 0.4
+        return config
+    
+    @pytest.fixture
+    def detector(self, mock_config):
+        """検出器インスタンスのフィクスチャ"""
+        with patch('src.core.detector.YOLO') as mock_yolo:
+            mock_model = Mock()
+            mock_yolo.return_value = mock_model
+            detector = Detector(mock_config)
+            detector.model = mock_model
+            return detector
+    
+    @pytest.fixture
+    def sample_frame(self):
+        """サンプルフレームのフィクスチャ"""
+        return np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+    
+    def test_init_loads_model_successfully(self, mock_config):
+        """初期化時にモデルが正常に読み込まれることをテスト"""
+        with patch('src.core.detector.YOLO') as mock_yolo:
+            detector = Detector(mock_config)
+            
+            mock_yolo.assert_called_once_with(mock_config.yolo_model_path)
+            assert detector.config == mock_config
+    
+    def test_detect_objects_with_valid_frame(self, detector, sample_frame):
+        """有効なフレームで物体検出が正常に動作することをテスト"""
+        # Arrange
+        mock_results = Mock()
+        mock_results.boxes.xyxy = [[100, 100, 200, 200]]
+        mock_results.boxes.conf = [0.8]
+        mock_results.boxes.cls = [0]  # person class
+        detector.model.predict.return_value = [mock_results]
+        
+        # Act
+        result = detector.detect_objects(sample_frame)
+        
+        # Assert
+        assert 'person_detected' in result
+        assert result['person_detected'] is True
+        assert 'bounding_boxes' in result
+        assert len(result['bounding_boxes']) == 1
+        detector.model.predict.assert_called_once_with(sample_frame)
+    
+    def test_detect_objects_with_invalid_frame(self, detector):
+        """無効なフレームでエラーハンドリングが正常に動作することをテスト"""
+        # Arrange
+        invalid_frame = None
+        
+        # Act & Assert
+        with pytest.raises(ValueError, match="Invalid frame"):
+            detector.detect_objects(invalid_frame)
+    
+    def test_detect_objects_model_prediction_failure(self, detector, sample_frame):
+        """モデル予測失敗時のエラーハンドリングをテスト"""
+        # Arrange
+        detector.model.predict.side_effect = Exception("Model prediction failed")
+        
+        # Act & Assert
+        with pytest.raises(DetectionError, match="Detection processing failed"):
+            detector.detect_objects(sample_frame)
+    
+    @pytest.mark.parametrize("confidence,expected", [
+        (0.3, False),  # 閾値以下
+        (0.5, True),   # 閾値ちょうど
+        (0.8, True),   # 閾値以上
+    ])
+    def test_confidence_threshold_filtering(self, detector, sample_frame, confidence, expected):
+        """信頼度閾値フィルタリングのテスト"""
+        # Arrange
+        mock_results = Mock()
+        mock_results.boxes.xyxy = [[100, 100, 200, 200]]
+        mock_results.boxes.conf = [confidence]
+        mock_results.boxes.cls = [0]
+        detector.model.predict.return_value = [mock_results]
+        
+        # Act
+        result = detector.detect_objects(sample_frame)
+        
+        # Assert
+        assert result['person_detected'] == expected
+
+    def test_performance_benchmark(self, detector, sample_frame):
+        """検出処理のパフォーマンステスト"""
+        import time
+        
+        # Arrange
+        mock_results = Mock()
+        mock_results.boxes.xyxy = []
+        mock_results.boxes.conf = []
+        mock_results.boxes.cls = []
+        detector.model.predict.return_value = [mock_results]
+        
+        # Act
+        start_time = time.time()
+        detector.detect_objects(sample_frame)
+        end_time = time.time()
+        
+        # Assert - 検出処理は100ms以内で完了すること
+        assert (end_time - start_time) < 0.1
+```
+
+#### API テスト例
+```python
+# backend/tests/integration/test_api_endpoints.py
+import pytest
+import json
+from src.web.app import create_app
+
+
+class TestDetectionAPI:
+    """検出API のテストクラス"""
+    
+    @pytest.fixture
+    def app(self):
+        """Flaskアプリのテストフィクスチャ"""
+        app = create_app(testing=True)
+        app.config['TESTING'] = True
+        return app
+    
+    @pytest.fixture
+    def client(self, app):
+        """テストクライアントのフィクスチャ"""
+        return app.test_client()
+    
+    def test_start_detection_success(self, client):
+        """検出開始APIの正常系テスト"""
+        # Act
+        response = client.post('/api/detection/start')
+        
+        # Assert
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['status'] == 'started'
+        assert 'detection_id' in data
+    
+    def test_get_detection_status(self, client):
+        """検出状態取得APIのテスト"""
+        # Arrange - まず検出を開始
+        start_response = client.post('/api/detection/start')
+        detection_id = json.loads(start_response.data)['detection_id']
+        
+        # Act
+        response = client.get(f'/api/detection/status/{detection_id}')
+        
+        # Assert
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert 'person_detected' in data
+        assert 'smartphone_detected' in data
+    
+    def test_api_error_handling(self, client):
+        """API エラーハンドリングのテスト"""
+        # Act - 存在しないリソースにアクセス
+        response = client.get('/api/detection/status/invalid_id')
+        
+        # Assert
+        assert response.status_code == 404
+        data = json.loads(response.data)
+        assert 'error' in data
+```
+
+### 📊 カバレッジ測定
+```bash
+# カバレッジ付きテスト実行
+pytest tests/ --cov=src --cov-report=html --cov-report=term
+
+# カバレッジ閾値チェック
+pytest tests/ --cov=src --cov-fail-under=80
+```
+
+---
+
+## ⚛️ Frontend テスト (React/Jest/Testing Library)
+
+### 📁 テストファイル構造
+```
+frontend/src/
+├── components/
+│   ├── MonitorView/
+│   │   ├── MonitorView.tsx
+│   │   ├── MonitorView.test.tsx    # コンポーネントテスト
+│   │   └── MonitorView.stories.tsx # Storybook
+│   └── StatusPanel/
+│       ├── StatusPanel.tsx
+│       └── StatusPanel.test.tsx
+├── hooks/
+│   ├── useDetection.ts
+│   └── useDetection.test.ts        # Hookテスト
+├── utils/
+│   ├── api.ts
+│   └── api.test.ts                 # ユーティリティテスト
+└── __tests__/                      # E2Eテスト
+    └── detection-flow.test.tsx
+```
+
+### 🧪 コンポーネントテストパターン
+
+#### React コンポーネントテスト例
+```typescript
+// frontend/src/components/MonitorView/MonitorView.test.tsx
+import React from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { ChakraProvider } from '@chakra-ui/react';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { MonitorView } from './MonitorView';
+import * as api from '../../utils/api';
+
+// APIのモック
+vi.mock('../../utils/api');
+const mockApi = vi.mocked(api);
+
+// Chakra UI プロバイダーでラップするヘルパー
+const renderWithChakra = (component: React.ReactElement) => {
+  return render(
+    <ChakraProvider>
+      {component}
+    </ChakraProvider>
+  );
+};
+
+describe('MonitorView', () => {
+  const defaultProps = {
+    isFullscreen: false,
+    onToggleFullscreen: vi.fn(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should render monitoring interface correctly', () => {
+    // Arrange & Act
+    renderWithChakra(<MonitorView {...defaultProps} />);
+
+    // Assert
+    expect(screen.getByText('監視画面')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /フルスクリーン/i })).toBeInTheDocument();
+  });
+
+  it('should start detection when start button is clicked', async () => {
+    // Arrange
+    mockApi.startDetection.mockResolvedValue({ 
+      status: 'started', 
+      detection_id: 'test-id' 
+    });
+    
+    renderWithChakra(<MonitorView {...defaultProps} />);
+    const startButton = screen.getByRole('button', { name: /開始/i });
+
+    // Act
+    fireEvent.click(startButton);
+
+    // Assert
+    await waitFor(() => {
+      expect(mockApi.startDetection).toHaveBeenCalledTimes(1);
+    });
+    
+    expect(screen.getByText('検出中...')).toBeInTheDocument();
+  });
+
+  it('should toggle fullscreen when button is clicked', () => {
+    // Arrange
+    const mockToggle = vi.fn();
+    renderWithChakra(
+      <MonitorView {...defaultProps} onToggleFullscreen={mockToggle} />
+    );
+    
+    const fullscreenButton = screen.getByRole('button', { name: /フルスクリーン/i });
+
+    // Act
+    fireEvent.click(fullscreenButton);
+
+    // Assert
+    expect(mockToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('should handle detection errors gracefully', async () => {
+    // Arrange
+    mockApi.startDetection.mockRejectedValue(new Error('API Error'));
+    renderWithChakra(<MonitorView {...defaultProps} />);
+    
+    const startButton = screen.getByRole('button', { name: /開始/i });
+
+    // Act
+    fireEvent.click(startButton);
+
+    // Assert
+    await waitFor(() => {
+      expect(screen.getByText('エラーが発生しました')).toBeInTheDocument();
+    });
+  });
+
+  it('should update status when detection results are received', async () => {
+    // Arrange
+    mockApi.startDetection.mockResolvedValue({ 
+      status: 'started', 
+      detection_id: 'test-id' 
+    });
+    mockApi.getDetectionStatus.mockResolvedValue({
+      person_detected: true,
+      smartphone_detected: true,
+      absence_time: 5,
+      smartphone_use_time: 10
+    });
+
+    renderWithChakra(<MonitorView {...defaultProps} />);
+    
+    // Act
+    fireEvent.click(screen.getByRole('button', { name: /開始/i }));
+
+    // Assert
+    await waitFor(() => {
+      expect(screen.getByText('人物検出: あり')).toBeInTheDocument();
+      expect(screen.getByText('スマートフォン検出: あり')).toBeInTheDocument();
+    });
+  });
+
+  it('should be accessible with keyboard navigation', () => {
+    // Arrange
+    renderWithChakra(<MonitorView {...defaultProps} />);
+    const startButton = screen.getByRole('button', { name: /開始/i });
+
+    // Act - Tab キーでフォーカス移動
+    startButton.focus();
+
+    // Assert
+    expect(startButton).toHaveFocus();
+    expect(startButton).toHaveAttribute('aria-label');
+  });
+});
+```
+
+#### Custom Hook テスト例
+```typescript
+// frontend/src/hooks/useDetection.test.ts
+import { renderHook, waitFor } from '@testing-library/react';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { useDetection } from './useDetection';
+import * as api from '../utils/api';
+
+vi.mock('../utils/api');
+const mockApi = vi.mocked(api);
+
+describe('useDetection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should initialize with default state', () => {
+    // Act
+    const { result } = renderHook(() => useDetection());
+
+    // Assert
+    expect(result.current.isDetecting).toBe(false);
+    expect(result.current.status).toEqual({
+      personDetected: false,
+      smartphoneDetected: false,
+      absenceTime: 0,
+      smartphoneUseTime: 0
+    });
+  });
+
+  it('should start detection successfully', async () => {
+    // Arrange
+    mockApi.startDetection.mockResolvedValue({
+      status: 'started',
+      detection_id: 'test-id'
+    });
+
+    const { result } = renderHook(() => useDetection());
+
+    // Act
+    result.current.startDetection();
+
+    // Assert
+    await waitFor(() => {
+      expect(result.current.isDetecting).toBe(true);
+    });
+    
+    expect(mockApi.startDetection).toHaveBeenCalledTimes(1);
+  });
+
+  it('should handle detection errors', async () => {
+    // Arrange
+    mockApi.startDetection.mockRejectedValue(new Error('API Error'));
+    const { result } = renderHook(() => useDetection());
+
+    // Act
+    result.current.startDetection();
+
+    // Assert
+    await waitFor(() => {
+      expect(result.current.error).toBe('検出の開始に失敗しました');
+    });
+    
+    expect(result.current.isDetecting).toBe(false);
+  });
+});
+```
+
+### 📊 Frontend テスト実行
+```bash
+# 単体テスト実行
+npm run test
+
+# カバレッジ付きテスト
+npm run test:coverage
+
+# E2Eテスト実行
+npm run test:e2e
+
+# ウォッチモード
+npm run test:watch
+```
+
+---
+
+## 🤖 AI/ML テスト
+
+### 🧪 AI/ML テストパターン
+
+#### 物体検出テスト例
+```python
+# backend/tests/unit/core/test_yolo_detection.py
+import pytest
+import numpy as np
+import cv2
+from unittest.mock import Mock, patch
+from src.core.yolo_detector import YOLODetector
+
+
+class TestYOLODetector:
+    """YOLO検出器のテストクラス"""
+    
+    @pytest.fixture
+    def test_image(self):
+        """テスト用画像の生成"""
+        # 人型のような形状を描画
+        image = np.zeros((480, 640, 3), dtype=np.uint8)
+        cv2.rectangle(image, (200, 100), (300, 400), (255, 255, 255), -1)  # 人型
+        cv2.rectangle(image, (350, 200), (380, 230), (255, 255, 255), -1)  # スマートフォン型
+        return image
+    
+    @pytest.fixture
+    def detector(self):
+        """検出器のフィクスチャ"""
+        with patch('ultralytics.YOLO') as mock_yolo:
+            detector = YOLODetector(model_path="yolov8n.pt")
+            return detector
+    
+    def test_person_detection_accuracy(self, detector, test_image):
+        """人物検出精度のテスト"""
+        # Arrange
+        mock_results = Mock()
+        mock_results.boxes.xyxy = np.array([[200, 100, 300, 400]])  # 人の境界ボックス
+        mock_results.boxes.conf = np.array([0.85])
+        mock_results.boxes.cls = np.array([0])  # person class
+        detector.model.predict.return_value = [mock_results]
+        
+        # Act
+        results = detector.detect_objects(test_image)
+        
+        # Assert
+        assert results['person_detected'] is True
+        assert results['confidence'] >= 0.8  # 高い信頼度
+        assert len(results['bounding_boxes']) == 1
+    
+    def test_smartphone_detection_accuracy(self, detector, test_image):
+        """スマートフォン検出精度のテスト"""
+        # Arrange
+        mock_results = Mock()
+        mock_results.boxes.xyxy = np.array([[350, 200, 380, 230]])  # スマートフォンの境界ボックス
+        mock_results.boxes.conf = np.array([0.75])
+        mock_results.boxes.cls = np.array([67])  # cell phone class
+        detector.model.predict.return_value = [mock_results]
+        
+        # Act
+        results = detector.detect_objects(test_image)
+        
+        # Assert
+        assert results['smartphone_detected'] is True
+        assert results['smartphone_confidence'] >= 0.7
+    
+    def test_fps_performance(self, detector):
+        """FPS パフォーマンステスト"""
+        import time
+        
+        # Arrange
+        frames = [np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(30)]
+        mock_results = Mock()
+        mock_results.boxes.xyxy = np.array([])
+        mock_results.boxes.conf = np.array([])
+        mock_results.boxes.cls = np.array([])
+        detector.model.predict.return_value = [mock_results]
+        
+        # Act
+        start_time = time.time()
+        for frame in frames:
+            detector.detect_objects(frame)
+        end_time = time.time()
+        
+        # Assert
+        total_time = end_time - start_time
+        fps = len(frames) / total_time
+        assert fps >= 15  # 15 FPS以上であること
+    
+    @pytest.mark.parametrize("image_size,expected_processing_time", [
+        ((240, 320, 3), 0.03),   # 小さい画像
+        ((480, 640, 3), 0.05),   # 標準画像
+        ((720, 1280, 3), 0.08),  # 大きい画像
+    ])
+    def test_processing_time_by_image_size(self, detector, image_size, expected_processing_time):
+        """画像サイズ別処理時間テスト"""
+        import time
+        
+        # Arrange
+        test_image = np.random.randint(0, 255, image_size, dtype=np.uint8)
+        mock_results = Mock()
+        mock_results.boxes.xyxy = np.array([])
+        mock_results.boxes.conf = np.array([])
+        mock_results.boxes.cls = np.array([])
+        detector.model.predict.return_value = [mock_results]
+        
+        # Act
+        start_time = time.time()
+        detector.detect_objects(test_image)
+        end_time = time.time()
+        
+        # Assert
+        processing_time = end_time - start_time
+        assert processing_time <= expected_processing_time
+```
+
+#### MediaPipe テスト例
+```python
+# backend/tests/unit/core/test_mediapipe_detector.py
+import pytest
+import numpy as np
+from unittest.mock import Mock, patch
+from src.core.mediapipe_detector import MediaPipeDetector
+
+
+class TestMediaPipeDetector:
+    """MediaPipe検出器のテストクラス"""
+    
+    @pytest.fixture
+    def detector(self):
+        """MediaPipe検出器のフィクスチャ"""
+        with patch('mediapipe.solutions.pose.Pose') as mock_pose:
+            detector = MediaPipeDetector()
+            detector.pose = mock_pose.return_value
+            return detector
+    
+    @pytest.fixture
+    def person_image(self):
+        """人物画像のフィクスチャ"""
+        # 人物が写った画像を模擬
+        return np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+    
+    def test_pose_detection_success(self, detector, person_image):
+        """姿勢検出成功のテスト"""
+        # Arrange
+        mock_results = Mock()
+        mock_results.pose_landmarks = Mock()
+        mock_results.pose_landmarks.landmark = [Mock() for _ in range(33)]  # 33個のランドマーク
+        detector.pose.process.return_value = mock_results
+        
+        # Act
+        results = detector.detect_pose(person_image)
+        
+        # Assert
+        assert results['pose_detected'] is True
+        assert 'landmarks' in results
+        assert len(results['landmarks']) == 33
+    
+    def test_pose_detection_failure(self, detector, person_image):
+        """姿勢検出失敗のテスト"""
+        # Arrange
+        mock_results = Mock()
+        mock_results.pose_landmarks = None
+        detector.pose.process.return_value = mock_results
+        
+        # Act
+        results = detector.detect_pose(person_image)
+        
+        # Assert
+        assert results['pose_detected'] is False
+        assert results['landmarks'] == []
+    
+    def test_smartphone_use_detection(self, detector, person_image):
+        """スマートフォン使用検出のテスト"""
+        # Arrange - 手が顔の近くにある姿勢を模擬
+        mock_results = Mock()
+        mock_results.pose_landmarks = Mock()
+        
+        # 手が顔の近くにある座標を設定
+        landmarks = []
+        for i in range(33):
+            landmark = Mock()
+            if i in [15, 16]:  # 左右の手首
+                landmark.x, landmark.y = 0.4, 0.3  # 顔の近く
+            else:
+                landmark.x, landmark.y = 0.5, 0.5  # その他
+            landmarks.append(landmark)
+        
+        mock_results.pose_landmarks.landmark = landmarks
+        detector.pose.process.return_value = mock_results
+        
+        # Act
+        results = detector.detect_smartphone_usage(person_image)
+        
+        # Assert
+        assert results['smartphone_usage_detected'] is True
+        assert 'confidence' in results
+```
+
+---
+
+## 🔄 テスト実行自動化
+
+### GitHub Actions 設定例
+```yaml
+# .github/workflows/test.yml
+name: Test Suite
+
+on: [push, pull_request]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+      
+      - name: Run backend tests
+        run: |
+          cd backend
+          pytest tests/ --cov=src --cov-report=xml --cov-fail-under=80
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+      
+      - name: Run frontend tests
+        run: |
+          cd frontend
+          npm run test:coverage
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Start services
+        run: |
+          docker-compose up -d
+      
+      - name: Run E2E tests
+        run: |
+          cd frontend
+          npm run test:e2e
+```
+
+### ローカルテスト実行スクリプト
+```bash
+#!/bin/bash
+# scripts/run_tests.sh
+
+echo "🧪 KanshiChan テスト実行スクリプト"
+
+# Backend テスト
+echo "📍 Backend テスト実行中..."
+cd backend
+python -m pytest tests/ -v --cov=src --cov-report=html --cov-report=term
+BACKEND_EXIT_CODE=$?
+
+# Frontend テスト
+echo "📍 Frontend テスト実行中..."
+cd ../frontend
+npm run test:coverage
+FRONTEND_EXIT_CODE=$?
+
+# AI/ML パフォーマンステスト
+echo "📍 AI/ML パフォーマンステスト実行中..."
+cd ../backend
+python -m pytest tests/performance/ -v -m "performance"
+PERFORMANCE_EXIT_CODE=$?
+
+# 結果サマリー
+echo "📊 テスト結果サマリー"
+echo "Backend: $([ $BACKEND_EXIT_CODE -eq 0 ] && echo "✅ PASS" || echo "❌ FAIL")"
+echo "Frontend: $([ $FRONTEND_EXIT_CODE -eq 0 ] && echo "✅ PASS" || echo "❌ FAIL")"
+echo "Performance: $([ $PERFORMANCE_EXIT_CODE -eq 0 ] && echo "✅ PASS" || echo "❌ FAIL")"
+
+# 全体の終了コード
+if [ $BACKEND_EXIT_CODE -eq 0 ] && [ $FRONTEND_EXIT_CODE -eq 0 ] && [ $PERFORMANCE_EXIT_CODE -eq 0 ]; then
+    echo "🎉 全テスト成功！"
+    exit 0
+else
+    echo "💥 テスト失敗"
+    exit 1
+fi
+```
+
+---
+
+## 📊 テスト品質管理
+
+### カバレッジ目標
+```bash
+# 最低カバレッジ要件
+- Line Coverage: 80%
+- Branch Coverage: 75%
+- Function Coverage: 90%
+
+# 重要モジュールの目標
+- 検出エンジン: 95%
+- API エンドポイント: 90%
+- Core ビジネスロジック: 90%
+```
+
+### パフォーマンステスト基準
+```bash
+# 実行時間基準
+- 単体テスト: 各テスト <100ms
+- 結合テスト: 各テスト <5秒
+- E2Eテスト: 各シナリオ <30秒
+
+# AI/ML パフォーマンス基準
+- 検出処理: >15 FPS
+- モデル読み込み: <5秒
+- メモリ使用量: <2GB
+```
+
+---
+
+## 📝 テスト報告テンプレート
+
+```markdown
+# 🧪 テスト実行報告
+
+## 📋 概要
+- **実行日時**: [日時]
+- **実行者**: [実行者名]
+- **対象ブランチ**: [ブランチ名]
+- **テスト種別**: [単体/結合/E2E/性能/全体]
+
+## 📊 テスト結果
+### Backend (Python/pytest)
+- **実行テスト数**: [成功数]/[総数]
+- **カバレッジ**: [%]
+- **実行時間**: [秒]
+- **失敗テスト**: [失敗したテスト名]
+
+### Frontend (React/Jest)
+- **実行テスト数**: [成功数]/[総数]
+- **カバレッジ**: [%]
+- **実行時間**: [秒]
+- **失敗テスト**: [失敗したテスト名]
+
+### AI/ML性能テスト
+- **FPS**: [値]
+- **メモリ使用量**: [MB]
+- **GPU利用率**: [%]
+- **処理時間**: [ms/frame]
+
+## ⚠️ 検出事項
+### 失敗テスト
+1. [テスト名] - [失敗理由]
+2. [テスト名] - [失敗理由]
+
+### 性能問題
+- [問題の詳細]
+
+### カバレッジ不足
+- [モジュール名]: [現在のカバレッジ%] (目標: [目標%])
+
+## 🔧 対応アクション
+- [ ] [修正すべき項目1]
+- [ ] [修正すべき項目2]
+- [ ] [追加すべきテスト]
+
+## 📈 品質メトリクス推移
+- [前回との比較]
+- [改善/悪化の傾向]
+```
+
+---
+
+## 🚀 継続的改善
+
+### テスト戦略見直し
+- **月次**: テスト結果分析とボトルネック特定
+- **四半期**: テストカバレッジ目標見直し
+- **半年**: テストアーキテクチャ全体の評価
+
+### 新技術導入検討
+- **Property-based testing** (Hypothesis/fast-check)
+- **Mutation testing** (mutmut/Stryker)
+- **Visual regression testing** (Chromatic)
+- **Performance monitoring** (Lighthouse CI)
+
+このテストルールに従い、KanshiChanプロジェクトの品質と信頼性を確保していきます。
