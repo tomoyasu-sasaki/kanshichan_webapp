@@ -33,9 +33,11 @@ import {
   Tabs,
   TabList,
   TabPanel,
-  TabPanels
+  TabPanels,
+  Icon
 } from '@chakra-ui/react';
 import { io, Socket } from 'socket.io-client';
+import { FiTrendingUp, FiTrendingDown } from 'react-icons/fi';
 
 interface AnalyticsData {
   timestamp: string;
@@ -349,8 +351,8 @@ export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProp
                  insight.metric === 'fatigue_level' ? '疲労度' : insight.metric}
               </Text>
               <HStack>
-                {insight.trend === 'increasing' && <StatArrow type="increase" />}
-                {insight.trend === 'decreasing' && <StatArrow type="decrease" />}
+                {insight.trend === 'increasing' && <Icon as={FiTrendingUp} color="green.500" />}
+                {insight.trend === 'decreasing' && <Icon as={FiTrendingDown} color="red.500" />}
                 <Badge colorScheme={insight.trend === 'increasing' ? 'green' : insight.trend === 'decreasing' ? 'red' : 'gray'}>
                   {insight.trend}
                 </Badge>

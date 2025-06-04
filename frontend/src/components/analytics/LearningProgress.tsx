@@ -22,7 +22,6 @@ import {
   Stat,
   StatLabel,
   StatNumber,
-  StatArrow,
   SimpleGrid,
   Tag,
   TagLabel,
@@ -39,7 +38,9 @@ import {
   FiActivity, 
   FiAward,
   FiBarChart,
-  FiRefreshCw
+  FiRefreshCw,
+  FiTrendingUp,
+  FiTrendingDown
 } from 'react-icons/fi';
 
 interface LearningMetric {
@@ -286,27 +287,27 @@ export const LearningProgress: React.FC<LearningProgressProps> = ({
 
   // Render learning metrics
   const renderLearningMetrics = () => (
-    <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+    <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
       {learningMetrics.map((metric, index) => (
         <Card key={index} bg={cardBg}>
           <CardBody>
-            <VStack spacing={3} align="stretch">
+            <VStack spacing={4} align="stretch">
               <HStack justify="space-between">
-                <Text fontWeight="bold" fontSize="sm">{metric.metric_name}</Text>
+                <Text fontWeight="bold" fontSize="lg">{metric.metric_name}</Text>
                 <Badge colorScheme={
-                  metric.trend === 'improving' ? 'green' :
-                  metric.trend === 'stable' ? 'blue' : 'red'
+                  metric.trend === 'improving' ? 'green' : 
+                  metric.trend === 'declining' ? 'red' : 'gray'
                 }>
                   {metric.trend === 'improving' ? '改善中' :
-                   metric.trend === 'stable' ? '安定' : '低下中'}
+                   metric.trend === 'declining' ? '低下中' : '安定'}
                 </Badge>
               </HStack>
 
               <HStack justify="space-between">
                 <VStack align="start" spacing={1}>
                   <Text fontSize="xs" color="gray.500">現在値</Text>
-                  <Text fontWeight="bold" fontSize="lg">
-                    {metric.metric_name === 'ユーザー満足度' ? 
+                  <Text fontSize="2xl" fontWeight="bold">
+                    {metric.metric_name === '予測精度' || metric.metric_name === 'モデル適応率' ? 
                       metric.current_value.toFixed(1) : 
                       (metric.current_value * 100).toFixed(0) + '%'
                     }
@@ -315,7 +316,10 @@ export const LearningProgress: React.FC<LearningProgressProps> = ({
                 <VStack align="end" spacing={1}>
                   <Text fontSize="xs" color="gray.500">改善率</Text>
                   <HStack>
-                    <StatArrow type={metric.improvement_percentage > 0 ? 'increase' : 'decrease'} />
+                    <Icon 
+                      as={metric.improvement_percentage > 0 ? FiTrendingUp : FiTrendingDown} 
+                      color={metric.improvement_percentage > 0 ? 'green.500' : 'red.500'}
+                    />
                     <Text fontWeight="bold" color={metric.improvement_percentage > 0 ? 'green.500' : 'red.500'}>
                       {Math.abs(metric.improvement_percentage).toFixed(1)}%
                     </Text>

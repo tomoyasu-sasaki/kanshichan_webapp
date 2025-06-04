@@ -285,17 +285,30 @@ class DataCollector:
         """
         timestamp = datetime.utcnow()
         
-        # YOLOv8検出結果の変換
-        detected_objects = self._convert_detection_results(detection_results.get('yolo', {}))
+        # デバッグ: 実際のdetection_results構造を確認
+        logger.debug(f"[DATA_COLLECTOR] detection_results keys: {list(detection_results.keys())}")
+        logger.debug(f"[DATA_COLLECTOR] detection_results.detections: {detection_results.get('detections', {})}")
+        
+        # 修正: detection_results は既に ObjectDetector.detect_objects() の結果なので、
+        # 'yolo' ラッパーは存在しない。直接 'detections' キーを参照する
+        detected_objects = self._convert_detection_results(detection_results)
         
         # MediaPipe結果の変換
-        mediapipe_results = detection_results.get('mediapipe', {})
+        mediapipe_results = {
+            'pose_landmarks': detection_results.get('pose_landmarks'),
+            'hands_landmarks': detection_results.get('hands_landmarks'), 
+            'face_landmarks': detection_results.get('face_landmarks')
+        }
         focus_level = self._calculate_focus_level(mediapipe_results)
         posture_data = self._extract_posture_data(mediapipe_results)
-        face_landmarks = mediapipe_results.get('face_landmarks')
+        face_landmarks = detection_results.get('face_landmarks')
         
         # スマートフォン検出
         smartphone_detected = self._detect_smartphone_usage(detected_objects, mediapipe_results)
+        
+        # デバッグ: スマートフォン検出結果を確認
+        logger.debug(f"[DATA_COLLECTOR] detected_objects: {detected_objects}")
+        logger.debug(f"[DATA_COLLECTOR] smartphone_detected: {smartphone_detected}")
         
         # 環境データ
         environment_data = self._collect_environment_data()
@@ -317,28 +330,38 @@ class DataCollector:
         
         return structured_data
     
-    def _convert_detection_results(self, yolo_results: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """YOLOv8検出結果を変換
+    def _convert_detection_results(self, detection_results: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """ObjectDetector.detect_objects()結果を変換
         
         Args:
-            yolo_results: YOLO検出結果
+            detection_results: ObjectDetector.detect_objects()の結果
             
         Returns:
             list: 変換された検出オブジェクトリスト
         """
         detected_objects = []
         
-        detections = yolo_results.get('detections', [])
-        for detection in detections:
-            obj = {
-                'class': detection.get('class_name', 'unknown'),
-                'confidence': detection.get('confidence', 0.0),
-                'bbox': detection.get('bbox', []),
-                'area': self._calculate_bbox_area(detection.get('bbox', [])),
-                'center': self._calculate_bbox_center(detection.get('bbox', []))
-            }
-            detected_objects.append(obj)
+        # ObjectDetectorの実際の構造に対応
+        # results['detections'][obj_key] = detections の形式
+        detections_dict = detection_results.get('detections', {})
+        logger.debug(f"[CONVERT] detections_dict: {detections_dict}")
         
+        for obj_key, detections_list in detections_dict.items():
+            logger.debug(f"[CONVERT] Processing {obj_key}: {detections_list}")
+            
+            for detection in detections_list:
+                # ObjectDetectorの実際のデータ構造に対応
+                obj = {
+                    'class': obj_key,  # obj_key = 'smartphone', 'laptop' など
+                    'confidence': detection.get('confidence', 0.0),
+                    'bbox': detection.get('bbox', []),
+                    'area': self._calculate_bbox_area(detection.get('bbox', [])),
+                    'center': self._calculate_bbox_center(detection.get('bbox', []))
+                }
+                detected_objects.append(obj)
+                logger.debug(f"[CONVERT] Added object: {obj}")
+        
+        logger.debug(f"[CONVERT] Final detected_objects: {detected_objects}")
         return detected_objects
     
     def _calculate_focus_level(self, mediapipe_results: Dict[str, Any]) -> Optional[float]:
@@ -357,7 +380,7 @@ class DataCollector:
             # 実際のデータ構造に対応した取得方法に修正
             pose_data = mediapipe_results.get('pose_landmarks')  # pose → pose_landmarks
             face_data = mediapipe_results.get('face_landmarks')  # face → face_landmarks
-            hands_data = mediapipe_results.get('hand_landmarks') # hands 追加
+            hands_data = mediapipe_results.get('hands_landmarks') # hands 追加
             
             # デバッグ情報の追加
             logger.debug(f"Pose data available: {pose_data is not None}")
@@ -470,7 +493,7 @@ class DataCollector:
                     return True
             
             # Phase 5.1: 実際のデータ構造に対応した手の位置と顔の向きからの推定
-            hands_data = mediapipe_results.get('hand_landmarks')
+            hands_data = mediapipe_results.get('hands_landmarks')
             face_data = mediapipe_results.get('face_landmarks')
             
             logger.debug(f"Smartphone detection - Hands: {hands_data is not None}, Face: {face_data is not None}")

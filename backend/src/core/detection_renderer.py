@@ -227,6 +227,7 @@ class DetectionRenderer:
     def _draw_object_detections(self, frame: np.ndarray, results: Dict[str, Any]) -> None:
         """
         物体検出結果の描画（バウンディングボックス）
+        平滑化・補間結果の視覚的表示機能付き
         
         Args:
             frame: 描画対象フレーム
@@ -264,21 +265,60 @@ class DetectionRenderer:
                     
                     logger.debug(f"[DEBUG] Drawing bbox for {obj_key}[{i}]: ({x1}, {y1}, {x2}, {y2}) on frame {frame_width}x{frame_height}")
                     
-                    # バウンディングボックス描画
-                    color = obj_settings.get('color', (0, 0, 255))
+                    # 平滑化・補間状態の判定
+                    is_smoothed = det.get('smoothed', False)
+                    is_interpolated = det.get('interpolated', False)
+                    frames_interpolated = det.get('frames_interpolated', 0)
+                    
+                    # 基本色と線の太さ
+                    base_color = obj_settings.get('color', (0, 0, 255))
                     thickness = obj_settings.get('thickness', 2)
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
+                    
+                    # 補間された検出の場合は点線描画
+                    if is_interpolated:
+                        # 補間フレーム数に応じて透明度調整（疑似）
+                        alpha_factor = max(0.3, 1.0 - (frames_interpolated * 0.2))
+                        
+                        # 点線バウンディングボックス描画
+                        self._draw_dashed_rectangle(frame, (x1, y1), (x2, y2), base_color, thickness)
+                        
+                        # 補間マーカーの追加
+                        cv2.putText(
+                            frame,
+                            f"[INT:{frames_interpolated}]",
+                            (x1, y1 - 30),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.4,
+                            (0, 165, 255),  # オレンジ色
+                            1
+                        )
+                    else:
+                        # 通常のバウンディングボックス描画
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), base_color, thickness)
+                        
+                        # 平滑化マーカーの追加
+                        if is_smoothed:
+                            cv2.circle(frame, (x1 + 10, y1 + 10), 3, (0, 255, 0), -1)  # 緑の円
                     
                     # ラベル描画
                     confidence = det.get('confidence', 0.0)
-                    label = f"{obj_settings.get('name')} ({confidence:.2f})"
+                    label_parts = [f"{obj_settings.get('name')} ({confidence:.2f})"]
+                    
+                    # 状態ラベルの追加
+                    if is_interpolated:
+                        label_parts.append("[補間]")
+                    elif is_smoothed:
+                        label_parts.append("[平滑化]")
+                    
+                    label = " ".join(label_parts)
+                    
                     cv2.putText(
                         frame, 
                         label, 
                         (x1, y1 - 10), 
                         cv2.FONT_HERSHEY_SIMPLEX, 
                         0.5, 
-                        color, 
+                        base_color, 
                         2
                     )
                     
@@ -294,6 +334,77 @@ class DetectionRenderer:
                     )
                     logger.warning(f"Bbox validation error: {bbox_error.to_dict()}")
                     continue
+                    
+    def _draw_dashed_rectangle(self, frame: np.ndarray, pt1: tuple, pt2: tuple, color: tuple, thickness: int, dash_length: int = 10) -> None:
+        """
+        点線の矩形を描画
+        
+        Args:
+            frame: 描画対象フレーム
+            pt1: 矩形の左上角
+            pt2: 矩形の右下角
+            color: 線の色
+            thickness: 線の太さ
+            dash_length: 点線の長さ
+        """
+        x1, y1 = pt1
+        x2, y2 = pt2
+        
+        # 上辺
+        self._draw_dashed_line(frame, (x1, y1), (x2, y1), color, thickness, dash_length)
+        # 右辺
+        self._draw_dashed_line(frame, (x2, y1), (x2, y2), color, thickness, dash_length)
+        # 下辺
+        self._draw_dashed_line(frame, (x2, y2), (x1, y2), color, thickness, dash_length)
+        # 左辺
+        self._draw_dashed_line(frame, (x1, y2), (x1, y1), color, thickness, dash_length)
+        
+    def _draw_dashed_line(self, frame: np.ndarray, pt1: tuple, pt2: tuple, color: tuple, thickness: int, dash_length: int = 10) -> None:
+        """
+        点線を描画
+        
+        Args:
+            frame: 描画対象フレーム
+            pt1: 線の開始点
+            pt2: 線の終了点
+            color: 線の色
+            thickness: 線の太さ
+            dash_length: 点線の長さ
+        """
+        import math
+        
+        x1, y1 = pt1
+        x2, y2 = pt2
+        
+        # 線の長さを計算
+        line_length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        
+        if line_length == 0:
+            return
+            
+        # 単位ベクトルを計算
+        dx = (x2 - x1) / line_length
+        dy = (y2 - y1) / line_length
+        
+        # 点線を描画
+        current_length = 0
+        draw_dash = True
+        
+        while current_length < line_length:
+            # 次の点の位置を計算
+            next_length = min(current_length + dash_length, line_length)
+            
+            start_x = int(x1 + current_length * dx)
+            start_y = int(y1 + current_length * dy)
+            end_x = int(x1 + next_length * dx)
+            end_y = int(y1 + next_length * dy)
+            
+            # 描画フラグに基づいて線を描画
+            if draw_dash:
+                cv2.line(frame, (start_x, start_y), (end_x, end_y), color, thickness)
+            
+            current_length = next_length
+            draw_dash = not draw_dash  # 描画フラグを切り替え
 
     def _draw_status_info(self, frame: np.ndarray, results: Dict[str, Any]) -> None:
         """
