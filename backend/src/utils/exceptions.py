@@ -208,7 +208,7 @@ class FileWriteError(FileOperationError):
 
 
 class DataParsingError(KanshiChanError):
-    """データ解析エラー"""
+    """データ解析関連のエラー"""
     pass
 
 
@@ -219,6 +219,11 @@ class JSONParsingError(DataParsingError):
 
 class YAMLParsingError(DataParsingError):
     """YAML解析エラー"""
+    pass
+
+
+class SerializationError(KanshiChanError):
+    """データシリアライゼーション関連のエラー"""
     pass
 
 
@@ -247,17 +252,17 @@ class RangeValidationError(ValidationError):
 # ========== 状態・ライフサイクル関連例外 ==========
 
 class StateError(KanshiChanError):
-    """状態管理関連のエラー"""
+    """システム状態関連のエラー"""
     pass
 
 
 class InitializationError(StateError):
-    """初期化エラー"""
+    """初期化関連エラー"""
     pass
 
 
 class ShutdownError(StateError):
-    """シャットダウンエラー"""
+    """終了処理関連エラー"""
     pass
 
 
@@ -267,7 +272,12 @@ class ResourceError(StateError):
 
 
 class ResourceUnavailableError(ResourceError):
-    """リソース利用不可エラー"""
+    """リソースが利用できないエラー"""
+    pass
+
+
+class ServiceUnavailableError(ResourceError):
+    """サービスが利用できないエラー"""
     pass
 
 

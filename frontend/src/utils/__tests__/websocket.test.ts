@@ -35,7 +35,7 @@ describe('websocketManager', () => {
   test('initialize()でSocket.IO接続が開始される', () => {
     websocketManager.initialize();
     
-    expect(mockedIo).toHaveBeenCalledWith('http://localhost:5001', {
+    expect(mockedIo).toHaveBeenCalledWith('http://localhost:8000', {
       transports: ['websocket'],
       reconnection: true,
       reconnectionAttempts: 5,

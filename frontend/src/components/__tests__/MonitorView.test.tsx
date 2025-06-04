@@ -29,7 +29,7 @@ jest.mock('@chakra-ui/react', () => {
 // HTMLImageElementのsrcプロパティをモック化
 Object.defineProperty(HTMLImageElement.prototype, 'src', {
   set: jest.fn(),
-  get: jest.fn(() => 'http://localhost:5001/api/video_feed'),
+  get: jest.fn(() => 'http://localhost:8000/api/video_feed'),
 });
 
 // 全画面API関連のモック
@@ -73,7 +73,7 @@ describe('MonitorView Component', () => {
     // 動画が表示されることを確認
     const image = screen.getByAltText('Monitor');
     expect(image).toBeInTheDocument();
-    expect(image).toHaveAttribute('src', 'http://localhost:5001/api/video_feed');
+    expect(image).toHaveAttribute('src', 'http://localhost:8000/api/video_feed');
 
     // 全画面ボタンが表示されることを確認
     const fullscreenButton = screen.getByLabelText('Toggle fullscreen');

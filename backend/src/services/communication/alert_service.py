@@ -1,6 +1,6 @@
 import asyncio
-from services.line_service import LineService
-from services.sound_service import SoundService
+from .line_service import LineService
+from ..tts.sound_service import SoundService
 from utils.logger import setup_logger
 import requests
 from utils.config_manager import ConfigManager

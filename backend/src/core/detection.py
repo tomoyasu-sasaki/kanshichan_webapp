@@ -68,7 +68,7 @@ class DetectionManager:
                              'confidence': det.get('confidence'),
                              'bbox': det.get('bbox') # FrameProcessorとの互換性のため'bbox'キーを使用
                          })
-                         logger.info(f"[DEBUG] Added {label} detection with bbox: {det.get('bbox')}")
+                         logger.debug(f"Added {label} detection with bbox: {det.get('bbox')}")
 
             # 3. ランドマーク情報をリストに追加（個別エントリとして）
             # FrameProcessorとの互換性のため、各ランドマークタイプを個別のエントリとして追加
@@ -78,7 +78,7 @@ class DetectionManager:
                     'type': 'pose',
                     'landmarks': detector_results.get('pose_landmarks')
                 })
-                logger.info(f"[DEBUG] Added pose landmarks to detections list")
+                logger.debug(f"Added pose landmarks to detections list")
                 
             if detector_results.get('hands_landmarks'):
                 unified_detections_list.append({
@@ -86,7 +86,7 @@ class DetectionManager:
                     'type': 'hands', 
                     'landmarks': detector_results.get('hands_landmarks')
                 })
-                logger.info(f"[DEBUG] Added hands landmarks to detections list")
+                logger.debug(f"Added hands landmarks to detections list")
                 
             if detector_results.get('face_landmarks'):
                 unified_detections_list.append({
@@ -94,7 +94,7 @@ class DetectionManager:
                     'type': 'face',
                     'landmarks': detector_results.get('face_landmarks')
                 })
-                logger.info(f"[DEBUG] Added face landmarks to detections list")
+                logger.debug(f"Added face landmarks to detections list")
 
             # logger.debug(f"Unified detections list: {unified_detections_list}")
             return unified_detections_list

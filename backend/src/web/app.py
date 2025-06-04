@@ -1,3 +1,21 @@
+"""
+Flask Web Application
+
+KanshiChan Webアプリケーションのメインエントリーポイント
+"""
+
+import os
+import sys
+from pathlib import Path
+
+# tqdmの進捗バー表示を全体的に無効化
+os.environ['TQDM_DISABLE'] = '1'
+os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
+os.environ['HF_HUB_DISABLE_PROGRESS_BARS'] = '1'
+
+import tqdm
+tqdm.tqdm.disable = True
+
 from flask import Flask, request, jsonify, send_from_directory, current_app
 from flask_cors import CORS
 from flask_socketio import SocketIO
@@ -9,7 +27,14 @@ from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import Configuration, ApiClient, MessagingApi
 from web.handlers import setup_handlers
 from web.api import api
-from web.websocket import init_websocket, socketio
+from web.routes import (
+    basic_analysis_bp, advanced_analysis_bp, prediction_analysis_bp, realtime_analysis_bp,
+    tts_synthesis_bp, tts_voice_clone_bp, tts_file_bp, tts_emotion_bp, 
+    tts_streaming_bp, tts_system_bp, init_tts_services,
+    behavior_bp, monitor_bp
+)
+from web.routes.monitor_routes import init_monitor_service
+from web.websocket import init_websocket, socketio, init_audio_streaming
 from utils.logger import setup_logger
 from utils.config_manager import ConfigManager
 from utils.exceptions import (
@@ -24,13 +49,73 @@ logger = setup_logger(__name__)
 
 def create_app(config_manager: ConfigManager):
     app = Flask(__name__, static_folder='../../../frontend/dist')
-    CORS(app)
-
-    # APIエンドポイントの登録
-    app.register_blueprint(api, url_prefix='/api')
     
-    # WebSocketの初期化
+    # データベース設定 - 絶対パスに修正
+    # src/instance/kanshichan.dbへの絶対パス
+    db_path = Path(__file__).parent.parent / 'instance' / 'kanshichan.db'
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path.absolute()}'
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    
+    # CORS設定
+    CORS(app, resources={
+        r"/api/*": {"origins": "*"},
+        r"/socket.io/*": {"origins": "*"}
+    })
+    
+    # 設定を取得
+    config = config_manager.get_all()
+    
+    # WebSocket初期化
     init_websocket(app)
+    
+    # 音声配信システム初期化 (Phase 2.4 新機能)
+    try:
+        init_audio_streaming()
+        logger.info("Audio streaming system initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize audio streaming system: {e}")
+        # 音声配信システムの初期化失敗は致命的ではないため継続
+    
+    # TTS サービス初期化
+    try:
+        init_tts_services(config)
+        logger.info("TTS services initialized successfully")
+    except Exception as e:
+        tts_init_error = wrap_exception(
+            e, InitializationError,
+            "Failed to initialize TTS services",
+            details={'config_keys': list(config.keys())}
+        )
+        logger.error(f"TTS services initialization error: {tts_init_error.to_dict()}")
+        # TTSサービスの初期化失敗は致命的ではないため継続
+    
+    # Monitor サービス初期化
+    try:
+        init_monitor_service(config)
+        logger.info("Monitor services initialized successfully")
+    except Exception as e:
+        monitor_init_error = wrap_exception(
+            e, InitializationError,
+            "Failed to initialize Monitor services",
+            details={'config_keys': list(config.keys())}
+        )
+        logger.error(f"Monitor services initialization error: {monitor_init_error.to_dict()}")
+        # Monitorサービスの初期化失敗は致命的ではないため継続
+    
+    # API Blueprint登録
+    app.register_blueprint(api, url_prefix='/api')
+    app.register_blueprint(basic_analysis_bp)
+    app.register_blueprint(advanced_analysis_bp)
+    app.register_blueprint(prediction_analysis_bp)
+    app.register_blueprint(realtime_analysis_bp)
+    app.register_blueprint(tts_synthesis_bp)
+    app.register_blueprint(tts_voice_clone_bp)
+    app.register_blueprint(tts_file_bp)
+    app.register_blueprint(tts_emotion_bp)
+    app.register_blueprint(tts_streaming_bp)
+    app.register_blueprint(tts_system_bp)
+    app.register_blueprint(behavior_bp)
+    app.register_blueprint(monitor_bp)
     
     # LINE Handlerの初期化
     channel_secret = config_manager.get('line.channel_secret')
@@ -133,27 +218,41 @@ def create_app(config_manager: ConfigManager):
                 )
                 logger.error(f"LINE message handling error: {message_error.to_dict()}")
     
-    # SPAのルーティング
-    @app.route('/', defaults={'path': ''})
-    @app.route('/<path:path>')
-    def serve(path):
-        if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
-            return send_from_directory(app.static_folder, path)
+    # SPAの404エラーハンドラー（APIパスは除外）
+    @app.errorhandler(404)
+    def spa_route_handler(error):
+        # APIパスの場合は404エラーのまま返す
+        if request.path.startswith('/api/'):
+            return jsonify({"error": "API endpoint not found"}), 404
+            
+        # 静的ファイルの場合はそのまま404を返す
+        if request.path.startswith('/assets/') or '.' in request.path.split('/')[-1]:
+            return jsonify({"error": "File not found"}), 404
+            
+        # SPAのindex.htmlを返す
+        index_path = os.path.join(app.static_folder, 'index.html')
+        if os.path.exists(index_path):
+            return send_from_directory(app.static_folder, 'index.html')
         else:
-            index_path = os.path.join(app.static_folder, 'index.html')
-            if os.path.exists(index_path):
-                 return send_from_directory(app.static_folder, 'index.html')
-            else:
-                 frontend_error = FileNotFoundError(
-                     f"Frontend index.html not found at {index_path}",
-                     details={
-                         'index_path': index_path,
-                         'static_folder': app.static_folder,
-                         'path_requested': path
-                     }
-                 )
-                 logger.error(f"Frontend file error: {frontend_error.to_dict()}")
-                 return jsonify({"error": "Frontend not found"}), 404
+            frontend_error = FileNotFoundError(
+                f"Frontend index.html not found at {index_path}",
+                details={
+                    'index_path': index_path,
+                    'static_folder': app.static_folder,
+                    'path_requested': request.path
+                }
+            )
+            logger.error(f"Frontend file error: {frontend_error.to_dict()}")
+            return jsonify({"error": "Frontend not found"}), 404
+    
+    # ルートパス用の明示的なルート
+    @app.route('/')
+    def index():
+        index_path = os.path.join(app.static_folder, 'index.html')
+        if os.path.exists(index_path):
+            return send_from_directory(app.static_folder, 'index.html')
+        else:
+            return jsonify({"error": "Frontend not found"}), 404
     
     # setup_handlers(app, ...)
     # setup_handlers(app, config_manager.get_all())
@@ -165,4 +264,10 @@ def create_app(config_manager: ConfigManager):
     # LINE Bot ハンドラーのセットアップ
     setup_handlers(app, line_handler)
     
-    return app
+    # デバッグ: 登録されているルートを確認
+    logger.info("=== Registered Routes ===")
+    for rule in app.url_map.iter_rules():
+        logger.info(f"Route: {rule.rule} -> {rule.endpoint} [{', '.join(rule.methods)}]")
+    logger.info("========================")
+    
+    return app, socketio

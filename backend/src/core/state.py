@@ -3,7 +3,7 @@ from collections import defaultdict
 from utils.logger import setup_logger
 from typing import Any, Dict, List
 # AlertManager をインポート
-from services.alert_manager import AlertManager
+from services.communication.alert_manager import AlertManager
 from utils.config_manager import ConfigManager # ConfigManager をインポート
 
 logger = setup_logger(__name__)

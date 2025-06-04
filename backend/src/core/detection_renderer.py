@@ -83,12 +83,14 @@ class DetectionRenderer:
             return frame
             
         try:
-            logger.info(f"[DEBUG] Drawing results with keys: {list(results.keys())}")
-            logger.info(f"[DEBUG] MediaPipe enabled: {self.use_mediapipe}, YOLO enabled: {self.use_yolo}")
-            logger.info(f"[DEBUG] Landmarks available: pose={results.get('pose_landmarks') is not None}, "
+            frame_height, frame_width = frame.shape[:2]
+            logger.debug(f"[DEBUG] Drawing results on frame: {frame_width}x{frame_height}")
+            logger.debug(f"[DEBUG] Drawing results with keys: {list(results.keys())}")
+            logger.debug(f"[DEBUG] MediaPipe enabled: {self.use_mediapipe}, YOLO enabled: {self.use_yolo}")
+            logger.debug(f"[DEBUG] Landmarks available: pose={results.get('pose_landmarks') is not None}, "
                         f"hands={results.get('hands_landmarks') is not None}, "
                         f"face={results.get('face_landmarks') is not None}")
-            logger.info(f"[DEBUG] Detections available: {list(results.get('detections', {}).keys())}")
+            logger.debug(f"[DEBUG] Detections available: {list(results.get('detections', {}).keys())}")
             
             # ランドマーク描画（MediaPipe）
             if self.use_mediapipe:
@@ -131,6 +133,9 @@ class DetectionRenderer:
         if not hasattr(self, 'mp_drawing'):
             return
             
+        frame_height, frame_width = frame.shape[:2]
+        logger.debug(f"[DEBUG] Drawing landmarks on frame: {frame_width}x{frame_height}")
+            
         # Poseランドマークの描画
         if (results.get('pose_landmarks') and 
             self.landmark_settings.get('pose', {}).get('enabled', False)):
@@ -141,6 +146,7 @@ class DetectionRenderer:
                     self.mp_pose.POSE_CONNECTIONS,
                     landmark_drawing_spec=self.mp_drawing_styles.get_default_pose_landmarks_style()
                 )
+                logger.debug(f"[DEBUG] Pose landmarks drawn successfully")
             except Exception as e:
                 pose_draw_error = wrap_exception(
                     e, RenderingError,
@@ -161,6 +167,7 @@ class DetectionRenderer:
                         self.mp_drawing_styles.get_default_hand_landmarks_style(),
                         self.mp_drawing_styles.get_default_hand_connections_style()
                     )
+                logger.debug(f"[DEBUG] Hands landmarks drawn successfully")
             except Exception as e:
                 hands_draw_error = wrap_exception(
                     e, RenderingError,
@@ -189,6 +196,7 @@ class DetectionRenderer:
                         landmark_drawing_spec=None,
                         connection_drawing_spec=self.mp_drawing_styles.get_default_face_mesh_contours_style()
                     )
+                logger.debug(f"[DEBUG] Face landmarks drawn successfully")
             except Exception as e:
                 face_draw_error = wrap_exception(
                     e, RenderingError,
@@ -224,25 +232,37 @@ class DetectionRenderer:
             frame: 描画対象フレーム
             results: 検出結果
         """
+        frame_height, frame_width = frame.shape[:2]
+        logger.debug(f"[DEBUG] Drawing object detections on frame: {frame_width}x{frame_height}")
+        
         for obj_key, detections in results.get('detections', {}).items():
             if obj_key == 'person':
                 continue  # 人物はテキスト表示のみ
                 
-            logger.debug(f"描画処理: key={obj_key}")
+            logger.debug(f"[DEBUG] 描画処理: key={obj_key}, detections_count={len(detections)}")
             obj_settings = self.detection_objects.get(obj_key)
             if not obj_settings:
+                logger.debug(f"[DEBUG] No settings found for object key: {obj_key}")
                 continue
                 
-            for det in detections:
+            for i, det in enumerate(detections):
                 bbox = det.get('bbox')
                 if bbox is None:
+                    logger.debug(f"[DEBUG] No bbox for detection {i} of {obj_key}")
                     continue
                     
                 if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+                    logger.debug(f"[DEBUG] Invalid bbox format for detection {i} of {obj_key}: {bbox}")
                     continue
                     
                 try:
                     x1, y1, x2, y2 = map(int, bbox)
+                    
+                    # 座標の妥当性チェック
+                    if x1 < 0 or y1 < 0 or x2 > frame_width or y2 > frame_height:
+                        logger.warning(f"[DEBUG] Bbox coordinates out of frame bounds: ({x1}, {y1}, {x2}, {y2}) for frame {frame_width}x{frame_height}")
+                    
+                    logger.debug(f"[DEBUG] Drawing bbox for {obj_key}[{i}]: ({x1}, {y1}, {x2}, {y2}) on frame {frame_width}x{frame_height}")
                     
                     # バウンディングボックス描画
                     color = obj_settings.get('color', (0, 0, 255))

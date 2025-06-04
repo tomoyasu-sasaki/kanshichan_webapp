@@ -1,373 +1,686 @@
 # KanshiChan - AI/ML 開発規約
 # =============================================
+# バージョン: 2.0
+# 最終更新: 2024-12-27
 # 対象: AI/ML機能（YOLO, MediaPipe, 画像処理）
 # 参照: main_rules.yaml, backend_rules.yaml
 
 # ===========================================
-# 1. AI/ML アーキテクチャ規約
+# 1. AI/ML アーキテクチャ規約（拡張版）
 # ===========================================
 ai_architecture:
   design_principles:
-    modular: "検出器ごとの独立したモジュール設計"
-    configurable: "設定による機能の有効/無効化"
-    fallback: "AI機能障害時の適切なフォールバック"
-    performance: "リアルタイム処理を考慮した最適化"
+    modular: "検出器ごとの独立したモジュール設計（ObjectDetector, DetectionRenderer分離）"
+    optimized: "AI最適化システム統合（AIOptimizer, MemoryManager）"
+    configurable: "設定による機能の有効/無効化（config.yaml）"
+    fallback: "AI機能障害時の適切なフォールバック（グレースフル・デグラデーション）"
+    performance: "リアルタイム処理（15FPS目標）を考慮した最適化"
+    monitored: "パフォーマンス監視と動的調整"
     
   model_management:
-    storage: "プロジェクト内またはダウンロード管理"
-    versioning: "モデルバージョンの明示的管理"
-    caching: "モデルの効率的なメモリ使用"
+    storage: "プロジェクトルート（自動ダウンロード管理）"
+    versioning: "YOLOv8n固定、MediaPipe最新版"
+    caching: "AIOptimizer統合によるモデルキャッシュ"
+    device_optimization: "MPS > CUDA > CPU 自動選択"
     
   processing_pipeline:
-    input: "フレーム前処理 → AI推論 → 後処理 → 結果統合"
-    threading: "メインスレッドのブロッキング回避"
+    input: "Camera → FrameProcessor → ObjectDetector → DetectionRenderer"
+    optimization: "AIOptimizer統合（フレームスキップ、推論最適化）"
+    threading: "メインスレッドブロッキング回避（非同期処理）"
     error_recovery: "部分的な機能停止でも継続動作"
+    memory_management: "MemoryManager統合（LRUキャッシュ、GC最適化）"
 
 # ===========================================
-# 2. 物体検出（YOLO）規約
+# 2. AI最適化システム規約（新規実装）
 # ===========================================
-yolo_detection:
-  model_selection:
-    current: "YOLOv8n (nano) - 軽量版"
-    rationale: "リアルタイム処理とのバランス"
-    upgrade_path: "必要に応じてYOLOv8s, YOLOv8m へ"
+ai_optimization:
+  performance_monitoring:
+    window_size: "30フレーム履歴での統計監視"
+    metrics:
+      - "FPS（Frame Per Second）"
+      - "推論時間（ミリ秒）"
+      - "メモリ使用量（MB）"
+      - "フレーム処理時間"
+    target_fps: "15 FPS（設定可能）"
+    min_fps: "10 FPS（パフォーマンス下限）"
     
-  configuration:
-    confidence_threshold: "0.5 (設定可能)"
-    device_selection: "GPU > MPS > CPU の優先順位"
-    batch_processing: "単一フレーム処理"
-    
-  target_objects:
-    smartphone: "cell phone クラス"
-    person: "person クラス"
-    laptop: "laptop クラス"
-    book: "book クラス"
+  frame_skipping:
+    dynamic_adjustment: "現在FPSに基づく動的調整"
+    max_skip_rate: "最大5倍スキップ（設定可能）"
+    adjustment_interval: "2秒間隔での調整"
+    conditions:
+      low_fps: "FPS < min_fps → スキップレート上昇"
+      high_fps: "FPS > target_fps * 1.2 → スキップレート低下"
+      
+  batch_processing:
+    enabled: "実験的機能（デフォルト無効）"
+    batch_size: "4-8フレーム（設定可能）"
+    timeout_ms: "33-50ms（15FPS相当）"
+    use_case: "GPU利用時の推論効率向上"
     
   implementation_pattern: |
-    def detect_objects(self, frame: np.ndarray) -> Dict[str, Any]:
-        """物体検出の標準実装パターン
-        
-        Args:
-            frame: 入力画像フレーム (BGR形式)
+    class AIOptimizer:
+        def __init__(self, config_manager: Optional[ConfigManager] = None):
+            self.performance_monitor = PerformanceMonitor()
+            self.frame_skipper = FrameSkipper(config_manager)
+            self.batch_processor = BatchProcessor()
             
-        Returns:
-            検出結果辞書
-        """
-        if not self.use_yolo or not hasattr(self, 'model'):
-            return {}
+        def optimize_yolo_inference(self, model, frame: np.ndarray) -> Optional[Any]:
+            # フレームスキップ判定
+            current_fps = self.performance_monitor.get_current_fps()
+            if not self.frame_skipper.should_process_frame(current_fps):
+                return None
+                
+            # 推論時間測定
+            start_time = time.time()
+            results = model(frame, verbose=False)
+            inference_time = time.time() - start_time
             
-        try:
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = self.model(rgb_frame, verbose=False)[0]
-            
-            return self._process_yolo_results(results)
-            
-        except Exception as e:
-            logger.error(f"YOLO detection failed: {e}", exc_info=True)
-            return {}
+            self.performance_monitor.record_inference_time(inference_time)
+            return results
 
 # ===========================================
-# 3. 姿勢検出（MediaPipe）規約
+# 3. メモリ管理規約（新規実装）
+# ===========================================
+memory_management:
+  cache_system:
+    implementation: "LRUキャッシュ（OrderedDict ベース）"
+    max_size: "100エントリ（設定可能）"
+    max_memory_mb: "50MB（設定可能）"
+    thread_safety: "threading.Lock による排他制御"
+    size_estimation: "numpy配列、文字列、リスト対応"
+    
+  monitoring:
+    window_size: "60秒履歴（1分間の統計）"
+    update_interval: "リアルタイム更新"
+    metrics:
+      - "現在メモリ使用量（MB・%）"
+      - "平均・最大・最小メモリ使用量"
+      - "メモリ使用率履歴"
+    critical_threshold: "80%（緊急クリーンアップ実行）"
+    
+  garbage_collection:
+    optimization: "世代別ガベージコレクション"
+    interval: "30秒間隔（設定可能）"
+    trigger_conditions:
+      - "時間ベース: 30秒経過"
+      - "メモリベース: 使用率70%超過"
+    stats_tracking: "収集オブジェクト数、実行時間記録"
+    
+  implementation_example: |
+    class MemoryManager:
+        def __init__(self, config_manager: Optional[ConfigManager] = None):
+            self.cache = MemoryCache(max_size=100, max_memory_mb=50.0)
+            self.monitor = MemoryMonitor(window_size=60)
+            self.gc_optimizer = GarbageCollectionOptimizer()
+            
+        def cache_frame(self, key: str, frame: np.ndarray) -> None:
+            """フレームキャッシュ（サイズ推定付き）"""
+            self.cache.put(key, frame)
+            
+        def emergency_cleanup(self) -> None:
+            """緊急メモリクリーンアップ"""
+            self.cache.clear()
+            self.gc_optimizer.run_optimized_gc()
+
+# ===========================================
+# 4. 物体検出（YOLO）規約（拡張版）
+# ===========================================
+yolo_detection:
+  model_specification:
+    current: "YOLOv8n (nano) - 軽量版"
+    path: "yolov8n.pt（プロジェクトルート）"
+    auto_download: "存在しない場合の自動ダウンロード"
+    device_selection: "MPS > CUDA > CPU 自動選択"
+    optimization: "AIOptimizer統合推論"
+    
+  configuration:
+    confidence_threshold: "0.5（オブジェクト別設定可能）"
+    iou_threshold: "0.7（NMS処理）"
+    max_detections: "10（NMS軽量化）"
+    verbose: false
+    warning_suppression: "詳細ログ無効化"
+    
+  performance_optimization:
+    preprocessing: "フレーム前処理最適化"
+    inference: "デバイス最適化推論"
+    postprocessing: "NMS最適化設定"
+    memory_usage: "推論結果のキャッシュ化"
+    
+  target_objects:
+    smartphone: "cell phone クラス（confidence: 0.4）"
+    person: "person クラス（姿勢検出補完）"
+    laptop: "laptop クラス（オプション）"
+    book: "book クラス（オプション）"
+    
+  implementation_pattern: |
+    def _detect_with_yolo_bgr(self, frame: np.ndarray, results: Dict[str, Any]) -> None:
+        try:
+            # AI最適化統合推論
+            if self.ai_optimizer:
+                yolo_results = self.ai_optimizer.optimize_yolo_inference(self.model, frame)
+                if yolo_results is None:  # フレームスキップ
+                    return
+            else:
+                yolo_results = self.model(frame, **self.yolo_predict_args)[0]
+            
+            # 結果処理とスケールバック
+            original_height, original_width = frame.shape[:2]
+            for det in yolo_results.boxes.data.tolist():
+                x1, y1, x2, y2, conf, cls = det
+                detected_class = yolo_results.names[int(cls)]
+                
+                # オブジェクト別処理
+                self._process_detection(detected_class, conf, (x1, y1, x2, y2), results)
+                
+        except Exception as e:
+            logger.error(f"YOLO detection failed: {e}", exc_info=True)
+
+# ===========================================
+# 5. 姿勢検出（MediaPipe）規約（拡張版）
 # ===========================================
 mediapipe_detection:
   components:
-    pose: "姿勢ランドマーク検出"
-    hands: "手のランドマーク検出"
-    face_mesh: "顔のランドマーク検出"
+    pose: "姿勢ランドマーク検出（必須）"
+    hands: "手のランドマーク検出（オプション）"
+    face_mesh: "顔のランドマーク検出（オプション）"
+    
+  optimization_settings:
+    warning_suppression: "MediaPipe内部警告抑制"
+    gpu_disable: "安定性向上のためGPU無効化"
+    environment_variables:
+      - "MEDIAPIPE_DISABLE_GPU=1"
+      - "GLOG_minloglevel=2"
+      - "TF_CPP_MIN_LOG_LEVEL=2"
     
   configuration:
-    model_complexity: "0 (軽量) | 1 (標準) | 2 (高精度)"
-    confidence_thresholds:
-      detection: "0.5 - 0.7"
-      tracking: "0.5 - 0.7"
-    performance_mode: "static_image_mode: False (動画用)"
+    pose:
+      static_image_mode: false
+      model_complexity: 0  # 軽量モデル
+      smooth_landmarks: true
+      min_detection_confidence: 0.7  # 高信頼度
+      min_tracking_confidence: 0.7
+      enable_segmentation: false
+    hands:
+      max_num_hands: 2
+      min_detection_confidence: 0.5
+      min_tracking_confidence: 0.5
+    face_mesh:
+      max_num_faces: 1
+      refine_landmarks: true
+      min_detection_confidence: 0.5
+      min_tracking_confidence: 0.5
+      
+  ai_optimization_integration:
+    optimized_pipeline: "AIOptimizer.optimize_mediapipe_pipeline()"
+    frame_preprocessing: "RGB変換最適化"
+    landmark_caching: "結果キャッシュ機能"
     
   error_handling:
-    initialization: "コンポーネント別の初期化エラー処理"
-    runtime: "個別コンポーネントの実行時エラー処理"
+    initialization: "コンポーネント別初期化エラー処理"
+    runtime: "個別推論エラー処理"
     graceful_degradation: "一部機能停止時の継続動作"
     
-  implementation_guidelines:
-    resource_management: |
-      # MediaPipe リソース管理
-      try:
-          self.pose = self.mp_pose.Pose(
-              static_image_mode=False,
-              model_complexity=0,
-              smooth_landmarks=True,
-              min_detection_confidence=0.7,
-              min_tracking_confidence=0.7
-          )
-      except Exception as e:
-          logger.error(f"Failed to initialize MediaPipe Pose: {e}")
-          self.use_mediapipe = False
-          
-    detection_processing: |
-      def process_pose_landmarks(self, rgb_frame):
-          """姿勢ランドマーク処理"""
-          try:
-              results = self.pose.process(rgb_frame)
-              if results and results.pose_landmarks:
-                  return results.pose_landmarks
-          except Exception as e:
-              logger.error(f"Pose detection error: {e}")
-          return None
+  implementation_guidelines: |
+    def _detect_with_mediapipe(self, rgb_frame: np.ndarray, results: Dict[str, Any]) -> None:
+        # Pose検出（AI最適化統合）
+        if hasattr(self, 'pose'):
+            try:
+                if self.ai_optimizer:
+                    pose_results = self.ai_optimizer.optimize_mediapipe_pipeline(self.pose, rgb_frame)
+                else:
+                    pose_results = self.pose.process(rgb_frame)
+                    
+                if pose_results and pose_results.pose_landmarks:
+                    results['person_detected'] = True
+                    if self.landmark_settings.get('pose', {}).get('enabled', False):
+                        results['pose_landmarks'] = pose_results.pose_landmarks
+                        
+            except Exception as e:
+                logger.error(f"MediaPipe pose detection failed: {e}")
 
 # ===========================================
-# 4. 画像処理規約
+# 6. 画像処理・描画規約（拡張版）
 # ===========================================
 image_processing:
   color_space:
-    input: "BGR (OpenCV標準)"
-    ai_processing: "RGB (AI models)"
-    conversion: "cv2.cvtColor による適切な変換"
+    input: "BGR（OpenCV標準）"
+    mediapipe_processing: "RGB（cv2.cvtColor変換）"
+    output: "BGR（描画・表示用）"
+    conversion: "効率的な色空間変換"
     
   frame_handling:
-    validation: "フレームの null/empty チェック"
-    copying: "必要に応じた適切なフレームコピー"
-    memory: "大きなフレームのメモリ使用量考慮"
+    validation: "フレームのnull/empty/サイズチェック"
+    thread_safety: "フレームバッファのロック制御"
+    memory_management: "MemoryManager統合キャッシュ"
+    copying: "必要最小限のフレームコピー"
     
-  preprocessing:
-    normalization: "AI model 要求に応じた正規化"
-    resizing: "必要に応じたフレームリサイズ"
-    format_conversion: "適切なデータ型変換"
+  detection_rendering:
+    safe_drawing: "例外処理付き安全描画"
+    landmark_drawing: "MediaPipeランドマーク描画"
+    bbox_drawing: "YOLOバウンディングボックス描画"
+    status_overlay: "ステータス情報オーバーレイ"
+    color_coding: "状態別色分け（緑:在席、赤:不在）"
     
-  drawing_operations:
-    landmarks: "MediaPipe ランドマークの描画"
-    bounding_boxes: "YOLO 検出ボックスの描画"
-    color_coding: "状態に応じた色分け"
+  performance_optimization:
+    frame_caching: "描画済みフレームキャッシュ"
+    drawing_optimization: "描画処理の最適化"
+    memory_efficient: "メモリ効率的な画像処理"
     
   examples:
-    frame_validation: |
-      def validate_frame(self, frame: np.ndarray) -> bool:
-          """フレーム妥当性検証"""
-          if frame is None or frame.size == 0:
-              logger.warning("Invalid frame received")
-              return False
-          return True
-          
-    safe_drawing: |
-      def draw_landmarks_safely(self, frame, landmarks, color, thickness):
-          """安全なランドマーク描画"""
-          try:
-              if landmarks and self.landmark_settings.get('enabled', False):
-                  self.mp_drawing.draw_landmarks(
-                      frame, landmarks, self.mp_pose.POSE_CONNECTIONS,
-                      landmark_drawing_spec=DrawingSpec(color=color, thickness=thickness)
-                  )
-          except Exception as e:
-              logger.error(f"Drawing error: {e}")
+    safe_rendering: |
+      class DetectionRenderer:
+          def draw_detections(self, frame: np.ndarray, results: Dict[str, Any]) -> np.ndarray:
+              if frame is None or frame.size == 0:
+                  logger.warning("Empty frame received for drawing")
+                  return frame
+                  
+              try:
+                  # MediaPipeランドマーク描画
+                  if self.use_mediapipe:
+                      self._draw_landmarks(frame, results)
+                  
+                  # YOLO物体検出描画
+                  if self.use_yolo:
+                      self._draw_object_detections(frame, results)
+                  
+                  # ステータス情報描画
+                  self._draw_status_info(frame, results)
+                  
+                  return frame
+                  
+              except Exception as e:
+                  logger.error(f"Detection drawing error: {e}")
+                  return frame  # 元フレームを返す
 
 # ===========================================
-# 5. パフォーマンス最適化規約
+# 7. パフォーマンス最適化規約（実装版）
 # ===========================================
 performance_optimization:
-  frame_rate:
-    target: "15+ FPS"
-    measurement: "フレーム処理時間の定期的監視"
-    optimization: "処理時間がボトルネックとなる場合の対策"
+  target_metrics:
+    fps: "15 FPS（目標）、10 FPS（最低）"
+    inference_time: "< 50ms（推論1回あたり）"
+    memory_usage: "< 80%（緊急クリーンアップ実行）"
+    frame_processing_time: "< 67ms（15FPS相当）"
     
-  resource_usage:
-    gpu_memory: "GPU メモリの効率的使用"
-    cpu_utilization: "マルチコア活用とバランス"
-    model_caching: "モデルの適切なキャッシュ"
+  optimization_strategies:
+    frame_skipping:
+      dynamic: "現在FPS基準の動的調整"
+      max_rate: "最大5倍スキップ"
+      conditions: "FPS低下時の自動スキップレート上昇"
+    model_optimization:
+      yolo: "軽量モデル（YOLOv8n）+ 推論設定最適化"
+      mediapipe: "model_complexity=0 + GPU無効化"
+      device: "最適デバイス自動選択"
+    memory_optimization:
+      caching: "LRUキャッシュによる結果再利用"
+      gc: "世代別ガベージコレクション最適化"
+      monitoring: "リアルタイムメモリ監視"
+      
+  monitoring_implementation:
+    real_time: "フレーム毎のパフォーマンス測定"
+    statistics: "30フレーム窓での統計計算"
+    alerting: "パフォーマンス低下の警告"
+    auto_adjustment: "動的パラメータ調整"
     
-  processing_optimization:
-    model_warmup: "初回実行時のウォームアップ"
-    batch_processing: "可能な場合のバッチ処理"
-    frame_skipping: "必要に応じたフレームスキップ"
-    
-  monitoring:
-    fps_tracking: |
+  examples:
+    performance_monitoring: |
       class PerformanceMonitor:
-          def __init__(self):
-              self.frame_times = collections.deque(maxlen=30)
+          def __init__(self, window_size: int = 30):
+              self.frame_times = deque(maxlen=window_size)
+              self.inference_times = deque(maxlen=window_size)
+              self.memory_usage = deque(maxlen=window_size)
               
-          def update(self, processing_time):
-              self.frame_times.append(processing_time)
-              
-          def get_avg_fps(self):
-              if not self.frame_times:
-                  return 0
-              avg_time = sum(self.frame_times) / len(self.frame_times)
-              return 1.0 / avg_time if avg_time > 0 else 0
+          def get_stats(self) -> Dict[str, float]:
+              return {
+                  'fps': self.get_current_fps(),
+                  'avg_inference_ms': self.get_avg_inference_time(),
+                  'memory_mb': self.get_memory_usage(),
+                  'frame_count': len(self.frame_times)
+              }
 
 # ===========================================
-# 6. 設定管理規約
+# 8. 設定管理規約（実装版）
 # ===========================================
 ai_configuration:
   structure:
-    detector_flags: "use_mediapipe, use_yolo"
-    model_parameters: "confidence_threshold, model_complexity"
-    landmark_settings: "コンポーネント別の有効化とスタイル"
-    detection_objects: "オブジェクト別の設定"
+    detector_flags: "detector.use_mediapipe, detector.use_yolo"
+    optimization: "optimization.target_fps, optimization.min_fps"
+    memory: "memory.threshold_percent, memory.cache"
+    batch_processing: "optimization.batch_processing"
     
+  optimization_settings:
+    target_fps: "15.0（業界標準）"
+    min_fps: "10.0（パフォーマンス下限）"
+    max_skip_rate: "2（改善版：5→2）"
+    batch_processing:
+      enabled: true
+      batch_size: "8（改善版：4→8）"
+      timeout_ms: "33（15FPS相当）"
+      
+  memory_settings:
+    threshold_percent: "80.0（緊急クリーンアップ実行）"
+    gc_interval_seconds: "30.0（GC実行間隔）"
+    monitor_interval_seconds: "5.0（監視間隔）"
+    cache:
+      max_size: 100
+      max_memory_mb: "50.0"
+      
   dynamic_configuration:
-    hot_reload: "設定変更の動的反映（将来実装）"
-    validation: "設定値の妥当性検証"
-    fallback: "無効な設定値のフォールバック"
+    hot_reload: "設定変更の動的反映（実装済み）"
+    validation: "ConfigManager による設定値検証"
+    fallback: "無効設定値の自動フォールバック"
     
   example_structure: |
-    detector:
-      use_mediapipe: true
-      use_yolo: true
-      mediapipe_options:
-        pose:
-          min_detection_confidence: 0.5
-          min_tracking_confidence: 0.5
-        hands:
-          min_detection_confidence: 0.5
-          min_tracking_confidence: 0.5
-    
-    detection_objects:
-      smartphone:
+    optimization:
+      target_fps: 15.0
+      min_fps: 10.0
+      max_skip_rate: 2
+      batch_processing:
         enabled: true
-        confidence_threshold: 0.5
-        alert_threshold: 3.0
-        class_name: "cell phone"
+        batch_size: 8
+        timeout_ms: 33
+    memory:
+      threshold_percent: 80.0
+      gc_interval_seconds: 30.0
+      cache:
+        max_size: 100
+        max_memory_mb: 50.0
 
 # ===========================================
-# 7. エラーハンドリング規約
+# 9. エラーハンドリング規約（拡張版）
 # ===========================================
 ai_error_handling:
-  model_initialization:
-    yolo_download: "モデルダウンロード失敗時の対処"
-    mediapipe_init: "MediaPipe 初期化失敗時の対処"
-    device_selection: "GPU利用不可時のCPUフォールバック"
-    
-  runtime_errors:
-    detection_failure: "個別検出失敗時の継続動作"
-    memory_error: "メモリ不足時の処理軽減"
-    hardware_error: "ハードウェア関連エラーの対処"
+  structured_exceptions:
+    base: "utils.exceptions による構造化例外"
+    ai_specific:
+      - "ModelError: モデル関連エラー"
+      - "OptimizationError: AI最適化エラー"
+      - "MemoryError: メモリ管理エラー"
+      - "PerformanceError: パフォーマンスエラー"
+    context_preservation: "wrap_exception による詳細情報保持"
     
   graceful_degradation:
-    partial_functionality: "一部機能停止での継続動作"
-    fallback_modes: "AI機能無効時の基本動作"
-    user_notification: "機能制限のユーザー通知"
+    model_initialization:
+      yolo_failure: "YOLO初期化失敗 → use_yolo=False"
+      mediapipe_failure: "MediaPipe初期化失敗 → use_mediapipe=False"
+      complete_failure: "全AI機能無効 → 基本監視モード"
+    runtime_errors:
+      detection_failure: "個別検出失敗 → 継続動作"
+      optimization_failure: "最適化無効 → 標準処理"
+      memory_pressure: "メモリ不足 → 緊急クリーンアップ"
+      
+  monitoring_integration:
+    performance_alerts: "パフォーマンス低下の警告"
+    memory_alerts: "メモリ使用量超過の警告"
+    error_tracking: "エラー発生率の監視"
     
   implementation_examples: |
-    def robust_detection(self, frame):
-        """堅牢な検出処理"""
-        results = {
-            'detections': {},
-            'pose_landmarks': None,
-            'person_detected': False
-        }
+    def robust_ai_processing(self, frame: np.ndarray) -> Dict[str, Any]:
+        results = {'detections': {}, 'person_detected': False}
         
-        # YOLO検出（エラー時はスキップ）
+        # YOLO検出（エラー時は継続）
         if self.use_yolo:
             try:
-                yolo_results = self._yolo_detect(frame)
-                results.update(yolo_results)
+                if self.ai_optimizer:
+                    yolo_results = self.ai_optimizer.optimize_yolo_inference(self.model, frame)
+                else:
+                    yolo_results = self.model(frame, verbose=False)
+                self._process_yolo_results(yolo_results, results)
             except Exception as e:
-                logger.error(f"YOLO detection failed: {e}")
+                yolo_error = wrap_exception(e, YOLOError, "YOLO inference failed")
+                logger.error(f"YOLO error: {yolo_error.to_dict()}")
                 
-        # MediaPipe検出（エラー時はスキップ）
+        # MediaPipe検出（エラー時は継続）
         if self.use_mediapipe:
             try:
-                mp_results = self._mediapipe_detect(frame)
-                results.update(mp_results)
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                self._detect_with_mediapipe(rgb_frame, results)
             except Exception as e:
-                logger.error(f"MediaPipe detection failed: {e}")
-                
+                mp_error = wrap_exception(e, MediaPipeError, "MediaPipe detection failed")
+                logger.error(f"MediaPipe error: {mp_error.to_dict()}")
+        
         return results
 
 # ===========================================
-# 8. テスト規約
+# 10. テスト規約（AI/ML特化版）
 # ===========================================
 ai_testing:
+  test_categories:
+    unit_testing:
+      - "AIOptimizer単体テスト"
+      - "MemoryManager単体テスト"
+      - "ObjectDetector単体テスト"
+      - "DetectionRenderer単体テスト"
+    integration_testing:
+      - "AI最適化パイプライン統合テスト"
+      - "メモリ管理統合テスト"
+      - "検出→描画パイプラインテスト"
+    performance_testing:
+      - "FPS目標達成テスト"
+      - "メモリ使用量制限テスト"
+      - "負荷テスト（長時間動作）"
+      
   test_data:
-    synthetic: "合成テストフレームの使用"
-    real_samples: "実際の使用シーンのサンプル"
-    edge_cases: "異常条件でのテスト"
+    synthetic_frames: "テスト用合成フレーム"
+    real_samples: "実際の使用シーンサンプル"
+    edge_cases: "異常条件（空フレーム、巨大フレーム等）"
+    performance_scenarios: "高負荷・低リソース環境"
     
-  unit_testing:
-    model_loading: "モデル読み込みテスト"
-    detection_logic: "検出ロジックテスト"
-    error_handling: "エラーハンドリングテスト"
+  mock_strategies:
+    ai_models: "YOLO・MediaPipeモデルのモック"
+    hardware: "GPU・MPS利用不可環境のモック"
+    memory_pressure: "メモリ不足状況のモック"
     
-  integration_testing:
-    pipeline: "検出パイプライン全体テスト"
-    performance: "パフォーマンステスト"
-    configuration: "設定変更テスト"
-    
-  test_examples: |
-    def test_yolo_detection_with_valid_frame():
-        """YOLO検出の正常系テスト"""
-        detector = Detector()
-        frame = create_test_frame_with_person()
-        
-        results = detector.detect_objects(frame)
-        
-        assert 'detections' in results
-        assert results['person_detected'] is True
-        
-    def test_detection_with_empty_frame():
-        """空フレームでの異常系テスト"""
-        detector = Detector()
-        empty_frame = np.array([])
-        
-        results = detector.detect_objects(empty_frame)
-        
-        assert results['person_detected'] is False
-        assert 'detections' in results
+  examples:
+    optimization_test: |
+      def test_ai_optimizer_frame_skipping():
+          optimizer = AIOptimizer()
+          
+          # 低FPSでスキップレート上昇をテスト
+          optimizer.frame_skipper.frame_counter = 0
+          should_process = optimizer.frame_skipper.should_process_frame(current_fps=5.0)
+          
+          assert optimizer.frame_skipper.skip_rate > 1
+          
+      def test_memory_manager_cache():
+          memory_manager = MemoryManager()
+          test_frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+          
+          # キャッシュ機能テスト
+          memory_manager.cache_frame("test_frame", test_frame)
+          cached_frame = memory_manager.get_cached_frame("test_frame")
+          
+          assert np.array_equal(test_frame, cached_frame)
+          
+      def test_detection_error_handling():
+          detector = ObjectDetector()
+          empty_frame = np.array([])
+          
+          # 空フレームでのエラーハンドリング
+          results = detector.detect_objects(empty_frame)
+          
+          assert results['person_detected'] is False
+          assert 'detections' in results
 
 # ===========================================
-# 9. モデル管理規約
+# 11. モデル管理規約（実装版）
 # ===========================================
 model_management:
-  versioning:
-    tracking: "使用モデルのバージョン記録"
-    compatibility: "モデル互換性の管理"
-    migration: "モデル更新時の移行手順"
+  yolo_management:
+    model_file: "yolov8n.pt（プロジェクトルート）"
+    auto_download: "存在しない場合の自動ダウンロード機能"
+    device_optimization: "最適デバイス自動選択・設定"
+    configuration: "推論設定の最適化"
     
-  storage:
-    location: "プロジェクトルート（.gitignore 対象）"
-    download: "自動ダウンロード機能"
-    verification: "モデルファイルの整合性確認"
+  mediapipe_management:
+    components: "Pose, Hands, Face Mesh（個別初期化）"
+    resource_management: "適切なリソース解放"
+    warning_suppression: "内部警告の抑制設定"
     
-  lifecycle:
-    initialization: "アプリ起動時のモデル読み込み"
-    hot_swap: "実行時のモデル切り替え（将来実装）"
-    cleanup: "リソース解放とクリーンアップ"
+  lifecycle_management:
+    initialization: "アプリ起動時の段階的初期化"
+    error_recovery: "初期化失敗時のフォールバック"
+    resource_cleanup: "適切なリソース解放"
     
   examples: |
-    def setup_yolo_model(self):
-        """YOLO モデルセットアップ"""
-        model_path = "yolov8n.pt"
-        
-        if not os.path.exists(model_path):
-            logger.info("Downloading YOLO model...")
-            self.model = YOLO("yolov8n.pt")  # 自動ダウンロード
-        else:
-            logger.info("Loading existing YOLO model...")
-            self.model = YOLO(model_path)
+    def _setup_yolo(self) -> None:
+        try:
+            model_path = "yolov8n.pt"
             
-        # デバイス設定
-        device = self._select_optimal_device()
-        self.model.to(device)
-        logger.info(f"YOLO model loaded on {device}")
+            if not os.path.exists(model_path):
+                logger.warning("YOLOモデルをダウンロードします...")
+                self.model = YOLO("yolov8n.pt")  # 自動ダウンロード
+            else:
+                self.model = YOLO(model_path)
+            
+            # デバイス最適化
+            if torch.backends.mps.is_built():
+                self.device = torch.device("mps")
+            elif torch.cuda.is_available():
+                self.device = torch.device("cuda")
+            else:
+                self.device = torch.device("cpu")
+                
+            self.model.to(self.device)
+            logger.info(f"YOLO model loaded on {self.device}")
+            
+        except Exception as e:
+            logger.error(f"YOLO setup failed: {e}")
+            self.use_yolo = False
 
 # ===========================================
-# 10. 品質保証規約
+# 12. 品質保証規約（実装版）
 # ===========================================
 ai_quality_assurance:
-  accuracy_monitoring:
-    metrics: "検出精度、偽陽性/偽陰性率"
-    benchmarking: "定期的な精度評価"
-    improvement: "精度向上のための継続的改善"
-    
   performance_monitoring:
-    realtime_metrics: "リアルタイム処理性能"
-    resource_usage: "CPU/GPU使用率"
-    bottleneck_analysis: "パフォーマンスボトルネック分析"
+    real_time_metrics:
+      - "FPS: リアルタイム測定・30フレーム平均"
+      - "推論時間: YOLO・MediaPipe個別測定"
+      - "メモリ使用量: プロセス・システムメモリ監視"
+      - "フレーム処理時間: エンドツーエンド測定"
+    target_benchmarks:
+      - "FPS: 15 FPS（目標）、10 FPS（最低）"
+      - "推論時間: < 50ms（1回あたり）"
+      - "メモリ使用率: < 80%"
+      
+  accuracy_monitoring:
+    detection_quality: "検出精度の継続的評価"
+    false_positive_tracking: "偽陽性率の監視"
+    false_negative_tracking: "偽陰性率の監視"
+    confidence_calibration: "信頼度閾値の調整"
     
   robustness_testing:
-    environmental: "照明条件、カメラ角度の変化"
-    hardware: "異なるハードウェア環境での動作"
-    edge_cases: "極端な条件での動作確認"
+    environmental_conditions:
+      - "照明条件の変化（明暗・逆光）"
+      - "カメラ角度・距離の変化"
+      - "複数人物・重複オブジェクト"
+    hardware_environments:
+      - "Apple Silicon（MPS）環境"
+      - "NVIDIA GPU（CUDA）環境"
+      - "CPU専用環境"
+      - "低スペック・メモリ制約環境"
+      
+  continuous_improvement:
+    performance_optimization: "継続的なパフォーマンス改善"
+    model_updates: "新モデルバージョンの評価・導入"
+    parameter_tuning: "設定パラメータの最適化"
     
-  documentation:
-    model_specs: "使用モデルの仕様書"
-    performance_benchmarks: "パフォーマンスベンチマーク"
-    known_limitations: "既知の制限事項" 
+  documentation_requirements:
+    performance_benchmarks: "環境別パフォーマンスベンチマーク"
+    optimization_guidelines: "最適化設定ガイドライン"
+    troubleshooting: "問題発生時のトラブルシューティング"
+    known_limitations: "既知の制限事項・対処法"
+
+# ===========================================
+# 13. TTS音声システム統合規約（Phase 2対応）
+# ===========================================
+tts_integration:
+  model_specification:
+    primary: "Zyphra/Zonos-v0.1-transformer"
+    fallback: "hybrid モデル（設定により）"
+    voice_cloning: "有効（enable_voice_cloning: true）"
+    
+  apple_silicon_optimization:
+    mps_usage: "無効（フォールバック削減のため）"
+    memory_fraction: "0.75（MPS使用時）"
+    half_precision: "無効（安定性優先）"
+    debug_mode: "フォールバック診断用"
+    
+  performance_optimization:
+    audio_cache: "24時間TTL、500MB制限"
+    async_generation: "非同期音声生成"
+    worker_threads: "最大2スレッド"
+    gpu_memory_optimization: "有効"
+    
+  directory_management:
+    cache_dir: "voice_data/tts_cache（backend基準）"
+    samples_dir: "voice_data/voice_samples（backend基準）"
+    compression: "有効（品質0.5）"
+    auto_cleanup: "24時間自動クリーンアップ"
+    
+  integration_pattern: |
+    tts:
+      model: "Zyphra/Zonos-v0.1-transformer"
+      enable_mps: false  # フォールバック削減
+      enable_audio_cache: true
+      cache_ttl_hours: 24
+      max_cache_size_mb: 500
+      enable_async_generation: true
+
+# ===========================================
+# 14. データ収集最適化規約（実装版）
+# ===========================================
+data_collection_optimization:
+  collection_settings:
+    interval: "2.0秒（30秒から短縮）"
+    batch_save_size: "5（10から削減）"
+    buffer_size: "15（15FPS × 1秒）"
+    real_time_threshold: "100ms"
+    
+  performance_integration:
+    ai_optimizer: "データ収集とAI最適化の統合"
+    memory_management: "収集データのメモリ効率管理"
+    frame_skipping: "データ収集時のフレームスキップ考慮"
+    
+  storage_optimization:
+    compression: "収集データの圧縮保存"
+    batch_processing: "バッチ単位での効率的保存"
+    cache_integration: "MemoryManager統合キャッシュ"
+    
+  configuration_example: |
+    data_collection:
+      collection_interval_seconds: 2.0
+      batch_save_size: 5
+      buffer_size: 15
+      real_time_threshold_ms: 100
+
+# ===========================================
+# 15. ログ・デバッグ規約（AI/ML特化）
+# ===========================================
+ai_logging:
+  log_levels:
+    performance: "INFO - パフォーマンス統計"
+    optimization: "DEBUG - AI最適化詳細"
+    memory: "WARNING - メモリ警告"
+    errors: "ERROR - AI処理エラー"
+    
+  structured_logging:
+    performance_logs: "FPS, 推論時間, メモリ使用量の構造化ログ"
+    error_context: "エラー発生時の詳細コンテキスト保存"
+    optimization_decisions: "最適化決定の根拠ログ"
+    
+  debug_features:
+    frame_info: "フレーム処理の詳細デバッグ情報"
+    detection_details: "検出結果の詳細ログ"
+    performance_profiling: "パフォーマンスプロファイリング"
+    
+  log_configuration: |
+    logging:
+      level: "INFO"
+      enable_file_output: true
+      log_dir: "logs"
+      max_file_size_mb: 10
+      backup_count: 5
+      console_level: "INFO"
+      file_level: "DEBUG" 

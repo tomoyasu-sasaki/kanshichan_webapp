@@ -1,0 +1,946 @@
+# KanshiChan - コーディング規約（実装版）
+# =============================================
+# バージョン: 2.0
+# 最終更新: 2024-12-27
+# 対象: 全言語（Python, TypeScript, JavaScript, YAML, JSON）
+# 概要: 現在の実装内容に基づいた統一コーディング規約
+
+# ===========================================
+# 1. 全言語共通規約（実装強化版）
+# ===========================================
+general_standards:
+  encoding: "UTF-8"
+  line_endings: "LF (Unix style)"
+  final_newline: true
+  trailing_whitespace: "削除必須"
+  
+  file_structure:
+    header_comment: |
+      """
+      モジュール名 - 簡潔な説明
+      
+      詳細な説明とモジュールの役割
+      使用例や重要な注意事項
+      """
+    imports_section: "import/require文の適切な整理（isort/ESLint準拠）"
+    constants_section: "定数定義の明確な配置"
+    main_logic: "メインロジックの論理的配置"
+    
+  naming_philosophy:
+    descriptive: "目的と内容が明確に分かる名前"
+    consistent: "プロジェクト全体での一貫性"
+    english: "英語での命名（日本語コメントは可）"
+    abbreviations: "広く知られた略語のみ使用"
+    kanshichan_specific: "プロジェクト固有の命名規則を優先"
+
+# ===========================================
+# 2. Python コーディング規約（KanshiChan実装版）
+# ===========================================
+python:
+  style_guide: "PEP 8 + Black formatting + isort + mypy"
+  
+  formatting:
+    line_length: 88
+    indentation: "4 spaces"
+    quotes: "double quotes (Black default)"
+    
+  code_organization:
+    imports:
+      order:
+        - "標準ライブラリ"
+        - "サードパーティライブラリ（torch, cv2, numpy等）"
+        - "ローカルモジュール（utils, models, services等）"
+      separator: "空行で区切る"
+      grouping: "from imports は import より後"
+      relative_imports: "ローカルモジュールは相対インポート推奨"
+      
+    constants:
+      location: "モジュール最上部（imports直後）"
+      naming: "UPPER_SNAKE_CASE"
+      
+  naming_conventions:
+    variables: "snake_case"
+    functions: "snake_case"
+    classes: "PascalCase"
+    constants: "UPPER_SNAKE_CASE"
+    modules: "snake_case"
+    packages: "snake_case"
+    private_members: "_leading_underscore"
+    strongly_private: "__double_leading_underscore"
+    
+  type_hints:
+    usage: "必須（全ての公開API、複雑な関数）"
+    imports: "from typing import Dict, List, Optional, Union, Any"
+    complex_types: "Union, Optional, Dict, List の明示的使用"
+    return_hints: "戻り値の型ヒント必須（公開関数）"
+    dataclass: "@dataclass デコレータの積極的使用"
+    
+  structured_exception_handling:
+    base_exception: "KanshiChanError（全カスタム例外の基底）"
+    exception_categories:
+      ai_ml: "ModelError, InferenceError, OptimizationError"
+      performance: "PerformanceError, MemoryError, FrameSkipError"
+      audio: "AudioError, AudioPlaybackError, TTSError"
+      api: "APIError, ValidationError, LineAPIError"
+      system: "CameraError, HardwareError, InitializationError"
+    
+    wrap_exception_pattern: |
+      from utils.exceptions import wrap_exception, KanshiChanError
+      
+      try:
+          result = risky_operation()
+      except Exception as e:
+          custom_error = wrap_exception(
+              e, CustomErrorClass,
+              "Detailed error message",
+              error_code="CUSTOM_ERROR_001",
+              details={'context': 'additional_info'}
+          )
+          logger.error(f"Operation failed: {custom_error.to_dict()}")
+          raise custom_error
+    
+    error_response_pattern: |
+      from utils.exceptions import create_error_response
+      
+      @api.route('/endpoint', methods=['POST'])
+      def endpoint():
+          try:
+              # Processing logic
+              return jsonify({'success': True, 'data': result})
+          except KanshiChanError as e:
+              return jsonify(create_error_response(e, include_details=True)), 400
+              
+  logging:
+    setup: "from utils.logger import setup_logger"
+    usage: "logger = setup_logger(__name__)"
+    structured_logging: |
+      # 構造化ログの例
+      logger.info("AI processing completed", extra={
+          'fps': current_fps,
+          'inference_time_ms': inference_time * 1000,
+          'memory_usage_mb': memory_usage,
+          'objects_detected': len(detections)
+      })
+      
+      # エラー時のログ
+      logger.error(f"Model initialization failed: {error.to_dict()}", exc_info=True)
+    
+  ai_ml_patterns:
+    ai_optimizer_integration: |
+      class ObjectDetector:
+          def __init__(self, config_manager: Optional[ConfigManager] = None):
+              self.ai_optimizer = AIOptimizer(config_manager) if config_manager else None
+              self.memory_manager = MemoryManager(config_manager) if config_manager else None
+              
+          def detect_objects(self, frame: np.ndarray) -> Dict[str, Any]:
+              if self.ai_optimizer:
+                  # AI最適化統合処理
+                  yolo_results = self.ai_optimizer.optimize_yolo_inference(self.model, frame)
+                  if yolo_results is None:  # フレームスキップ
+                      return self._create_empty_results()
+              # 通常処理
+              
+    memory_management_pattern: |
+      class ServiceClass:
+          def __init__(self):
+              self.memory_manager = MemoryManager()
+              
+          def process_frame(self, frame: np.ndarray):
+              # フレームキャッシュ
+              cache_key = f"frame_{frame.shape}_{hash(frame.tobytes())}"
+              if cached_result := self.memory_manager.get_cached_frame(cache_key):
+                  return cached_result
+                  
+              # 処理
+              result = self._expensive_processing(frame)
+              self.memory_manager.cache_frame(cache_key, result)
+              return result
+  
+  examples:
+    class_definition: |
+      from typing import Optional, Dict, Any
+      from dataclasses import dataclass
+      import logging
+      from utils.logger import setup_logger
+      from utils.exceptions import wrap_exception, ModelError
+      
+      logger = setup_logger(__name__)
+      
+      @dataclass
+      class DetectionResult:
+          confidence: float
+          bbox: tuple[int, int, int, int]
+          class_name: str
+          timestamp: Optional[str] = None
+      
+      class ObjectDetector:
+          """物体検出を行うクラス
+          
+          YOLOv8とMediaPipeを使用した統合物体検出機能を提供します。
+          AI最適化とメモリ管理を統合したパフォーマンス最適化を実装。
+          """
+          
+          def __init__(self, config_manager: Optional[ConfigManager] = None) -> None:
+              self._config_manager = config_manager
+              self._model = None
+              self.ai_optimizer = AIOptimizer(config_manager) if config_manager else None
+              
+          def detect_objects(self, frame: np.ndarray) -> Dict[str, Any]:
+              """フレーム内の物体を検出
+              
+              Args:
+                  frame: 検出対象の画像フレーム
+                  
+              Returns:
+                  検出結果を含む辞書
+                  
+              Raises:
+                  ModelError: モデル初期化またはの推論エラー
+                  ValidationError: 無効なフレーム
+              """
+              if frame is None or frame.size == 0:
+                  raise ValidationError("Invalid frame provided")
+                  
+              try:
+                  # AI最適化統合処理
+                  if self.ai_optimizer:
+                      results = self.ai_optimizer.optimize_yolo_inference(self._model, frame)
+                      if results is None:  # フレームスキップ
+                          return self._create_empty_results()
+                  else:
+                      results = self._model(frame, verbose=False)
+                      
+                  logger.info(f"Detection completed: {len(results)} objects found")
+                  return self._process_results(results)
+                  
+              except Exception as e:
+                  detection_error = wrap_exception(
+                      e, ModelError,
+                      "Object detection failed",
+                      details={'frame_shape': frame.shape}
+                  )
+                  logger.error(f"Detection error: {detection_error.to_dict()}", exc_info=True)
+                  raise detection_error
+
+# ===========================================
+# 3. TypeScript/React コーディング規約（実装版）
+# ===========================================
+typescript:
+  style_guide: "ESLint + Prettier + TypeScript strict mode"
+  
+  formatting:
+    line_length: 80
+    indentation: "2 spaces"
+    semicolons: true
+    quotes: "single"
+    trailing_commas: "es5"
+    
+  naming_conventions:
+    variables: "camelCase"
+    functions: "camelCase"
+    classes: "PascalCase"
+    interfaces: "PascalCase (no I prefix)"
+    types: "PascalCase"
+    enums: "PascalCase"
+    constants: "UPPER_SNAKE_CASE"
+    files: "PascalCase.tsx (components), camelCase.ts (utils)"
+    props: "Props suffix (MonitorViewProps)"
+    
+  type_safety:
+    strict_mode: true
+    no_any: "厳禁（例外的に必要な場合のみ any 使用）"
+    explicit_return_types: "複雑な関数には明示的な戻り値型"
+    null_checks: "strict null checks 有効"
+    readonly_props: "Props インターフェースはreadonly推奨"
+    
+  react_patterns:
+    component_definition: "React.FC<Props> 形式"
+    hooks_optimization: "useCallback, useMemo, React.memo の適切な使用"
+    state_management: "useState, useEffect の最適化"
+    props_destructuring: "Props の分割代入"
+    
+  code_organization:
+    imports:
+      order:
+        - "React関連（React, useState, useEffect等）"
+        - "Chakra UI コンポーネント"
+        - "react-icons"
+        - "node_modules ライブラリ"
+        - "内部モジュール（../utils等）"
+      style: "named imports 優先"
+      
+    exports:
+      style: "named exports 優先"
+      default_export: "React components のみ"
+      
+  internationalization_integration:
+    hook_usage: "useTranslation hook の必須使用"
+    key_structure: "階層的ドット記法（app.title, monitor.status.present）"
+    translation_pattern: |
+      import { useTranslation } from 'react-i18next';
+      
+      const Component: React.FC = () => {
+        const { t, i18n } = useTranslation();
+        
+        return (
+          <Text>{t('monitor.status.present')}</Text>
+        );
+      };
+    
+    language_switching: |
+      const LanguageSwitcher: React.FC = () => {
+        const { i18n, t } = useTranslation();
+        
+        const changeLanguage = useCallback((language: string) => {
+          i18n.changeLanguage(language);
+        }, [i18n]);
+        
+        return (
+          <Menu>
+            <MenuButton as={Button}>
+              {i18n.language === 'en' ? 'English' : '日本語'}
+            </MenuButton>
+            <MenuList>
+              <MenuItem onClick={() => changeLanguage('ja')}>
+                {t('settings.language.japanese')}
+              </MenuItem>
+              <MenuItem onClick={() => changeLanguage('en')}>
+                {t('settings.language.english')}
+              </MenuItem>
+            </MenuList>
+          </Menu>
+        );
+      };
+  
+  examples:
+    interface_definition: |
+      interface DetectionStatus {
+        readonly personDetected: boolean;
+        readonly smartphoneDetected: boolean;
+        readonly absenceTime: number;
+        readonly smartphoneUseTime: number;
+        readonly lastUpdate: Date;
+      }
+      
+      interface MonitorViewProps {
+        readonly userId?: string;
+        readonly autoRefresh?: boolean;
+        readonly onStatusChange?: (status: DetectionStatus) => void;
+      }
+      
+    optimized_component: |
+      import React, { useState, useEffect, useCallback, memo } from 'react';
+      import { Box, VStack, Badge } from '@chakra-ui/react';
+      import { useTranslation } from 'react-i18next';
+      import { useWebSocket } from '../utils/websocket';
+      
+      interface MonitorViewProps {
+        readonly userId?: string;
+        readonly onStatusChange?: (status: DetectionStatus) => void;
+      }
+      
+      export const MonitorView: React.FC<MonitorViewProps> = memo(({
+        userId = 'default',
+        onStatusChange
+      }) => {
+        const { t } = useTranslation();
+        const { status, isConnected, error } = useWebSocket();
+        const [localStatus, setLocalStatus] = useState<DetectionStatus>({
+          personDetected: false,
+          smartphoneDetected: false,
+          absenceTime: 0,
+          smartphoneUseTime: 0,
+          lastUpdate: new Date()
+        });
+        
+        const handleStatusUpdate = useCallback((newStatus: DetectionStatus) => {
+          setLocalStatus(newStatus);
+          onStatusChange?.(newStatus);
+        }, [onStatusChange]);
+        
+        useEffect(() => {
+          if (status) {
+            handleStatusUpdate(status);
+          }
+        }, [status, handleStatusUpdate]);
+        
+        return (
+          <Box position="relative" width="100%" height="100vh" bg="black">
+            <VStack spacing={4} align="start" p={4}>
+              <Badge colorScheme={localStatus.personDetected ? 'green' : 'red'}>
+                {t(localStatus.personDetected ? 'monitor.status.present' : 'monitor.status.absent')}
+              </Badge>
+            </VStack>
+          </Box>
+        );
+      });
+      
+      MonitorView.displayName = 'MonitorView';
+    
+    large_component_organization: |
+      // Phase 5統合ダッシュボード（597行）パターン
+      export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
+        userId = 'default',
+        autoRefresh = true,
+        refreshInterval = 30
+      }) => {
+        // === State Management ===
+        const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
+        const [selectedView, setSelectedView] = useState('overview');
+        
+        // === UI Theming ===
+        const bgColor = useColorModeValue('gray.50', 'gray.900');
+        const toast = useToast();
+        
+        // === Navigation Effects ===
+        useEffect(() => {
+          const handleHashChange = () => {
+            const hash = window.location.hash.replace('#', '');
+            if (validViews.includes(hash)) {
+              setSelectedView(hash);
+            }
+          };
+          window.addEventListener('hashchange', handleHashChange);
+          return () => window.removeEventListener('hashchange', handleHashChange);
+        }, []);
+        
+        // === Event Handlers ===
+        const handleViewChange = useCallback((view: string) => {
+          setSelectedView(view);
+          window.location.hash = view;
+        }, []);
+        
+        // === Render Methods ===
+        const renderSystemStatus = () => { /* 実装 */ };
+        const renderMainContent = () => { /* 実装 */ };
+        
+        return (
+          <Box bg={bgColor} minHeight="100vh">
+            {renderSystemStatus()}
+            {renderMainContent()}
+          </Box>
+        );
+      };
+    
+    hooks_custom: |
+      // WebSocket統合フック（368行）
+      export const useWebSocket = (): UseWebSocketResult => {
+        const [status, setStatus] = useState<DetectionStatus | null>(null);
+        const [isConnected, setIsConnected] = useState(false);
+        const [error, setError] = useState<string | null>(null);
+        
+        const reconnect = useCallback(() => {
+          websocketManager.reconnect();
+        }, []);
+        
+        useEffect(() => {
+          const unsubscribeStatus = websocketManager.onStatusUpdate(setStatus);
+          const unsubscribeConnection = websocketManager.onConnectionChange(setIsConnected);
+          const unsubscribeError = websocketManager.onError(setError);
+          
+          return () => {
+            unsubscribeStatus();
+            unsubscribeConnection();
+            unsubscribeError();
+          };
+        }, []);
+        
+        return { status, isConnected, error, reconnect };
+      };
+
+# ===========================================
+# 4. 国際化（i18n）コーディング規約（実装版）
+# ===========================================
+internationalization:
+  framework: "react-i18next + i18next"
+  supported_languages:
+    - code: "ja"
+      name: "日本語"
+      fallback: true
+      file: "src/i18n/locales/ja.json"
+    - code: "en"
+      name: "English"
+      fallback: false
+      file: "src/i18n/locales/en.json"
+  
+  configuration:
+    detection: "ブラウザ言語自動検出 + localStorage"
+    fallback_language: "ja"
+    storage: "localStorage"
+    interpolation: "escapeValue: false"
+    debug: false
+    
+  key_structure:
+    naming: "階層的ドット記法"
+    categories:
+      app: "アプリケーション基本情報"
+      tabs: "ナビゲーションタブ"
+      monitor: "監視画面関連"
+      settings: "設定画面関連"
+      schedule: "スケジュール機能"
+      common: "共通要素"
+    
+    example_structure: |
+      {
+        "app": {
+          "title": "監視ちゃん",
+          "subtitle": "AI作業集中支援ツール"
+        },
+        "monitor": {
+          "status": {
+            "present": "在席中",
+            "absent": "不在",
+            "unknown": "不明"
+          },
+          "performance": {
+            "fps": "FPS",
+            "inference": "推論時間",
+            "memory": "メモリ使用量"
+          }
+        }
+      }
+  
+  implementation_patterns:
+    setup: |
+      // src/i18n/index.ts
+      import i18n from 'i18next';
+      import { initReactI18next } from 'react-i18next';
+      import LanguageDetector from 'i18next-browser-languagedetector';
+      
+      i18n
+        .use(LanguageDetector)
+        .use(initReactI18next)
+        .init({
+          resources: { ja: { translation: ja }, en: { translation: en } },
+          fallbackLng: 'ja',
+          debug: false,
+          interpolation: { escapeValue: false },
+          detection: {
+            order: ['localStorage', 'navigator', 'htmlTag'],
+            caches: ['localStorage'],
+          },
+        });
+    
+    component_usage: |
+      import { useTranslation } from 'react-i18next';
+      
+      const Component: React.FC = () => {
+        const { t, i18n } = useTranslation();
+        
+        // 基本翻訳
+        const title = t('app.title');
+        
+        // 変数展開
+        const message = t('monitor.absent_time', { time: absenceTime });
+        
+        // 言語変更
+        const changeLanguage = (lang: string) => {
+          i18n.changeLanguage(lang);
+        };
+        
+        return <Text>{title}</Text>;
+      };
+    
+    language_switcher: |
+      const LanguageSwitcher: React.FC = () => {
+        const { i18n, t } = useTranslation();
+        
+        return (
+          <Menu>
+            <MenuButton as={Button} leftIcon={<FaGlobe />}>
+              {i18n.language === 'en' ? 'English' : '日本語'}
+            </MenuButton>
+            <MenuList>
+              <MenuItem onClick={() => i18n.changeLanguage('ja')}>
+                {t('settings.language.japanese')}
+              </MenuItem>
+              <MenuItem onClick={() => i18n.changeLanguage('en')}>
+                {t('settings.language.english')}
+              </MenuItem>
+            </MenuList>
+          </Menu>
+        );
+      };
+  
+  quality_assurance:
+    completeness: "全92キーの翻訳完了"
+    consistency: "キー命名規則の統一"
+    context: "機能別のコンテキスト分離"
+    validation: "翻訳漏れの自動検出"
+
+# ===========================================
+# 5. YAML/JSON コーディング規約（実装版）
+# ===========================================
+yaml:
+  formatting:
+    indentation: "2 spaces"
+    no_tabs: true
+    line_length: 120
+    
+  structure:
+    keys: "snake_case"
+    boolean_values: "true/false (lowercase)"
+    quotes: "文字列が特殊文字を含む場合のみ使用"
+    comments: "# で始まるセクションコメント必須"
+    
+  kanshichan_specific:
+    config_structure: |
+      # KanshiChan設定構造
+      detector:
+        use_mediapipe: true
+        use_yolo: true
+        mediapipe_options:
+          pose:
+            min_detection_confidence: 0.7
+        yolo_options:
+          confidence_threshold: 0.5
+      
+      optimization:
+        target_fps: 15.0
+        min_fps: 10.0
+        batch_processing:
+          enabled: true
+          batch_size: 8
+      
+      memory:
+        threshold_percent: 80.0
+        cache:
+          max_size: 100
+          max_memory_mb: 50.0
+
+json:
+  formatting:
+    indentation: "2 spaces"
+    property_names: "camelCase"
+    no_trailing_commas: true
+    
+  i18n_files:
+    structure: "階層的オブジェクト"
+    naming: "camelCase for keys within sections"
+    
+  api_responses:
+    success_format: |
+      {
+        "success": true,
+        "data": {
+          "results": [],
+          "metadata": {}
+        },
+        "timestamp": "2024-12-27T10:30:00Z"
+      }
+    
+    error_format: |
+      {
+        "success": false,
+        "error": {
+          "type": "ValidationError",
+          "code": "INVALID_INPUT",
+          "message": "User-friendly error message",
+          "details": {}
+        },
+        "timestamp": "2024-12-27T10:30:00Z"
+      }
+
+# ===========================================
+# 6. パフォーマンス最適化規約（実装版）
+# ===========================================
+performance_optimization:
+  python:
+    ai_optimization:
+      frame_skipping: "AIOptimizer.optimize_yolo_inference() 使用"
+      memory_management: "MemoryManager統合（LRUキャッシュ + GC最適化）"
+      batch_processing: "実験的バッチ処理機能"
+      device_optimization: "MPS > CUDA > CPU 自動選択"
+      
+    async_patterns: |
+      import asyncio
+      from typing import Awaitable
+      
+      async def async_tts_generation(text: str) -> Optional[str]:
+          """非同期TTS音声生成"""
+          try:
+              loop = asyncio.get_event_loop()
+              result = await loop.run_in_executor(None, tts_service.generate, text)
+              return result
+          except Exception as e:
+              logger.error(f"Async TTS generation failed: {e}")
+              return None
+    
+    caching_patterns: |
+      from functools import lru_cache
+      from utils.memory_manager import MemoryManager
+      
+      class ServiceClass:
+          def __init__(self):
+              self.memory_manager = MemoryManager()
+          
+          @lru_cache(maxsize=128)
+          def expensive_calculation(self, input_data: str) -> Any:
+              return self._complex_processing(input_data)
+          
+          def cache_frame_result(self, frame_key: str, result: Any):
+              self.memory_manager.cache_frame(frame_key, result)
+              
+  typescript:
+    react_optimization:
+      memo: "React.memo() でコンポーネント最適化"
+      callbacks: "useCallback() でイベントハンドラ最適化"
+      memoization: "useMemo() で計算結果キャッシュ"
+      lazy_loading: "React.lazy() でコード分割"
+      
+    examples: |
+      // 大規模コンポーネント最適化
+      export const IntegratedDashboard: React.FC<Props> = memo(({
+        userId,
+        autoRefresh
+      }) => {
+        const [data, setData] = useState(null);
+        
+        const fetchData = useCallback(async () => {
+          // 最適化された非同期データ取得
+        }, [userId]);
+        
+        const processedData = useMemo(() => {
+          return data ? expensiveProcessing(data) : null;
+        }, [data]);
+        
+        return <div>{/* レンダリング */}</div>;
+      });
+
+# ===========================================
+# 7. セキュリティ規約（実装版）
+# ===========================================
+security:
+  input_validation:
+    python: |
+      from utils.exceptions import ValidationError
+      
+      def validate_user_input(data: Dict[str, Any]) -> Dict[str, Any]:
+          if not isinstance(data, dict):
+              raise ValidationError("Input must be a dictionary")
+          # バリデーション処理
+          return sanitized_data
+    
+    typescript: |
+      interface ValidatedInput {
+        userId: string;
+        message: string;
+      }
+      
+      const validateInput = (input: unknown): ValidatedInput => {
+        if (!input || typeof input !== 'object') {
+          throw new Error('Invalid input');
+        }
+        // 型ガード処理
+        return input as ValidatedInput;
+      };
+  
+  secrets_management:
+    environment_variables: "機密情報は.envファイルで管理"
+    no_hardcoding: "APIキー、トークンの直接埋め込み禁止"
+    gitignore: "機密ファイルの適切な除外"
+    
+  api_security:
+    error_responses: "詳細なエラー情報の露出制限"
+    input_sanitization: "XSS、SQLインジェクション対策"
+    rate_limiting: "API呼び出し制限"
+
+# ===========================================
+# 8. テスト規約（実装版）
+# ===========================================
+testing:
+  python:
+    framework: "pytest + pytest-asyncio"
+    coverage: "pytest-cov で90%以上のカバレッジ"
+    structure: |
+      def test_ai_optimizer_frame_skipping():
+          optimizer = AIOptimizer()
+          # フレームスキップロジックのテスト
+          
+      def test_memory_manager_cache():
+          memory_manager = MemoryManager()
+          # キャッシュ機能のテスト
+          
+      def test_exception_handling():
+          with pytest.raises(ModelError):
+              # 例外処理のテスト
+  
+  typescript:
+    framework: "Jest + React Testing Library"
+    coverage: "90%以上のカバレッジ"
+    structure: |
+      describe('MonitorView', () => {
+        test('renders status correctly', () => {
+          render(<MonitorView />);
+          expect(screen.getByText('在席中')).toBeInTheDocument();
+        });
+        
+        test('handles status updates', () => {
+          const onStatusChange = jest.fn();
+          render(<MonitorView onStatusChange={onStatusChange} />);
+          // WebSocketイベントシミュレーション
+        });
+      });
+  
+  integration_testing:
+    api_testing: "全APIエンドポイントの統合テスト"
+    websocket_testing: "WebSocket通信のテスト"
+    i18n_testing: "多言語対応のテスト"
+
+# ===========================================
+# 9. ドキュメント規約（実装版）
+# ===========================================
+documentation:
+  python_docstrings:
+    format: "Google style"
+    required_for:
+      - "全ての公開クラス・関数"
+      - "複雑な内部処理"
+      - "AI/ML関連の処理"
+    
+    example: |
+      def optimize_yolo_inference(self, model, frame: np.ndarray) -> Optional[Any]:
+          """YOLO推論の最適化実行
+          
+          フレームスキップ判定を行い、必要に応じて推論を実行します。
+          パフォーマンス統計を記録し、動的調整を行います。
+          
+          Args:
+              model: YOLOモデルインスタンス
+              frame: 推論対象のフレーム
+              
+          Returns:
+              推論結果（スキップ時はNone）
+              
+          Raises:
+              OptimizationError: 最適化処理のエラー
+              ModelError: モデル推論のエラー
+          """
+  
+  typescript_comments:
+    jsdoc: "複雑な関数にJSDoc形式のコメント"
+    interfaces: "型定義に説明コメント"
+    
+    example: |
+      /**
+       * WebSocket接続管理フック
+       * 
+       * リアルタイム通信の状態管理と音声ストリーミングを提供
+       * 
+       * @returns WebSocket状態とイベントハンドラ
+       */
+      export const useWebSocket = (): UseWebSocketResult => {
+  
+  api_documentation:
+    openapi: "API仕様のOpenAPI記述"
+    examples: "リクエスト・レスポンスの例"
+    error_codes: "エラーコードの詳細説明"
+
+# ===========================================
+# 10. 品質保証規約（実装版）
+# ===========================================
+quality_assurance:
+  automated_tools:
+    python:
+      - "Black: 自動フォーマッティング"
+      - "isort: import文の整理" 
+      - "flake8: コードスタイルチェック"
+      - "mypy: 型チェック（厳密モード）"
+      - "pytest: テスト実行"
+      
+    typescript:
+      - "Prettier: 自動フォーマッティング"
+      - "ESLint: コードスタイル + 型チェック"
+      - "TypeScript: strict mode"
+      - "Jest: テスト実行"
+      
+  code_review_checklist:
+    functionality:
+      - "要件通りの動作確認"
+      - "エラーハンドリングの適切性"
+      - "パフォーマンス考慮"
+    
+    code_quality:
+      - "命名規約の遵守"
+      - "コメント・ドキュメントの適切性"
+      - "テストの網羅性"
+      - "国際化対応（該当する場合）"
+    
+    security:
+      - "入力バリデーション"
+      - "機密情報の適切な取り扱い"
+      - "権限チェック"
+    
+    kanshichan_specific:
+      - "AI最適化の統合確認"
+      - "メモリ管理の適切性" 
+      - "構造化例外処理の使用"
+      - "国際化キーの適切性"
+      - "WebSocket通信の安定性"
+
+# ===========================================
+# 11. 開発環境規約（実装版）
+# ===========================================
+development_environment:
+  python_environment:
+    version: "Python 3.9+"
+    package_manager: "pip + requirements.txt"
+    virtual_env: "venv または conda"
+    ide_settings: "VSCode + Python extension + Black + mypy"
+    
+  typescript_environment:
+    version: "Node.js 18+"
+    package_manager: "npm"
+    build_tool: "Vite 6.2.0"
+    ide_settings: "VSCode + TypeScript + Prettier + ESLint"
+    
+  git_workflow:
+    branch_naming: "feature/description, bugfix/description"
+    commit_messages: "Conventional Commits 形式"
+    pre_commit_hooks: "コードフォーマット + テスト"
+    
+  ci_cd:
+    quality_gates:
+      - "全テストの通過"
+      - "コードカバレッジ90%以上"
+      - "型チェックの通過"
+      - "セキュリティスキャン"
+    
+    deployment:
+      - "品質基準クリア後のデプロイ"
+      - "段階的リリース"
+      - "ロールバック準備"
+
+# ===========================================
+# 12. KanshiChan固有規約（実装特化）
+# ===========================================
+kanshichan_specific:
+  ai_processing:
+    integration_pattern: "AIOptimizer + MemoryManager 統合必須"
+    error_handling: "wrap_exception による構造化例外処理"
+    logging: "structured logging でパフォーマンス統計記録"
+    
+  tts_system:
+    async_pattern: "非同期音声生成（Phase 2対応）"
+    cache_integration: "音声キャッシュシステム活用"
+    fallback: "ブラウザTTSフォールバック実装"
+    
+  internationalization:
+    complete_coverage: "全UI要素の多言語対応必須"
+    key_consistency: "階層的キー構造の統一"
+    dynamic_switching: "実行時言語切り替え対応"
+    
+  websocket_communication:
+    audio_streaming: "音声ストリーミング対応（368行実装）"
+    real_time_updates: "リアルタイム状態更新"
+    error_recovery: "接続エラー時の自動復旧"
+    
+  component_architecture:
+    large_components: "Phase 5統合ダッシュボード（597行）パターン"
+    modular_design: "機能別コンポーネント分離"
+    performance_optimization: "React.memo + hooks 最適化"
+    
+  data_management:
+    caching_strategy: "多層キャッシュ（メモリ + ローカル）"
+    real_time_sync: "WebSocket経由のリアルタイム同期"
+    offline_support: "オフライン対応データ管理" 

@@ -1,49 +1,69 @@
 # 監視ちゃん (KanshiChan) - プロジェクト規約
 # ================================================
-# バージョン: 1.0
+# バージョン: 2.0
 # 作成日: 2024-12-XX
+# 最終更新: 2024-12-27
 # 概要: 一貫したアプリケーション開発のための総合規約
 
 project_info:
   name: "KanshiChan (監視ちゃん)"
-  version: "0.1.0"
-  description: "AIベースの作業集中支援ツール"
+  version: "2.0.0"
+  description: "AIベースの作業集中支援ツール（AI最適化・国際化対応・TTS統合版）"
   architecture: "Python/Flask + React/TypeScript"
   
 # ===========================================
-# 1. 技術スタック規約
+# 1. 技術スタック規約（2024年最新版）
 # ===========================================
 technology_stack:
   backend:
     language: "Python"
     version: ">=3.9"
-    framework: "Flask >=2.0"
+    framework: "Flask >=2.3"
     ai_libraries:
-      - "OpenCV >=4.5"
-      - "MediaPipe >=0.8"
-      - "YOLOv8 (ultralytics)"
-      - "torch"
+      - "OpenCV >=4.11"
+      - "MediaPipe >=0.10.21"
+      - "YOLOv8 (ultralytics >=8.3.87)"
+      - "torch >=2.5.1"
+      - "torchvision >=0.20.1"
+      - "torchaudio >=2.5.1"
     web_libraries:
-      - "Flask >=2.0"
-      - "socketio"
+      - "Flask >=2.3.3"
+      - "Flask-SocketIO >=5.5.1"
+      - "Flask-CORS >=5.0.1"
+    optimization_libraries:
+      - "psutil >=7.0.0"
+      - "numpy >=1.26.4"
+    ai_services:
+      - "Zonos TTS (Zyphra/Zonos-v0.1-transformer)"
+      - "ollama >=0.4.3"
+      - "openai >=1.70.0"
     utilities:
-      - "PyYAML"
-      - "Pillow"
-      - "numpy"
-    code_style: "Black + Flake8"
-    testing: "pytest"
+      - "PyYAML >=6.0.2"
+      - "Pillow >=10.0.0"
+      - "requests >=2.32.3"
+    code_style: "Black + Flake8 + mypy"
+    testing: "pytest >=8.3.5"
     
   frontend:
     language: "TypeScript"
-    version: ">=4.5"
-    framework: "React >=18"
-    ui_library: "Chakra UI >=2.8"
-    build_tool: "Vite >=6.0"
-    testing: "Jest + React Testing Library"
-    code_style: "ESLint + Prettier"
+    version: ">=5.7.2"
+    framework: "React >=19.0.0"
+    ui_library: "Chakra UI >=2.8.2"
+    build_tool: "Vite >=6.2.0"
+    internationalization:
+      - "i18next >=25.2.0"
+      - "react-i18next >=15.5.2"
+      - "i18next-browser-languagedetector >=8.1.0"
+    networking:
+      - "socket.io-client >=4.8.1"
+      - "axios >=1.8.2"
+    animation: "framer-motion >=11.0.8"
+    icons: "react-icons >=5.5.0"
+    testing: "Jest >=29.7.0 + React Testing Library >=14.2.1"
+    code_style: "ESLint >=9.21.0 + Prettier"
     
 # ===========================================
-# 2. プロジェクト構造規約
+# 2. プロジェクト構造規約（詳細版）
 # ===========================================
 project_structure:
   backend:
@@ -51,24 +71,45 @@ project_structure:
     source_path: "backend/src/"
     structure:
       config: "設定ファイル (.yaml, .json)"
-      core: "コア機能 (カメラ、検出、状態管理)"
-      services: "外部サービス連携 (アラート、LLM、LINE)"
-      web: "Web API と WebSocket"
-      utils: "共通ユーティリティ"
+      core: 
+        - "カメラ制御（camera.py）"
+        - "AI最適化（ai_optimizer.py）"
+        - "メモリ管理（memory_manager.py）"
+        - "統合物体検出（object_detector.py）"
+        - "フレーム処理（frame_processor.py）"
+        - "監視機能（monitor.py）"
+        - "状態管理（state.py）"
+      services: 
+        - "アラート管理（alert_manager.py）"
+        - "LLM連携（llm_service.py）"
+        - "LINE通知（line_service.py）"
+        - "TTS音声（tts/）"
+        - "スケジュール（schedule_manager.py）"
+      web: "Flask API と WebSocket（api.py, app.py）"
+      utils: "共通ユーティリティ（logger.py, config_manager.py等）"
       sounds: "アラート音声ファイル"
+      data: "データファイル保存"
+      models: "AIモデル管理"
     test_path: "backend/tests/"
     
   frontend:
     base_path: "frontend/"
     source_path: "frontend/src/"
     structure:
-      components: "React コンポーネント"
-      utils: "ユーティリティ関数"
+      components: 
+        - "MonitorView.tsx（監視画面）"
+        - "SettingsPanel.tsx（設定パネル）"
+        - "ScheduleView.tsx（スケジュール管理）"
+        - "PerformanceStats.tsx（パフォーマンス統計）"
+        - "LanguageSwitcher.tsx（言語切り替え）"
+        - "VoiceSettings.tsx（音声設定）"
+      utils: "WebSocket通信等のユーティリティ"
+      i18n: "国際化設定とロケールファイル（ja.json, en.json）"
       assets: "静的アセット"
     test_path: "frontend/src/**/__tests__/"
     
 # ===========================================
-# 3. 命名規約
+# 3. 命名規約（拡張版）
 # ===========================================
 naming_conventions:
   files:
@@ -76,10 +117,12 @@ naming_conventions:
     typescript: "PascalCase.tsx (components), camelCase.ts (utils)"
     config: "snake_case.yaml"
     test: "test_*.py, *.test.tsx"
+    i18n: "言語コード.json (ja.json, en.json)"
     
   directories:
     general: "snake_case"
     components: "PascalCase (React components only)"
+    i18n: "i18n/ (locales/)"
     
   variables:
     python: "snake_case"
@@ -89,13 +132,18 @@ naming_conventions:
   functions:
     python: "snake_case"
     typescript: "camelCase"
+    hooks: "use + PascalCase (useTranslation, useWebSocket)"
     
   classes:
     python: "PascalCase"
     typescript: "PascalCase"
     
+  internationalization:
+    keys: "dot.notation (app.title, monitor.status.present)"
+    namespaces: "translation (デフォルト)"
+    
 # ===========================================
-# 4. コーディング規約
+# 4. コーディング規約（強化版）
 # ===========================================
 coding_standards:
   general:
@@ -106,22 +154,29 @@ coding_standards:
   python:
     formatter: "Black"
     linter: "Flake8"
-    type_checker: "mypy (推奨)"
+    type_checker: "mypy (必須)"
     docstring: "Google style"
     imports: "isort"
+    optimization: "型ヒント必須、async/await活用"
     
   typescript:
     formatter: "Prettier"
     linter: "ESLint"
     strict_mode: true
-    no_any: "避ける（型安全性のため）"
+    no_any: "厳禁（型安全性のため）"
+    hooks: "React Hooks の最適化必須"
+    
+  internationalization:
+    key_naming: "階層構造、明確な命名"
+    fallback: "日本語をフォールバック言語として設定"
+    interpolation: "動的値の安全な挿入"
     
 # ===========================================
-# 5. API 設計規約
+# 5. API 設計規約（拡張版）
 # ===========================================
 api_conventions:
   rest_api:
-    base_url: "http://localhost:5001/api"
+    base_url: "http://localhost:8000/api"
     versioning: "URL パス (/api/v1/)"
     naming: "kebab-case"
     http_methods:
@@ -130,70 +185,107 @@ api_conventions:
       PUT: "データ更新（完全）"
       PATCH: "データ更新（部分）"
       DELETE: "データ削除"
+    new_endpoints:
+      - "/api/performance - パフォーマンス統計"
+      - "/api/tts/* - TTS音声関連"
+      - "/api/ai-optimization - AI最適化設定"
       
   websocket:
     namespace: "/"
     events: "snake_case"
+    real_time_data:
+      - "detection_status - 検出状況"
+      - "performance_stats - パフォーマンス統計"
+      - "schedule_alert - スケジュールアラート"
     
   response_format:
     success: |
       {
         "status": "success",
         "data": {...},
-        "message": "Optional message"
+        "message": "Optional message",
+        "timestamp": "ISO 8601 format"
       }
     error: |
       {
         "status": "error",
         "error": "Error description",
-        "code": "ERROR_CODE"
+        "code": "ERROR_CODE",
+        "details": {...},
+        "timestamp": "ISO 8601 format"
       }
       
 # ===========================================
-# 6. 設定管理規約
+# 6. 設定管理規約（詳細版）
 # ===========================================
 configuration:
   format: "YAML"
   location: "backend/src/config/"
   main_file: "config.yaml"
   structure:
-    - "ネストした設定でグループ化"
-    - "environment 別設定の分離"
-    - "デフォルト値の明示"
-    - "設定説明のコメント記載"
+    - "AI最適化設定（optimization:）"
+    - "メモリ管理設定（memory:）"
+    - "TTS音声設定（tts:）"
+    - "国際化設定（対応言語: ja, en）"
+    - "パフォーマンス設定（data_collection:）"
+    - "ログ設定（logging:）"
+    
+  new_sections:
+    optimization:
+      - "target_fps: 目標フレームレート"
+      - "batch_processing: バッチ処理設定"
+      - "memory: メモリ管理設定"
+    tts:
+      - "model: Zonos TTS モデル設定"
+      - "device: デバイス最適化設定"
+      - "cache: 音声キャッシュ設定"
     
   validation:
     - "起動時の設定検証必須"
     - "型安全性の確保"
     - "必須設定項目のチェック"
+    - "AI最適化パラメータの妥当性検証"
     
 # ===========================================
-# 7. エラーハンドリング規約
+# 7. エラーハンドリング規約（強化版）
 # ===========================================
 error_handling:
   logging:
-    format: "structured logging"
+    format: "structured logging (JSON)"
     levels: ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     output: "ファイル + コンソール"
     rotation: "日次ローテーション"
+    performance_logging: "AI処理・メモリ使用量の詳細ログ"
     
   exceptions:
-    custom: "業務固有例外クラスの定義"
+    custom: "業務固有例外クラスの定義（utils/exceptions.py）"
+    categories:
+      - "ModelError: AI処理関連"
+      - "MemoryError: メモリ管理関連"
+      - "OptimizationError: 最適化関連"
+      - "ConfigError: 設定関連"
     propagation: "適切なレベルでキャッチ"
-    user_feedback: "ユーザーフレンドリーなメッセージ"
+    user_feedback: "国際化対応のエラーメッセージ"
+    
+  frontend_error_handling:
+    - "WebSocket接続エラー対応"
+    - "Toast通知による状況フィードバック"
+    - "言語切り替え時のエラーハンドリング"
     
 # ===========================================
-# 8. テスト規約
+# 8. テスト規約（拡張版）
 # ===========================================
 testing:
   coverage:
     minimum: "80%"
     target: "90%"
+    current: "79.13% (実績)"
     
   types:
     unit: "関数・メソッド単位"
     integration: "モジュール間連携"
     e2e: "フロントエンド操作"
+    performance: "AI処理・メモリ使用量のテスト"
     
   naming:
     python: "test_*.py"
@@ -204,8 +296,13 @@ testing:
     act: "テスト対象実行"
     assert: "結果検証"
     
+  special_tests:
+    ai_optimization: "AI最適化機能のパフォーマンステスト"
+    internationalization: "多言語対応のテスト"
+    memory_management: "メモリリーク検出テスト"
+    
 # ===========================================
-# 9. Git 運用規約
+# 9. Git 運用規約（拡張版）
 # ===========================================
 git_workflow:
   branching:
@@ -214,54 +311,116 @@ git_workflow:
     feature: "feature/機能名"
     bugfix: "fix/問題概要"
     hotfix: "hotfix/緊急修正"
+    performance: "perf/最適化内容"
     
   commit_message:
     format: "type(scope): description"
-    types: ["feat", "fix", "docs", "style", "refactor", "test", "chore"]
+    types: ["feat", "fix", "docs", "style", "refactor", "test", "chore", "perf", "i18n"]
     examples:
-      - "feat(detector): YOLOv8モデルの追加"
-      - "fix(api): WebSocket接続エラーの修正"
-      - "docs(readme): インストール手順の更新"
+      - "feat(ai): AI最適化機能の追加"
+      - "perf(memory): メモリ管理最適化"
+      - "i18n(frontend): 国際化対応の実装"
+      - "fix(tts): TTS音声生成エラーの修正"
       
   pull_request:
-    template: "必須（理由、変更内容、テスト結果）"
+    template: "必須（理由、変更内容、テスト結果、パフォーマンス影響）"
     review: "最低1名のレビュー必須"
     merge: "Squash merge推奨"
     
 # ===========================================
-# 10. セキュリティ規約
+# 10. セキュリティ規約（強化版）
 # ===========================================
 security:
   secrets:
     storage: "環境変数または安全な設定ファイル"
     git_exclusion: ".gitignore での除外必須"
-    examples: ["API keys", "tokens", "passwords"]
+    examples: ["API keys", "tokens", "passwords", "TTS model keys"]
     
   input_validation:
     sanitization: "全入力データのサニタイズ"
     type_checking: "型検証の実施"
     size_limits: "適切なサイズ制限"
+    i18n_safety: "翻訳キーのサニタイズ"
     
   dependencies:
     scanning: "定期的な脆弱性スキャン"
     updates: "セキュリティパッチの迅速適用"
     minimal: "最小限の依存関係"
+    ai_models: "AIモデルの安全性検証"
 
 # ===========================================
-# 11. パフォーマンス規約
+# 11. パフォーマンス規約（最適化版）
 # ===========================================
 performance:
+  ai_processing:
+    target_fps: "15+ FPS (実績)"
+    optimization_features:
+      - "動的フレームスキップ (ai_optimizer.py)"
+      - "メモリ管理強化 (memory_manager.py)"
+      - "バッチ処理 (実験的機能)"
+    memory_management:
+      - "LRU キャッシュシステム"
+      - "ガベージコレクション最適化"
+      - "緊急メモリクリーンアップ"
+    monitoring:
+      - "リアルタイムFPS監視"
+      - "メモリ使用量追跡"
+      - "推論時間測定"
+      
   backend:
-    response_time: "API レスポンス < 200ms"
-    memory_usage: "メモリ使用量監視"
+    response_time: "API レスポンス < 200ms (実績)"
+    memory_usage: "動的メモリ管理"
     error_recovery: "エラー時の適切な回復処理"
+    tts_optimization: "音声生成の最適化"
     
   frontend:
-    bundle_size: "JS bundle < 2MB"
+    bundle_size: "効率的なコード分割実装済み"
     loading_time: "初期読み込み < 3秒"
     responsiveness: "ユーザー操作応答性"
+    i18n_performance: "言語切り替え時のパフォーマンス"
     
-  ai_processing:
-    real_time: "フレーム処理 >= 15 FPS"
-    accuracy: "検出精度の定期的な評価"
-    resource_optimization: "GPU/CPU使用量の最適化" 
+# ===========================================
+# 12. 国際化規約（新規追加）
+# ===========================================
+internationalization:
+  supported_languages:
+    - code: "ja"
+      name: "日本語"
+      fallback: true
+    - code: "en"
+      name: "English"
+      
+  implementation:
+    framework: "react-i18next + i18next"
+    detection: "ブラウザ言語自動検出"
+    storage: "localStorage による設定保存"
+    
+  translation_management:
+    structure: "階層的なキー構造"
+    naming: "機能ベースの命名"
+    validation: "翻訳漏れの検出"
+    
+  quality_assurance:
+    completeness: "全翻訳キーの完全性チェック"
+    context: "適切なコンテキスト提供"
+    testing: "多言語環境でのテスト"
+
+# ===========================================
+# 13. TTS音声システム規約（新規追加）
+# ===========================================
+tts_system:
+  core_model: "Zyphra/Zonos-v0.1-transformer"
+  features:
+    voice_cloning: "音声クローン機能"
+    multi_language: "多言語対応"
+    emotion_control: "感情制御"
+    
+  optimization:
+    device_support: "MPS/CUDA/CPU 自動選択"
+    fallback: "CPU フォールバック機能"
+    caching: "音声キャッシュシステム"
+    
+  quality:
+    generation_time: "高速モード 30秒以内"
+    audio_quality: "高品質音声生成"
+    error_handling: "堅牢なエラー処理" 

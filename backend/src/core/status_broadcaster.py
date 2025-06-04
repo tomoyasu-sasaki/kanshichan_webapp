@@ -12,6 +12,7 @@ from utils.exceptions import (
     NetworkError, RenderingError, StateError,
     HardwareError, AIProcessingError, wrap_exception
 )
+from utils.serialization_utils import create_websocket_safe_status
 
 logger = setup_logger(__name__)
 
@@ -78,6 +79,79 @@ class StatusBroadcaster:
             )
             logger.error(f"Status broadcast error: {broadcast_error.to_dict()}")
 
+    # Phase 4.1: フロントエンド向け拡張イベント配信機能
+    def broadcast_behavior_data(self, behavior_data: Dict[str, Any]) -> None:
+        """
+        行動データをWebSocketでブロードキャストする
+        
+        Args:
+            behavior_data: 行動データの辞書
+        """
+        try:
+            from web.websocket import socketio
+            if socketio:
+                socketio.emit('behavior_data', behavior_data)
+                logger.debug(f"Behavior data broadcasted: {len(str(behavior_data))} bytes")
+        except Exception as e:
+            logger.error(f"Behavior data broadcast error: {e}")
+
+    def broadcast_analysis_results(self, analysis_results: Dict[str, Any]) -> None:
+        """
+        分析結果をWebSocketで配信する
+        
+        Args:
+            analysis_results: 分析結果データ
+        """
+        try:
+            # analysis_results イベントとして配信
+            from web.websocket import socketio
+            if socketio:
+                socketio.emit('analysis_results', analysis_results)
+                logger.debug(f"Analysis results event sent: {len(analysis_results)} items")
+        except Exception as e:
+            logger.error(f"Failed to broadcast analysis results: {e}", exc_info=True)
+
+    # Phase 4.2: 拡張ステータス配信メソッド
+    def broadcast_enhanced_status(self, enhanced_status: Dict[str, Any]) -> None:
+        """
+        拡張ステータス情報をWebSocketで配信する
+        
+        Args:
+            enhanced_status: behavior_data, analysis_results等を含む拡張ステータス
+        """
+        try:
+            # 通常のstatus配信
+            from web.websocket import socketio
+            if not socketio:
+                logger.warning("WebSocket not available for enhanced status broadcast")
+                return
+            
+            # MediaPipeオブジェクトを安全な形式に変換
+            safe_status = create_websocket_safe_status(enhanced_status)
+            
+            socketio.emit('status', safe_status)
+            
+            # 個別イベントとしても配信
+            if 'behavior_data' in safe_status:
+                socketio.emit('behavior_data', safe_status['behavior_data'])
+                logger.debug("Behavior data event sent")
+                
+            if 'analysis_results' in safe_status:
+                socketio.emit('analysis_results', safe_status['analysis_results'])
+                logger.debug("Analysis results event sent")
+                
+            logger.debug(f"Enhanced status broadcasted with {len(safe_status)} sections")
+        except Exception as e:
+            broadcast_error = wrap_exception(
+                e, NetworkError,
+                "Failed to broadcast enhanced status",
+                details={
+                    'status_keys': list(enhanced_status.keys()) if enhanced_status else [],
+                    'websocket_available': 'socketio' in locals()
+                }
+            )
+            logger.error(f"Enhanced status broadcast error: {broadcast_error.to_dict()}")
+
     def get_current_frame(self, detection_results: Dict[str, Any]) -> Optional[bytes]:
         """
         WebUIで使用する描画済みのフレームを取得
@@ -99,18 +173,18 @@ class StatusBroadcaster:
                 # detection_results['landmarks'] からランドマークデータを取得し、
                 # detector.py が認識できるキー (pose_landmarks など) に戻す
                 landmarks = results_copy.get('landmarks', {})
-                logger.info(f"[DEBUG] Original landmarks data: {landmarks}")
+                logger.debug(f"Original landmarks data: {landmarks}")
                 if isinstance(landmarks, dict):
                     if 'pose' in landmarks:
                         results_copy['pose_landmarks'] = landmarks.get('pose')
-                        logger.info(f"[DEBUG] Converted pose landmarks: {landmarks.get('pose') is not None}")
+                        logger.debug(f"Converted pose landmarks: {landmarks.get('pose') is not None}")
                     if 'hands' in landmarks:
                         results_copy['hands_landmarks'] = landmarks.get('hands')
-                        logger.info(f"[DEBUG] Converted hands landmarks: {landmarks.get('hands') is not None}")
+                        logger.debug(f"Converted hands landmarks: {landmarks.get('hands') is not None}")
                     if 'face' in landmarks:
                         results_copy['face_landmarks'] = landmarks.get('face')
-                        logger.info(f"[DEBUG] Converted face landmarks: {landmarks.get('face') is not None}")
-                logger.info(f"[DEBUG] Final results_copy keys: {list(results_copy.keys())}")
+                        logger.debug(f"Converted face landmarks: {landmarks.get('face') is not None}")
+                logger.debug(f"Final results_copy keys: {list(results_copy.keys())}")
 
                 # Detectorに描画を依頼 (修正済みの results_copy を使用)
                 frame_to_encode = self.detector.draw_detections(frame_copy, results_copy)
