@@ -97,13 +97,17 @@ class ObjectDetector:
             # MediaPipe内部の警告を抑制
             os.environ["MEDIAPIPE_DISABLE_GPU"] = "1"  # GPUを無効化して安定性向上
             
+            # MediaPipe警告抑制のための追加設定
+            os.environ["GLOG_minloglevel"] = "2"  # ERROR以上のログのみ表示
+            os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"  # TensorFlow警告抑制
+            
             self.mp_pose = mp.solutions.pose
             self.mp_hands = mp.solutions.hands
             self.mp_face_mesh = mp.solutions.face_mesh
             self.mp_drawing = mp.solutions.drawing_utils
             self.mp_drawing_styles = mp.solutions.drawing_styles
             
-            # Poseモデル初期化
+            # Poseモデル初期化（警告軽減設定）
             self.pose = self.mp_pose.Pose(
                 static_image_mode=False,
                 model_complexity=0,  # 軽量モデルを使用
@@ -112,7 +116,7 @@ class ObjectDetector:
                 min_tracking_confidence=0.7,   # 信頼度閾値を上げる
                 enable_segmentation=False
             )
-            logger.info("MediaPipe Pose model initialized successfully")
+            logger.info("MediaPipe Pose model initialized with warning suppression")
             
             # Handsモデル初期化（設定が有効な場合）
             if self.landmark_settings.get('hands', {}).get('enabled', False):
@@ -168,7 +172,23 @@ class ObjectDetector:
             else:
                 self.model = YOLO(model_path)
             
+            # YOLOモデルの最適化設定
             self.model.verbose = False
+            
+            # NMS処理最適化 - 警告軽減のための設定
+            self.yolo_predict_args = {
+                'verbose': False,           # 詳細ログ無効化
+                'conf': 0.5,               # 信頼度閾値
+                'iou': 0.7,                # IoU閾値（NMS処理）
+                'max_det': 10,             # 最大検出数制限（NMS軽量化）
+                'agnostic_nms': False,     # クラス別NMS
+                'save': False,             # 結果保存無効
+                'save_txt': False,         # テキスト保存無効
+                'save_conf': False,        # 信頼度保存無効
+                'save_crop': False,        # クロップ保存無効
+                'show': False,             # 表示無効
+                'half': False,             # 半精度計算（CPUでは無効）
+            }
             
             # デバイスの設定
             if torch.backends.mps.is_built():
@@ -180,6 +200,7 @@ class ObjectDetector:
             
             logger.info(f"Using device: {self.device}")
             self.model.to(self.device)
+            logger.info("YOLO initialized with NMS optimization settings")
             
         except Exception as e:
             yolo_error = wrap_exception(
@@ -201,7 +222,7 @@ class ObjectDetector:
         フレーム内の物体を検出
         
         Args:
-            frame: 入力フレーム
+            frame: 入力フレーム（BGR形式）
             
         Returns:
             Dict[str, Any]: 検出結果の辞書
@@ -211,7 +232,12 @@ class ObjectDetector:
             'pose_landmarks': None,
             'hands_landmarks': None,
             'face_landmarks': None,
-            'person_detected': False
+            'person_detected': False,
+            'frame_info': {
+                'width': frame.shape[1] if frame is not None else 0,
+                'height': frame.shape[0] if frame is not None else 0,
+                'channels': frame.shape[2] if frame is not None and len(frame.shape) > 2 else 0
+            }
         }
         
         if frame is None or frame.size == 0:
@@ -219,18 +245,19 @@ class ObjectDetector:
             return results
             
         try:
-            logger.info(f"[DEBUG] Starting object detection - MediaPipe: {self.use_mediapipe}, YOLO: {self.use_yolo}")
+            if self.use_yolo or self.use_mediapipe:
+                logger.debug(f"Starting object detection on frame {results['frame_info']['width']}x{results['frame_info']['height']} - MediaPipe: {self.use_mediapipe}, YOLO: {self.use_yolo}")
             
-            # RGB形式に変換
+            # BGR形式からRGB形式に変換（MediaPipe用）
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
             # MediaPipeでの検出
             if self.use_mediapipe:
                 self._detect_with_mediapipe(rgb_frame, results)
             
-            # YOLO物体検出
+            # YOLO物体検出（元のBGRフレームを使用）
             if self.use_yolo and hasattr(self, 'model'):
-                self._detect_with_yolo(rgb_frame, results)
+                self._detect_with_yolo_bgr(frame, results)
             
             # 検出システムが全て無効な場合、強制的に人を検出したことにする
             if not self.use_mediapipe and not self.use_yolo:
@@ -241,11 +268,11 @@ class ObjectDetector:
                 self.ai_optimizer.update_performance_stats()
             
             # 結果要約のログ
-            logger.info(f"[DEBUG] Detection completed - Person: {results['person_detected']}, "
-                       f"Pose: {results['pose_landmarks'] is not None}, "
-                       f"Hands: {results['hands_landmarks'] is not None}, "
-                       f"Face: {results['face_landmarks'] is not None}, "
-                       f"Objects: {list(results['detections'].keys())}")
+            logger.debug(f"Detection completed - Person: {results['person_detected']}, "
+                        f"Pose: {results['pose_landmarks'] is not None}, "
+                        f"Hands: {results['hands_landmarks'] is not None}, "
+                        f"Face: {results['face_landmarks'] is not None}, "
+                        f"Objects: {list(results['detections'].keys())}")
             
             return results
         
@@ -284,7 +311,7 @@ class ObjectDetector:
                     results['person_detected'] = True
                     if self.landmark_settings.get('pose', {}).get('enabled', False):
                         results['pose_landmarks'] = pose_results.pose_landmarks
-                        logger.info(f"[DEBUG] Pose landmarks detected and added to results")
+                        logger.debug(f"Pose landmarks detected and added to results")
             except Exception as e:
                 pose_error = wrap_exception(
                     e, MediaPipeError,
@@ -300,7 +327,7 @@ class ObjectDetector:
                 hands_results = self.hands.process(rgb_frame)
                 if hands_results and hands_results.multi_hand_landmarks:
                     results['hands_landmarks'] = hands_results.multi_hand_landmarks
-                    logger.info(f"[DEBUG] Hands landmarks detected and added to results")
+                    logger.debug(f"Hands landmarks detected and added to results")
             except Exception as e:
                 hands_error = wrap_exception(
                     e, MediaPipeError,
@@ -316,7 +343,7 @@ class ObjectDetector:
                 face_results = self.face_mesh.process(rgb_frame)
                 if face_results and face_results.multi_face_landmarks:
                     results['face_landmarks'] = face_results.multi_face_landmarks
-                    logger.info(f"[DEBUG] Face landmarks detected and added to results")
+                    logger.debug(f"Face landmarks detected and added to results")
             except Exception as e:
                 face_error = wrap_exception(
                     e, MediaPipeError,
@@ -325,25 +352,40 @@ class ObjectDetector:
                 )
                 logger.error(f"Face detection error: {face_error.to_dict()}")
 
-    def _detect_with_yolo(self, rgb_frame: np.ndarray, results: Dict[str, Any]) -> None:
+    def _detect_with_yolo_bgr(self, frame: np.ndarray, results: Dict[str, Any]) -> None:
         """
-        YOLOを使用した物体検出処理
+        YOLOを使用した物体検出処理（座標統一版）
         
         Args:
-            rgb_frame: RGB形式のフレーム
+            frame: BGR形式のフレーム
             results: 検出結果を格納する辞書
         """
         try:
-            # AI最適化を使用した推論
+            # オリジナルフレームサイズを保持
+            original_height, original_width = frame.shape[:2]
+            
+            # AI最適化でフレームサイズが変更される可能性があるため、
+            # YOLOでも同じ最適化を適用して座標系を統一
+            yolo_frame = frame
+            scale_x, scale_y = 1.0, 1.0
+            
             if self.ai_optimizer:
-                yolo_results = self.ai_optimizer.optimize_yolo_inference(self.model, rgb_frame)
+                # MediaPipeと同じフレーム最適化を適用
+                yolo_frame = self.ai_optimizer._optimize_frame_preprocessing(frame)
+                # スケール比を計算
+                yolo_height, yolo_width = yolo_frame.shape[:2]
+                scale_x = original_width / yolo_width
+                scale_y = original_height / yolo_height
+                
+                # YOLO推論（最適化設定適用）
+                yolo_results = self.ai_optimizer.optimize_yolo_inference(self.model, yolo_frame)
                 # フレームスキップされた場合はNoneが返される
                 if yolo_results is None:
                     return
                 yolo_results = yolo_results[0]
             else:
-                # 標準推論
-                yolo_results = self.model(rgb_frame, verbose=False)[0]
+                # 標準推論（NMS最適化設定適用）
+                yolo_results = self.model(yolo_frame, **self.yolo_predict_args)[0]
             
             # YOLOでの人物検出（MediaPipeで未検出の場合のみチェック）
             if not results['person_detected']:
@@ -366,9 +408,17 @@ class ObjectDetector:
                     
                     if (detected_class == obj_settings.get('class_name') and 
                         conf > obj_settings.get('confidence_threshold', 0.5)):
-                        logger.info(f"[DEBUG] 物体を検出: {obj_settings.get('name')} (confidence: {conf})")
+                        
+                        # 座標をオリジナルフレームサイズにスケールバック
+                        scaled_x1 = int(x1 * scale_x)
+                        scaled_y1 = int(y1 * scale_y)
+                        scaled_x2 = int(x2 * scale_x)
+                        scaled_y2 = int(y2 * scale_y)
+                        
+                        logger.info(f"物体を検出: {obj_settings.get('name')} (confidence: {conf:.3f}, bbox: ({scaled_x1}, {scaled_y1}, {scaled_x2}, {scaled_y2}))")
+                        
                         detections.append({
-                            'bbox': (int(x1), int(y1), int(x2), int(y2)),
+                            'bbox': (scaled_x1, scaled_y1, scaled_x2, scaled_y2),
                             'confidence': conf
                         })
                         
@@ -380,7 +430,7 @@ class ObjectDetector:
                 e, YOLOError,
                 "YOLO object detection runtime error",
                 details={
-                    'frame_shape': rgb_frame.shape if rgb_frame is not None else None,
+                    'frame_shape': frame.shape if frame is not None else None,
                     'model_available': hasattr(self, 'model'),
                     'device': str(self.device) if hasattr(self, 'device') else 'unknown',
                     'yolo_disabled': True

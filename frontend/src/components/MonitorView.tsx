@@ -1,7 +1,7 @@
 import { Box, VStack, Text, HStack, Badge, IconButton, useToast } from '@chakra-ui/react';
 import { useEffect, useRef, useState } from 'react';
 import { FaExpand, FaCompress } from 'react-icons/fa';
-import { websocketManager, DetectionStatus } from '../utils/websocket';
+import { websocketManager, DetectionStatus } from '../utils/websocket.ts';
 
 export const MonitorView = () => {
   const videoRef = useRef<HTMLImageElement>(null);
@@ -48,7 +48,7 @@ export const MonitorView = () => {
     if (videoRef.current) {
       // MJPEGストリームのエンドポイントを直接srcに設定
       // キャッシュ無効化のタイムスタンプは不要
-      videoRef.current.src = 'http://localhost:5001/api/video_feed';
+      videoRef.current.src = 'http://localhost:8000/api/video_feed';
     }
   }, []); // マウント時に一度だけ実行
 

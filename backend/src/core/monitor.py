@@ -5,7 +5,7 @@ import datetime
 from utils.logger import setup_logger
 from core.camera import Camera
 from core.detector import Detector
-from services.alert_manager import AlertManager
+from services.communication.alert_manager import AlertManager
 from core.state import StateManager
 from core.detection import DetectionManager
 from web.websocket import broadcast_status, socketio
@@ -14,6 +14,7 @@ import numpy as np
 import platform
 import os
 from utils.config_manager import ConfigManager
+from typing import Any, Dict, Optional
 
 # 新しく分割されたクラスをインポート
 from core.frame_processor import FrameProcessor
@@ -26,10 +27,13 @@ logger = setup_logger(__name__)
 
 class Monitor:
     """
-    メイン制御クラス（リファクタリング済み）
-    - 各専門クラスの統合管理
-    - メインループの制御
-    - 初期化とクリーンアップ
+    統合監視システム - リアルタイム最適化版
+    
+    リファクタリングされたアーキテクチャ:
+    - FrameProcessor: フレーム処理専門
+    - StatusBroadcaster: ステータス配信専門  
+    - ScheduleChecker: スケジュール確認専門
+    - ThresholdManager: 閾値管理専門
     """
     
     def __init__(self,
@@ -39,7 +43,10 @@ class Monitor:
                  detection: DetectionManager,
                  state: StateManager,
                  alert_manager: AlertManager,
-                 schedule_manager=None):
+                 schedule_manager=None,
+                 data_collector=None,
+                 storage_service=None,
+                 flask_app=None):
         """モニターの初期化 (依存性注入・ConfigManager 版)"""
         self.config_manager = config_manager
         self.camera = camera
@@ -48,6 +55,29 @@ class Monitor:
         self.state = state
         self.alert_manager = alert_manager
         self.schedule_manager = schedule_manager
+        self.flask_app = flask_app
+        
+        # Phase 1.2: DataCollector関連の追加
+        self.data_collector = data_collector
+        self.storage_service = storage_service
+        
+        # DataCollector開始
+        if self.data_collector:
+            logger.info("Attempting to start DataCollector...")
+            result = self.data_collector.start_collection()
+            logger.info(f"DataCollector start result: {result}")
+            if result:
+                logger.info("DataCollector started successfully")
+            else:
+                logger.error("DataCollector failed to start")
+        else:
+            logger.warning("DataCollector instance not available")
+        
+        # FPS制御設定
+        self.target_fps = config_manager.get('optimization.target_fps', 15.0)
+        self.min_fps = config_manager.get('optimization.min_fps', 10.0)
+        self.frame_time = 1.0 / self.target_fps  # 1/15 ≈ 0.067秒（67ms）
+        self.last_frame_time = time.time()
         
         # 専門クラスのインスタンス化
         self.frame_processor = FrameProcessor(
@@ -74,7 +104,11 @@ class Monitor:
             config_manager=config_manager
         )
         
-        logger.info("Monitor initialized with refactored architecture.")
+        # Phase 4.2: 分析データ配信関連の初期化
+        self.last_analysis_broadcast = time.time()
+        self.analysis_broadcast_interval = 10  # 10秒間隔で分析データ配信
+        
+        logger.info(f"Monitor initialized with target FPS: {self.target_fps}")
 
     def update_detection_results(self, results):
         """検出結果を更新（互換性のため）"""
@@ -90,13 +124,24 @@ class Monitor:
         return self.threshold_manager.extend_absence_threshold(extension_time)
 
     def run(self):
-        """メインループ"""
+        """メインループ - FPS制御対応"""
         try:
+            frame_count = 0
+            fps_start_time = time.time()
+            
             while True:
+                current_time = time.time()
+                
+                # FPS制御: 目標フレーム時間に達していない場合はスキップ
+                if current_time - self.last_frame_time < self.frame_time:
+                    time.sleep(0.001)  # 1ms待機
+                    continue
+                
                 # フレーム処理と状態更新
                 processed_data = self.frame_processor.process_frame()
                 if processed_data is None:
                     continue
+                    
                 frame, detections_list = processed_data
 
                 # フレーム処理結果の更新
@@ -107,20 +152,39 @@ class Monitor:
                 self.status_broadcaster.update_frame_buffer(frame)
                 self.status_broadcaster.broadcast_status()
 
+                # Phase 4.2: 定期的な分析データ配信
+                if current_time - self.last_analysis_broadcast >= self.analysis_broadcast_interval:
+                    self._broadcast_analysis_data(detection_results)
+                    self.last_analysis_broadcast = current_time
+
                 # OpenCVウィンドウ表示
                 self.status_broadcaster.display_frame(frame, detection_results)
                 
                 # スケジュールチェック（一定間隔ごとに実行）
                 self.schedule_checker.check_if_needed()
                 
-                # 短い sleep を入れることでCPU使用率を下げる
-                time.sleep(0.01)
+                # FPS統計更新
+                frame_count += 1
+                self.last_frame_time = current_time
+                
+                # 1秒ごとにFPS統計をログ出力
+                if frame_count % int(self.target_fps) == 0:
+                    elapsed = current_time - fps_start_time
+                    actual_fps = frame_count / elapsed if elapsed > 0 else 0
+                    logger.debug(f"Actual FPS: {actual_fps:.1f}, Target: {self.target_fps}")
+                    frame_count = 0
+                    fps_start_time = current_time
 
         finally:
             self.cleanup()
 
     def cleanup(self):
         """リソースのクリーンアップ"""
+        # Phase 1.2: DataCollector停止
+        if self.data_collector:
+            self.data_collector.stop_collection()
+            logger.info("DataCollector stopped")
+        
         self.camera.release()
         cv2.destroyAllWindows()
         logger.info("Monitor cleanup completed.")
@@ -230,3 +294,122 @@ class Monitor:
         })
         
         return status
+
+    # Phase 4.2: 分析データ配信メソッド
+    def _broadcast_analysis_data(self, current_detection_results: Dict[str, Any]) -> None:
+        """
+        分析データをWebSocketで配信する
+        
+        Args:
+            current_detection_results: 現在の検出結果
+        """
+        try:
+            # Phase 4.2: Flask アプリケーションコンテキストの確保
+            if not self.flask_app:
+                logger.warning("Flask app not available for analysis broadcast")
+                return
+                
+            with self.flask_app.app_context():
+                # BehaviorLogから最近のデータを取得
+                from models.behavior_log import BehaviorLog
+                from datetime import datetime
+                
+                # 最近10件のログを取得
+                recent_logs = BehaviorLog.get_recent_logs(hours=1)
+                if not recent_logs:
+                    logger.debug("No recent behavior logs for analysis broadcast")
+                    return
+                
+                # 最近10件のデータを分析用に変換
+                behavior_data = {
+                    'focus_trends': self._extract_focus_trends(recent_logs[-10:]),
+                    'current_status': {
+                        'presence_status': self.state.get_status_summary().get('presence_status', 'unknown'),
+                        'smartphone_detected': current_detection_results.get('smartphone_detected', False),
+                        'focus_level': self._calculate_current_focus(current_detection_results),
+                        'posture_score': self._calculate_posture_score(current_detection_results)
+                    },
+                    'timestamp': datetime.now().isoformat(),
+                    'session_stats': {
+                        'total_logs': len(recent_logs),
+                        'present_time_ratio': self._calculate_presence_ratio(recent_logs),
+                        'smartphone_usage_ratio': self._calculate_smartphone_ratio(recent_logs)
+                    }
+                }
+                
+                # 拡張ステータスで配信
+                enhanced_status = {
+                    'behavior_data': behavior_data,
+                    'detection_data': current_detection_results,
+                    'analysis_results': self._generate_quick_insights(recent_logs)
+                }
+                
+                # WebSocket配信
+                self.status_broadcaster.broadcast_enhanced_status(enhanced_status)
+                logger.debug(f"Analysis data broadcasted: {len(recent_logs)} logs, {len(behavior_data['focus_trends'])} trends")
+            
+        except Exception as e:
+            logger.error(f"Error broadcasting analysis data: {e}", exc_info=True)
+
+    def _extract_focus_trends(self, logs):
+        """ログからフォーカストレンドを抽出"""
+        trends = []
+        for log in logs:
+            trends.append({
+                'timestamp': log.timestamp.isoformat(),
+                'focus_level': log.focus_level or 0.5,  # デフォルト値
+                'presence_status': log.presence_status or 'unknown'  # 在席状況も含める
+            })
+        return trends
+    
+    def _calculate_current_focus(self, detection_results):
+        """現在のフォーカスレベルを計算"""
+        # スマートフォン検出でフォーカスレベル下がる
+        if detection_results.get('smartphone_detected', False):
+            return 0.3
+        # 手検出ありでフォーカス中程度
+        elif detection_results.get('hands_detected', False):
+            return 0.7
+        else:
+            return 0.5
+    
+    def _calculate_posture_score(self, detection_results):
+        """姿勢スコアを計算"""
+        if detection_results.get('pose_detected', False):
+            return 0.8  # ポーズ検出時は良い姿勢と仮定
+        return 0.6  # デフォルト値
+    
+    def _calculate_presence_ratio(self, logs):
+        """在席時間の比率を計算"""
+        if not logs:
+            return 0.0
+        present_count = sum(1 for log in logs if log.presence_status == 'present')
+        return present_count / len(logs)
+    
+    def _calculate_smartphone_ratio(self, logs):
+        """スマートフォン使用の比率を計算"""
+        if not logs:
+            return 0.0
+        smartphone_count = sum(1 for log in logs if log.smartphone_detected)
+        return smartphone_count / len(logs)
+    
+    def _generate_quick_insights(self, logs):
+        """簡単な分析結果を生成"""
+        if not logs:
+            return []
+        
+        presence_ratio = self._calculate_presence_ratio(logs)
+        smartphone_ratio = self._calculate_smartphone_ratio(logs)
+        
+        insights = []
+        if presence_ratio > 0.8:
+            insights.append("高い在席率を維持しています")
+        elif presence_ratio < 0.5:
+            insights.append("離席時間が多くなっています")
+            
+        if smartphone_ratio > 0.3:
+            insights.append("スマートフォンの使用頻度が高めです")
+        elif smartphone_ratio < 0.1:
+            insights.append("集中して作業に取り組んでいます")
+            
+        return insights

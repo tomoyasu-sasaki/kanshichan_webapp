@@ -1,13 +1,58 @@
 # KanshiChan - フロントエンド開発規約
 # =============================================
+# バージョン: 2.0
+# 最終更新: 2024-12-27
 # 対象: React/TypeScript フロントエンド開発
 # 参照: main_rules.yaml
 
 # ===========================================
-# 1. TypeScript コーディング規約
+# 1. 技術スタック規約（2024年最新版）
+# ===========================================
+technology_stack:
+  core:
+    language: "TypeScript >=5.7.2"
+    framework: "React >=19.0.0"
+    build_tool: "Vite >=6.2.0"
+    
+  ui_framework:
+    primary: "@chakra-ui/react >=2.8.2"
+    emotion: "@emotion/react >=11.11.4 + @emotion/styled >=11.11.0"
+    theme_tools: "@chakra-ui/theme-tools >=2.2.6"
+    icons: "@chakra-ui/icons >=2.2.4 + react-icons >=5.5.0"
+    
+  internationalization:
+    core: "i18next >=25.2.0"
+    react: "react-i18next >=15.5.2"
+    detection: "i18next-browser-languagedetector >=8.1.0"
+    supported_languages: ["ja", "en"]
+    
+  networking:
+    http: "axios >=1.8.2"
+    websocket: "socket.io-client >=4.8.1"
+    
+  animation:
+    primary: "framer-motion >=11.0.8"
+    
+  audio:
+    api: "WebAudio API (Native)"
+    streaming: "Base64 audio streaming"
+    
+  testing:
+    framework: "Jest >=29.7.0"
+    react_testing: "@testing-library/react >=14.2.1"
+    user_events: "@testing-library/user-event >=14.5.2"
+    environment: "jsdom"
+    
+  development:
+    linting: "ESLint >=9.21.0 + typescript-eslint >=8.24.1"
+    formatting: "Prettier (built-in Vite)"
+    type_checking: "TypeScript strict mode"
+
+# ===========================================
+# 2. TypeScript コーディング規約（強化版）
 # ===========================================
 typescript_coding:
-  style_guide: "ESLint + Prettier"
+  style_guide: "ESLint + TypeScript strict"
   line_length: 80
   indentation: "2 spaces"
   semicolons: true
@@ -15,15 +60,18 @@ typescript_coding:
   
   type_safety:
     strict_mode: true
-    no_any: "可能な限り避ける"
-    explicit_types: "パブリックAPIは明示的な型定義"
+    no_any: "厳禁（型安全性のため）"
+    explicit_types: "全パブリックAPI必須"
+    strict_null_checks: true
     
   imports:
     order:
-      - "React関連"
+      - "React関連 (React, hooks)"
+      - "Chakra UI コンポーネント"
       - "サードパーティライブラリ"
-      - "内部モジュール"
+      - "内部モジュール (components, utils)"
       - "相対パス"
+      - "型定義 (interfaces, types)"
     style: "ESLint による自動整理"
     
   naming:
@@ -31,364 +79,912 @@ typescript_coding:
     types: "PascalCase"
     enums: "PascalCase"
     constants: "UPPER_SNAKE_CASE"
+    generics: "T, U, V (短縮形)"
     
+  async_patterns:
+    promises: "async/await 優先"
+    error_handling: "try-catch + toast通知"
+    loading_states: "useState<boolean>"
+
 # ===========================================
-# 2. React コンポーネント規約
+# 3. React コンポーネント規約（実装版）
 # ===========================================
 react_components:
   structure:
-    functional: "関数コンポーネント優先"
-    hooks: "カスタムフック活用"
+    functional: "関数コンポーネント必須"
+    hooks: "カスタムフック活用（useWebSocket等）"
     typescript: "Props/State の型定義必須"
+    memo: "React.memo による最適化推奨"
     
   naming:
     components: "PascalCase"
     files: "PascalCase.tsx"
     props: "camelCase"
     handlers: "handle + 動作名"
+    hooks: "use + PascalCase"
     
   organization:
     single_responsibility: "1コンポーネント1責務"
     composition: "コンポーネント合成パターン"
     reusability: "再利用可能な設計"
+    max_lines: "1000行以下（例外: IntegratedDashboard 597行）"
+    
+  performance_patterns:
+    callback_memo: "useCallback での関数メモ化必須"
+    effect_optimization: "useEffect 依存配列の最適化"
+    state_lifting: "適切な状態の引き上げ"
     
   examples:
-    component_definition: |
+    optimized_component: |
       interface MonitorViewProps {
-        isFullscreen?: boolean;
-        onToggleFullscreen: () => void;
+        readonly isFullscreen?: boolean;
+        readonly onToggleFullscreen: () => void;
       }
       
-      export const MonitorView: React.FC<MonitorViewProps> = ({
+      export const MonitorView: React.FC<MonitorViewProps> = React.memo(({
         isFullscreen = false,
         onToggleFullscreen
       }) => {
-        // Implementation
-      };
+        const [status, setStatus] = useState<DetectionStatus>({
+          personDetected: false,
+          smartphoneDetected: false,
+          absenceTime: 0,
+          smartphoneUseTime: 0
+        });
+        
+        const handleStatusUpdate = useCallback((newStatus: DetectionStatus) => {
+          setStatus(newStatus);
+        }, []);
+        
+        return (
+          <Box position="relative" width="100%" height="100vh" bg="black">
+            {/* コンテンツ */}
+          </Box>
+        );
+      });
+      
+      MonitorView.displayName = 'MonitorView';
       
     custom_hook: |
       interface UseWebSocketResult {
-        status: DetectionStatus;
+        status: DetectionStatus | undefined;
         isConnected: boolean;
         error: string | null;
+        audioManager: AudioManager;
       }
       
       export const useWebSocket = (): UseWebSocketResult => {
-        // Implementation
+        const [status, setStatus] = useState<DetectionStatus>();
+        const [isConnected, setIsConnected] = useState(false);
+        const [error, setError] = useState<string | null>(null);
+        
+        useEffect(() => {
+          websocketManager.initialize();
+          
+          const unsubscribes = [
+            websocketManager.onStatusUpdate(setStatus),
+            websocketManager.onConnect(() => setIsConnected(true)),
+            websocketManager.onDisconnect(() => setIsConnected(false)),
+            websocketManager.onError((err) => setError(err?.message || 'Connection error'))
+          ];
+          
+          return () => unsubscribes.forEach(unsub => unsub());
+        }, []);
+        
+        return { 
+          status, 
+          isConnected, 
+          error, 
+          audioManager: websocketManager.getAudioManager() 
+        };
       };
 
 # ===========================================
-# 3. プロジェクト構造規約
+# 4. プロジェクト構造規約（実装版）
 # ===========================================
 directory_structure:
   src:
     components:
       purpose: "React コンポーネント"
       structure:
-        shared: "共通コンポーネント"
-        feature: "機能別コンポーネント"
+        main_components:
+          - "IntegratedDashboard.tsx (597行): メインダッシュボード"
+          - "MonitorView.tsx (151行): 監視画面"
+          - "VoiceSettings.tsx (944行): 音声設定パネル"
+          - "BehaviorInsights.tsx (713行): 行動分析"
+          - "AudioPlayer.tsx (759行): 音声プレイヤー"
+          - "ScheduleView.tsx (299行): スケジュール管理"
+          - "SettingsPanel.tsx (311行): 設定パネル"
+          - "PerformanceStats.tsx (123行): パフォーマンス統計"
+          - "LanguageSwitcher.tsx (41行): 言語切り替え"
+        analytics:
+          - "AdvancedAnalyticsDashboard.tsx (563行): 高度分析"
+          - "PredictiveInsights.tsx (513行): 予測分析"
+          - "LearningProgress.tsx (580行): 学習進捗"
+          - "PersonalizationPanel.tsx (557行): 個人化パネル"
         tests: "__tests__ サブディレクトリ"
       naming: "PascalCase"
       
     utils:
       purpose: "ユーティリティ関数"
       files:
-        - "websocket.ts: WebSocket通信"
-        - "api.ts: API通信ヘルパー"
-        - "constants.ts: 定数定義"
+        - "websocket.ts (368行): WebSocket通信 + 音声ストリーミング"
       naming: "camelCase"
+      audio_features:
+        - "AudioManager class: WebAudio API 制御"
+        - "Base64 audio decoding"
+        - "リアルタイム音声配信"
       
+    i18n:
+      purpose: "国際化設定"
+      structure:
+        - "index.ts: i18next設定（フォールバック: ja）"
+        - "locales/ja.json (92キー): 日本語翻訳"
+        - "locales/en.json (92キー): 英語翻訳"
+      features:
+        - "ブラウザ言語自動検出"
+        - "localStorage保存"
+        - "階層的キー構造"
+        
     assets:
       purpose: "静的アセット"
       types: ["images", "icons", "fonts"]
       
-    styles:
-      purpose: "スタイル関連（将来実装）"
-      approach: "Chakra UI テーマシステム優先"
+    __tests__:
+      purpose: "テストファイル"
+      structure:
+        - "App.test.tsx: アプリケーションテスト"
+        - "components/__tests__/: コンポーネントテスト"
+        - "integration/: 統合テスト"
+      coverage: "Phase 5統合テスト実装済み"
       
+  root_files:
+    configuration:
+      - "vite.config.ts (73行): ビルド設定 + 最適化"
+      - "jest.config.js (18行): テスト設定"
+      - "eslint.config.js (29行): リント設定"
+      - "tsconfig.json + variants: TypeScript設定"
+    
   file_structure:
-    component_file: |
-      // MonitorView.tsx
-      import { ... } from '...';
-      
-      interface Props { ... }
-      
-      export const MonitorView: React.FC<Props> = () => {
-        // Component logic
-      };
-      
-    index_exports: |
-      // components/index.ts
-      export { MonitorView } from './MonitorView';
-      export { SettingsPanel } from './SettingsPanel';
+    phase_pattern: |
+      // Phase機能別コンポーネント構成例
+      components/
+      ├── IntegratedDashboard.tsx     # Phase 5: 統合機能
+      ├── VoiceSettings.tsx           # Phase 2: TTS統合
+      ├── BehaviorInsights.tsx        # Phase 3: 行動分析
+      ├── AudioPlayer.tsx             # Phase 2: 音声機能
+      └── analytics/                  # Phase 4: 高度分析
+          ├── AdvancedAnalyticsDashboard.tsx
+          ├── PredictiveInsights.tsx
+          ├── LearningProgress.tsx
+          └── PersonalizationPanel.tsx
 
 # ===========================================
-# 4. State 管理規約
+# 5. 国際化規約（完全実装版）
+# ===========================================
+internationalization:
+  implementation:
+    framework: "react-i18next + i18next"
+    languages: 
+      - code: "ja"
+        name: "日本語"
+        fallback: true
+        file: "locales/ja.json"
+      - code: "en"
+        name: "English"
+        fallback: false
+        file: "locales/en.json"
+    
+  configuration:
+    detection: "ブラウザ言語自動検出 + localStorage"
+    fallback_language: "ja"
+    storage: "localStorage"
+    key_structure: "階層的ドット記法"
+    
+  key_organization:
+    structure: |
+      {
+        "app": { "title": "監視ちゃん", "subtitle": "AI作業集中支援ツール" },
+        "tabs": { "monitor": "監視", "settings": "設定", "schedule": "スケジュール" },
+        "monitor": {
+          "status": { "present": "在席中", "absent": "不在", "unknown": "不明" },
+          "performance": { "fps": "FPS", "inference": "推論時間", "memory": "メモリ使用量" }
+        },
+        "settings": {
+          "title": "設定",
+          "thresholds": { "title": "閾値設定", "absence": "不在判定時間（秒）" },
+          "language": { "title": "言語設定", "japanese": "日本語", "english": "English" }
+        }
+      }
+    
+  usage_patterns:
+    hook_usage: |
+      const { t, i18n } = useTranslation();
+      
+      // 基本的な翻訳
+      <Text>{t('app.title')}</Text>
+      
+      // 変数展開
+      <Text>{t('monitor.status.absent_time', { time: absenceTime })}</Text>
+      
+      // 言語変更
+      const changeLanguage = (lang: string) => {
+        i18n.changeLanguage(lang);
+      };
+      
+    component_integration: |
+      const LanguageSwitcher: React.FC = () => {
+        const { i18n, t } = useTranslation();
+        
+        return (
+          <Menu>
+            <MenuButton as={Button} leftIcon={<FaGlobe />}>
+              {i18n.language === 'en' ? 'English' : '日本語'}
+            </MenuButton>
+            <MenuList>
+              <MenuItem onClick={() => i18n.changeLanguage('ja')}>
+                {t('settings.language.japanese')}
+              </MenuItem>
+              <MenuItem onClick={() => i18n.changeLanguage('en')}>
+                {t('settings.language.english')}
+              </MenuItem>
+            </MenuList>
+          </Menu>
+        );
+      };
+    
+  quality_assurance:
+    completeness: "全92キーの翻訳完了"
+    consistency: "キー命名規則の統一"
+    context: "コンポーネントごとのコンテキスト分離"
+    testing: "多言語環境でのテスト必須"
+
+# ===========================================
+# 6. State 管理規約（拡張版）
 # ===========================================
 state_management:
   local_state:
-    hooks: "useState, useReducer"
+    hooks: "useState, useReducer, useRef"
     scope: "コンポーネント内部状態"
+    patterns:
+      simple: "useState<T> - 単純な状態"
+      complex: "useReducer<State, Action> - 複雑な状態ロジック"
+      refs: "useRef<HTMLElement> - DOM参照・値保持"
     
   global_state:
-    approach: "Context API（必要に応じて）"
     current: "WebSocket経由でのリアルタイム状態"
+    context_api: "将来的なContext API導入検討"
+    websocket_state: "DetectionStatus, AudioStream, ScheduleAlert"
     
   server_state:
-    method: "WebSocket + HTTP API"
-    caching: "必要に応じてReact Query導入検討"
+    realtime: "WebSocket - 監視状態、音声ストリーミング"
+    http: "HTTP API - 設定変更、スケジュール操作"
+    caching: "React Query導入検討（将来）"
+    error_handling: "toast通知による統一エラー表示"
     
-  examples:
-    local_state: |
-      const [isFullscreen, setIsFullscreen] = useState(false);
+  state_patterns:
+    loading_pattern: |
+      const [data, setData] = useState<DataType | null>(null);
+      const [isLoading, setIsLoading] = useState(true);
+      const [error, setError] = useState<string | null>(null);
       
-    context_usage: |
-      const ConfigContext = createContext<ConfigContextType | null>(null);
-      
-      export const useConfig = () => {
-        const context = useContext(ConfigContext);
-        if (!context) {
-          throw new Error('useConfig must be used within ConfigProvider');
+      const fetchData = useCallback(async () => {
+        try {
+          setIsLoading(true);
+          setError(null);
+          const result = await api.getData();
+          setData(result);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Unknown error');
+        } finally {
+          setIsLoading(false);
         }
-        return context;
+      }, []);
+      
+    websocket_pattern: |
+      const useWebSocketStatus = () => {
+        const [status, setStatus] = useState<DetectionStatus>();
+        const [isConnected, setIsConnected] = useState(false);
+        
+        useEffect(() => {
+          websocketManager.initialize();
+          
+          const unsubscribes = [
+            websocketManager.onStatusUpdate(setStatus),
+            websocketManager.onConnect(() => setIsConnected(true)),
+            websocketManager.onDisconnect(() => setIsConnected(false))
+          ];
+          
+          return () => unsubscribes.forEach(unsub => unsub());
+        }, []);
+        
+        return { status, isConnected };
       };
 
 # ===========================================
-# 5. UI/UX デザイン規約
+# 7. UI/UX デザイン規約（Chakra UI統合版）
 # ===========================================
 ui_design:
-  design_system: "Chakra UI"
+  design_system: "Chakra UI v2.8.2"
   
   theme:
     colors:
-      primary: "プライマリーカラー"
-      secondary: "セカンダリーカラー"
-      success: "成功状態（緑系）"
-      warning: "警告状態（黄系）"
-      error: "エラー状態（赤系）"
+      primary: "Chakra UI デフォルト (blue)"
+      secondary: "gray"
+      success: "green - 成功状態・在席中"
+      warning: "yellow/orange - 警告状態"
+      error: "red - エラー状態・不在"
+      info: "blue - 情報表示"
       
   spacing:
     unit: "Chakra UI spacing scale (4px base)"
     consistency: "統一されたスペーシング"
+    responsive: "レスポンシブ対応"
     
   typography:
     scale: "Chakra UI typography scale"
-    hierarchy: "明確な情報階層"
+    hierarchy: "Heading, Text による明確な階層"
+    fonts: "システムフォント（日本語対応）"
     
   responsive:
     breakpoints: "Chakra UI デフォルトブレークポイント"
     mobile_first: "モバイルファースト設計"
+    grid: "SimpleGrid, Grid による柔軟なレイアウト"
     
   accessibility:
-    aria_labels: "適切なARIAラベル"
-    keyboard_navigation: "キーボードナビゲーション"
-    color_contrast: "十分なコントラスト比"
+    aria_labels: "適切なARIAラベル必須"
+    keyboard_navigation: "キーボードナビゲーション対応"
+    color_contrast: "十分なコントラスト比確保"
+    screen_reader: "スクリーンリーダー対応"
     
-  examples:
-    chakra_usage: |
-      <Box
-        position="relative"
-        width="100%"
-        height="100vh"
-        bg="black"
+  component_patterns:
+    card_usage: |
+      <Card bg={cardBg}>
+        <CardHeader>
+          <HStack>
+            <Icon as={FiActivity} />
+            <Heading size="md">{t('monitor.title')}</Heading>
+          </HStack>
+        </CardHeader>
+        <CardBody>
+          <VStack spacing={4} align="stretch">
+            {/* コンテンツ */}
+          </VStack>
+        </CardBody>
+      </Card>
+      
+    status_display: |
+      <Badge 
+        colorScheme={status.personDetected ? 'green' : 'red'}
+        size="lg"
       >
-        <VStack spacing={4} align="start">
-          <Badge colorScheme={status.personDetected ? 'green' : 'red'}>
-            {status.personDetected ? '在席中' : '不在'}
-          </Badge>
-        </VStack>
-      </Box>
+        {t(status.personDetected ? 'monitor.status.present' : 'monitor.status.absent')}
+      </Badge>
+      
+    color_mode: |
+      const bgColor = useColorModeValue('gray.50', 'gray.900');
+      const cardBg = useColorModeValue('white', 'gray.800');
+      const borderColor = useColorModeValue('gray.200', 'gray.700');
 
 # ===========================================
-# 6. API 通信規約
+# 8. API 通信規約（WebSocket + HTTP）
 # ===========================================
 api_communication:
-  http_client: "axios (必要に応じて)"
-  websocket: "socket.io-client"
+  http_client: "axios >=1.8.2"
+  websocket: "socket.io-client >=4.8.1"
   
+  http_api:
+    base_url: "/api"
+    endpoints:
+      settings: "GET/POST /api/settings"
+      schedules: "GET/POST /api/schedules"
+      performance: "GET /api/performance"
+      tts: "/api/tts/* - TTS音声関連"
+      analysis: "/api/analysis/* - 分析機能"
+    
+  websocket_api:
+    events:
+      status_update: "DetectionStatus - 監視状態更新"
+      schedule_alert: "ScheduleAlert - スケジュール通知"
+      audio_stream: "AudioStreamData - 音声ストリーミング"
+      audio_notification: "AudioNotification - 音声通知"
+    
   error_handling:
-    user_feedback: "useToast でのエラー表示"
-    retry_logic: "接続エラー時の再試行"
+    user_feedback: "useToast でのエラー表示統一"
+    retry_logic: "接続エラー時の自動再試行"
     fallback: "適切なフォールバック状態"
+    structured_errors: "エラー情報の構造化"
     
   data_flow:
-    websocket: "リアルタイムデータ"
-    rest: "設定変更等の操作"
+    realtime: "WebSocket - 監視状態、音声配信"
+    operations: "HTTP - 設定変更、スケジュール操作"
+    performance: "HTTP Polling - パフォーマンス統計（5秒間隔）"
     
-  examples:
+  implementation_patterns:
     websocket_setup: |
       useEffect(() => {
         websocketManager.initialize();
         
-        const errorUnsubscribe = websocketManager.onError(() => {
+        const unsubscribes = [
+          websocketManager.onError((error) => {
+            toast({
+              title: t('common.error'),
+              description: t('errors.connection_failed'),
+              status: 'error',
+              duration: 3000,
+              isClosable: true,
+            });
+          }),
+          websocketManager.onAudioStream(handleAudioStream),
+          websocketManager.onStatusUpdate(handleStatusUpdate)
+        ];
+        
+        return () => unsubscribes.forEach(unsub => unsub());
+      }, [toast, t]);
+      
+    http_request: |
+      const fetchData = useCallback(async () => {
+        try {
+          setIsLoading(true);
+          const response = await axios.get('/api/data');
+          setData(response.data);
+        } catch (error) {
           toast({
-            title: '接続エラー',
-            description: 'サーバーとの接続に失敗しました',
+            title: t('common.error'),
+            description: error.response?.data?.message || t('errors.fetch_failed'),
             status: 'error',
-            duration: 3000,
+            duration: 5000,
             isClosable: true,
           });
-        });
-        
-        return () => {
-          errorUnsubscribe();
-        };
-      }, [toast]);
+        } finally {
+          setIsLoading(false);
+        }
+      }, [toast, t]);
 
 # ===========================================
-# 7. テスト規約
-# ===========================================
-testing:
-  framework: "Jest + React Testing Library"
-  
-  test_types:
-    unit: "コンポーネント単体テスト"
-    integration: "ユーザーインタラクション"
-    snapshot: "UI回帰テスト（必要に応じて）"
-    
-  file_structure:
-    location: "src/**/__tests__/*.test.tsx"
-    naming: "<ComponentName>.test.tsx"
-    
-  testing_principles:
-    user_behavior: "ユーザーの実際の使用方法をテスト"
-    implementation_agnostic: "実装詳細に依存しない"
-    accessible: "アクセシブルな要素でのクエリ"
-    
-  examples:
-    component_test: |
-      import { render, screen, fireEvent } from '@testing-library/react';
-      import { MonitorView } from '../MonitorView';
-      
-      describe('MonitorView', () => {
-        test('全画面ボタンクリックで全画面表示が切り替わる', () => {
-          const handleToggle = jest.fn();
-          render(<MonitorView onToggleFullscreen={handleToggle} />);
-          
-          const toggleButton = screen.getByLabelText('Toggle fullscreen');
-          fireEvent.click(toggleButton);
-          
-          expect(handleToggle).toHaveBeenCalledTimes(1);
-        });
-      });
-
-# ===========================================
-# 8. パフォーマンス規約
+# 9. パフォーマンス規約（実装版）
 # ===========================================
 performance:
-  bundle_optimization:
-    code_splitting: "React.lazy による動的インポート"
-    tree_shaking: "不要なコードの削除"
-    chunk_splitting: "Vite による最適化"
+  build_optimization:
+    code_splitting: "Vite による自動コード分割"
+    tree_shaking: "不要なコードの自動削除"
+    vendor_chunks: "6つのベンダーチャンク分割"
+    chunk_config: |
+      manualChunks: {
+        'react-vendor': ['react', 'react-dom'],
+        'chakra-vendor': ['@chakra-ui/react', '@emotion/react', '@emotion/styled'],
+        'i18n-vendor': ['react-i18next', 'i18next'],
+        'icons-vendor': ['react-icons'],
+        'network-vendor': ['socket.io-client'],
+        'utils-vendor': ['framer-motion']
+      }
     
   runtime_optimization:
     memo: "React.memo で不要な再レンダリング防止"
     callback_memo: "useCallback, useMemo の適切な使用"
-    virtual_dom: "効率的なDOM更新"
+    effect_optimization: "useEffect 依存配列の最適化"
+    bundle_size: "chunkSizeWarningLimit: 500KB"
     
-  image_optimization:
-    formats: "WebP, AVIF 対応"
-    lazy_loading: "画像の遅延読み込み"
-    sizing: "適切なサイズ指定"
+  component_optimization:
+    large_components: "944行コンポーネントの分割検討"
+    virtualization: "大量データ表示時の検討事項"
+    lazy_loading: "React.lazy による動的インポート"
+    
+  audio_optimization:
+    webaudio_api: "WebAudio API による高性能音声処理"
+    streaming: "Base64ストリーミングの効率化"
+    cache_strategy: "音声データのキャッシュ戦略"
+    
+  measurement:
+    metrics: "FPS、レンダリング時間、バンドルサイズ"
+    tools: "React DevTools、Lighthouse、Vite Bundle Analyzer"
+    targets: "初期読み込み <3秒、Lighthouse Score >90"
     
   examples:
     memo_usage: |
       const StatusBadge = React.memo<StatusBadgeProps>(({ status }) => {
         return (
           <Badge colorScheme={status ? 'green' : 'red'}>
-            {status ? '在席中' : '不在'}
+            {status ? t('monitor.status.present') : t('monitor.status.absent')}
           </Badge>
         );
       });
       
-    callback_memo: |
-      const handleToggleFullscreen = useCallback(async () => {
-        try {
-          if (!document.fullscreenElement) {
-            await containerRef.current?.requestFullscreen();
-          } else {
-            await document.exitFullscreen();
+      StatusBadge.displayName = 'StatusBadge';
+      
+    callback_optimization: |
+      const MonitorView = () => {
+        const [isFullscreen, setIsFullscreen] = useState(false);
+        
+        const handleToggleFullscreen = useCallback(async () => {
+          try {
+            if (!document.fullscreenElement) {
+              await containerRef.current?.requestFullscreen();
+            } else {
+              await document.exitFullscreen();
+            }
+            setIsFullscreen(!document.fullscreenElement);
+          } catch (error) {
+            toast({
+              title: t('monitor.fullscreen.error'),
+              status: 'error',
+              duration: 3000,
+              isClosable: true,
+            });
           }
-        } catch (error) {
-          console.error('エラー:', error);
-        }
-      }, []);
+        }, [toast, t]);
+        
+        return <Button onClick={handleToggleFullscreen}>Toggle</Button>;
+      };
 
 # ===========================================
-# 9. アクセシビリティ規約
+# 10. テスト規約（拡張版）
+# ===========================================
+testing:
+  framework: "Jest >=29.7.0 + React Testing Library >=14.2.1"
+  environment: "jsdom"
+  
+  test_types:
+    unit: "コンポーネント単体テスト"
+    integration: "Phase機能統合テスト"
+    e2e: "ユーザーフロー全体テスト"
+    performance: "レンダリングパフォーマンステスト"
+    accessibility: "アクセシビリティテスト"
+    
+  file_structure:
+    location: "src/**/__tests__/*.{test,spec}.{ts,tsx}"
+    naming: "<ComponentName>.test.tsx"
+    integration: "src/__tests__/integration/"
+    setup: "src/setupTests.ts"
+    
+  testing_principles:
+    user_behavior: "ユーザーの実際の使用方法をテスト"
+    implementation_agnostic: "実装詳細に依存しない"
+    accessible: "アクセシブルな要素でのクエリ"
+    i18n_testing: "多言語環境でのテスト"
+    
+  coverage:
+    target: "90%以上"
+    measurement: "Jest built-in coverage"
+    exclusions: "test files, config files"
+    
+  phase_testing:
+    phase5_integration: "統合ダッシュボード全体テスト"
+    websocket_testing: "WebSocket通信のモック・テスト"
+    audio_testing: "音声機能のテスト（WebAudio API）"
+    i18n_testing: "国際化機能のテスト"
+    
+  examples:
+    component_test: |
+      describe('MonitorView', () => {
+        test('全画面ボタンクリックで全画面表示が切り替わる', async () => {
+          const user = userEvent.setup();
+          render(<MonitorView />);
+          
+          const toggleButton = screen.getByLabelText(/toggle fullscreen/i);
+          await user.click(toggleButton);
+          
+          // フルスクリーン API のモックを確認
+          expect(mockRequestFullscreen).toHaveBeenCalled();
+        });
+        
+        test('国際化対応: 日本語・英語表示', () => {
+          const { rerender } = render(<MonitorView />, { locale: 'ja' });
+          expect(screen.getByText('在席中')).toBeInTheDocument();
+          
+          rerender(<MonitorView />, { locale: 'en' });
+          expect(screen.getByText('Present')).toBeInTheDocument();
+        });
+      });
+      
+    integration_test: |
+      describe('Phase 5統合テスト', () => {
+        test('ダッシュボード→設定→言語変更の統合フロー', async () => {
+          const user = userEvent.setup();
+          render(<IntegratedDashboard />);
+          
+          // 言語切り替え
+          const langSwitcher = screen.getByLabelText(/language/i);
+          await user.click(langSwitcher);
+          await user.click(screen.getByText('English'));
+          
+          // 英語表示確認
+          expect(screen.getByText('Monitor')).toBeInTheDocument();
+        });
+      });
+      
+    websocket_test: |
+      describe('WebSocket統合', () => {
+        test('音声ストリーミングデータ受信', () => {
+          const mockAudioData = {
+            audio_data: 'base64encodeddata',
+            metadata: { audio_id: 'test', text_content: 'テスト' }
+          };
+          
+          render(<AudioPlayer />);
+          
+          // WebSocketデータ送信をシミュレート
+          act(() => {
+            mockWebSocket.emit('audio_stream', mockAudioData);
+          });
+          
+          expect(screen.getByText(/テスト/)).toBeInTheDocument();
+        });
+      });
+
+# ===========================================
+# 11. アクセシビリティ規約（強化版）
 # ===========================================
 accessibility:
   standards: "WCAG 2.1 AA レベル準拠"
   
   implementation:
-    semantic_html: "適切なHTML要素の使用"
+    semantic_html: "適切なHTML要素の使用（Chakra UI準拠）"
     aria_attributes: "必要なARIA属性の付与"
     keyboard_support: "キーボード操作のサポート"
     screen_reader: "スクリーンリーダー対応"
+    color_contrast: "十分なコントラスト比確保"
+    
+  chakra_ui_integration:
+    components: "Chakra UIコンポーネントのアクセシビリティ活用"
+    focus_management: "適切なフォーカス管理"
+    aria_live: "動的コンテンツの適切な通知"
+    
+  i18n_accessibility:
+    language_detection: "lang属性の適切な設定"
+    text_direction: "多言語テキスト方向の対応"
     
   testing:
     tools: "axe-core, WAVE"
     manual: "キーボードナビゲーション確認"
+    automated: "Jest + axe-jest による自動テスト"
     
   examples:
     accessible_button: |
       <IconButton
-        aria-label="Toggle fullscreen"
+        aria-label={t('monitor.fullscreen.toggle')}
         icon={isFullscreen ? <FaCompress /> : <FaExpand />}
-        onClick={toggleFullscreen}
+        onClick={handleToggleFullscreen}
+        variant="ghost"
+        size="lg"
       />
       
     status_announcement: |
-      <Box role="status" aria-live="polite">
-        {status.personDetected ? '在席中' : '不在'}
+      <Box 
+        role="status" 
+        aria-live="polite"
+        aria-label={t('monitor.status.label')}
+      >
+        <Badge colorScheme={status.personDetected ? 'green' : 'red'}>
+          {t(status.personDetected ? 'monitor.status.present' : 'monitor.status.absent')}
+        </Badge>
       </Box>
+      
+    keyboard_navigation: |
+      const handleKeyDown = useCallback((event: KeyboardEvent) => {
+        if (event.key === 'f' && event.ctrlKey) {
+          event.preventDefault();
+          handleToggleFullscreen();
+        }
+      }, [handleToggleFullscreen]);
+      
+      useEffect(() => {
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+      }, [handleKeyDown]);
 
 # ===========================================
-# 10. 開発環境規約
+# 12. 開発環境規約（Vite統合版）
 # ===========================================
 development_environment:
-  build_tool: "Vite"
+  build_tool: "Vite >=6.2.0"
   
   scripts:
-    dev: "npm run dev - 開発サーバー起動"
-    build: "npm run build - プロダクションビルド"
-    test: "npm test - テスト実行"
-    lint: "npm run lint - コード品質チェック"
+    dev: "npm run dev - 開発サーバー起動（HMR対応）"
+    build: "npm run build - プロダクションビルド（TypeScript + Vite）"
+    test: "npm test - Jest テスト実行"
+    test_watch: "npm run test:watch - テスト監視モード"
+    lint: "npm run lint - ESLint実行"
+    preview: "npm run preview - ビルド結果プレビュー"
     
-  hot_reload: "Vite による高速リロード"
+  hot_reload: "Vite HMR による高速リロード"
   
+  proxy_configuration:
+    api: "http://localhost:8000/api → バックエンドAPI"
+    websocket: "http://localhost:8000/socket.io → WebSocket通信"
+    
   debugging:
     browser_devtools: "React Developer Tools"
-    source_maps: "開発時のソースマップ"
+    source_maps: "開発時のソースマップ有効"
+    console_output: "構造化ログ出力"
     
   code_quality:
-    pre_commit: "ESLint + Prettier 実行"
+    pre_commit: "ESLint + TypeScript チェック"
     ci_cd: "GitHub Actions での自動チェック"
+    type_checking: "TypeScript strict mode"
+    
+  optimization:
+    dev_dependencies: "最適化された依存関係"
+    bundle_analyzer: "Vite Bundle Analyzer"
+    performance_monitoring: "Lighthouse CI統合"
 
 # ===========================================
-# 11. 型定義規約
+# 13. 音声処理規約（新規追加）
 # ===========================================
-type_definitions:
-  location: "src/types/ (将来実装)"
+audio_processing:
+  api: "WebAudio API (Native)"
   
-  structure:
-    api_types: "API レスポンス型"
-    component_props: "コンポーネントProps型"
-    utility_types: "共通ユーティリティ型"
+  implementation:
+    audio_context: "AudioContext による高性能音声処理"
+    decoding: "Base64 → ArrayBuffer → AudioBuffer"
+    playback: "AudioBufferSourceNode による再生"
+    
+  streaming:
+    protocol: "WebSocket Base64 ストリーミング"
+    format: "audio/wav"
+    encoding: "base64"
+    real_time: "リアルタイム音声配信対応"
+    
+  management:
+    audio_manager: "WebSocketManager統合の音声管理クラス"
+    queue_system: "音声キューシステム"
+    error_handling: "音声エラーの適切な処理"
+    
+  user_experience:
+    auto_resume: "AudioContext自動復帰"
+    user_activation: "ユーザーアクティベーション対応"
+    playback_status: "再生状態の可視化"
     
   examples:
-    detection_status: |
-      export interface DetectionStatus {
-        personDetected: boolean;
-        smartphoneDetected: boolean;
-        absenceTime: number;
-        smartphoneUseTime: number;
+    audio_manager: |
+      class AudioManager {
+        private audioContext: AudioContext | null = null;
+        private currentSource: AudioBufferSourceNode | null = null;
+        
+        async playAudioData(base64Data: string, metadata: AudioMetadata): Promise<void> {
+          if (!this.audioContext) {
+            this.initializeAudioContext();
+          }
+          
+          try {
+            const arrayBuffer = this.base64ToArrayBuffer(base64Data);
+            const audioBuffer = await this.audioContext!.decodeAudioData(arrayBuffer);
+            await this.playAudioBuffer(audioBuffer, metadata);
+          } catch (error) {
+            console.error('Audio playback failed:', error);
+            throw error;
+          }
+        }
       }
       
-    api_response: |
-      export interface ApiResponse<T> {
-        status: 'success' | 'error';
-        data?: T;
-        error?: string;
-        timestamp: string;
-      } 
+    websocket_integration: |
+      useEffect(() => {
+        const audioStreamHandler = (data: AudioStreamData) => {
+          audioManager.playAudioData(data.audio_data, data.metadata)
+            .catch(error => {
+              toast({
+                title: '音声再生エラー',
+                description: error.message,
+                status: 'error',
+                duration: 3000,
+                isClosable: true,
+              });
+            });
+        };
+        
+        return websocketManager.onAudioStream(audioStreamHandler);
+      }, [audioManager, toast]);
+
+# ===========================================
+# 14. Phase機能開発規約（新規追加）
+# ===========================================
+phase_development:
+  architecture: "Phase別機能分離"
+  
+  phase_structure:
+    phase1: "基本監視機能（MonitorView）"
+    phase2: "TTS音声統合（VoiceSettings, AudioPlayer）"
+    phase3: "行動分析（BehaviorInsights）"
+    phase4: "高度分析（analytics/）"
+    phase5: "統合ダッシュボード（IntegratedDashboard）"
+    
+  development_guidelines:
+    separation: "Phase間の適切な機能分離"
+    integration: "統合ダッシュボードでの統一的な管理"
+    backward_compatibility: "既存Phase機能との互換性維持"
+    progressive_enhancement: "段階的な機能強化"
+    
+  component_organization:
+    main_dashboard: "IntegratedDashboard - 全Phase統合"
+    phase_components: "各Phase専用コンポーネント"
+    shared_utilities: "Phase間共有ユーティリティ"
+    
+  testing_strategy:
+    unit_testing: "Phase別コンポーネント単体テスト"
+    integration_testing: "Phase間統合テスト"
+    e2e_testing: "全Phase機能フローテスト"
+    
+  examples:
+    phase_navigation: |
+      const IntegratedDashboard = () => {
+        const [selectedView, setSelectedView] = useState('overview');
+        
+        const handleViewChange = useCallback((view: string) => {
+          setSelectedView(view);
+          window.location.hash = view;
+        }, []);
+        
+        const renderMainContent = () => {
+          switch (selectedView) {
+            case 'monitor': return <MonitorView />;
+            case 'voice': return <VoiceSettings />;
+            case 'behavior': return <BehaviorInsights />;
+            case 'analytics': return <AdvancedAnalyticsDashboard />;
+            default: return <OverviewPanel />;
+          }
+        };
+        
+        return (
+          <Box>
+            <PhaseNavigation onViewChange={handleViewChange} />
+            {renderMainContent()}
+          </Box>
+        );
+      };
+
+# ===========================================
+# 15. セキュリティ規約（フロントエンド版）
+# ===========================================
+security:
+  xss_prevention:
+    react_escaping: "React自動エスケープの活用"
+    dangerous_html: "dangerouslySetInnerHTML の禁止"
+    input_validation: "ユーザー入力の適切な検証"
+    
+  csrf_protection:
+    same_site_cookies: "SameSite Cookie設定"
+    api_tokens: "API通信時のトークン検証"
+    
+  data_protection:
+    local_storage: "機密情報のlocalStorage保存禁止"
+    websocket_data: "WebSocketデータの適切な処理"
+    audio_data: "音声データの一時的な処理のみ"
+    
+  dependency_security:
+    vulnerability_scanning: "npm audit による脆弱性チェック"
+    regular_updates: "依存関係の定期的な更新"
+    trusted_sources: "信頼できるパッケージソースの使用"
+    
+  build_security:
+    source_map: "本番環境でのソースマップ無効化"
+    console_removal: "本番ビルドでのconsole.log削除"
+    asset_integrity: "アセットの整合性チェック"
+    
+  examples:
+    input_sanitization: |
+      const handleUserInput = (input: string) => {
+        // React が自動的にエスケープ
+        return <Text>{input}</Text>;
+        
+        // 危険: HTMLとして解釈される
+        // return <div dangerouslySetInnerHTML={{__html: input}} />;
+      };
+      
+    secure_api_call: |
+      const secureApiCall = async (data: any) => {
+        try {
+          const response = await axios.post('/api/secure-endpoint', data, {
+            headers: {
+              'Content-Type': 'application/json',
+              // CSRFトークンが必要な場合
+              'X-CSRF-Token': getCsrfToken(),
+            },
+            withCredentials: true, // Cookie送信
+          });
+          return response.data;
+        } catch (error) {
+          // セキュアなエラーログ
+          console.error('API call failed:', error.response?.status);
+          throw error;
+        }
+      }; 

@@ -1,10 +1,12 @@
 # KanshiChan - バックエンド開発規約
 # =============================================
+# バージョン: 2.0
+# 最終更新: 2024-12-27
 # 対象: Python/Flask バックエンド開発
 # 参照: main_rules.yaml
 
 # ===========================================
-# 1. Python コーディング規約
+# 1. Python コーディング規約（強化版）
 # ===========================================
 python_coding:
   style_guide: "PEP 8 + Black formatting"
@@ -19,10 +21,12 @@ python_coding:
     style: "isort で自動整理"
     
   type_hints:
-    usage: "推奨（特に公開API）"
+    usage: "必須（全ての公開API）"
+    mypy: "型チェック必須"
     examples:
       - "def detect_objects(self, frame: np.ndarray) -> Dict[str, Any]:"
       - "class ConfigManager:"
+      - "async def generate_speech(self, text: str) -> Optional[str]:"
       
   docstrings:
     format: "Google style"
@@ -30,126 +34,252 @@ python_coding:
       - "public classes"
       - "public methods"
       - "complex functions"
+      - "AI/ML関連処理"
     example: |
-      def setup_object_detector(self) -> None:
-          """物体検出器の初期化
+      def optimize_yolo_inference(self, model, frame: np.ndarray) -> Optional[Any]:
+          """YOLO推論の最適化
           
-          YOLOv8モデルをロードし、適切なデバイス（GPU/CPU）に配置します。
-          モデルファイルが存在しない場合は自動的にダウンロードを行います。
+          フレームスキップ判定とGPU最適化を適用したYOLO推論を実行します。
+          パフォーマンス監視とエラーハンドリングを含みます。
           
+          Args:
+              model: YOLOモデル
+              frame: 入力フレーム（BGR形式）
+              
+          Returns:
+              推論結果（最適化適用済み）、スキップ時はNone
+              
           Raises:
-              RuntimeError: モデルの初期化に失敗した場合
+              ModelError: YOLO推論に失敗した場合
+              OptimizationError: 最適化処理に失敗した場合
           """
 
 # ===========================================
-# 2. プロジェクト構造規約
+# 2. プロジェクト構造規約（実装版）
 # ===========================================
 directory_structure:
   src:
     config:
       purpose: "設定ファイル管理"
       files:
-        - "config.yaml: メイン設定"
+        - "config.yaml: メイン設定（AI最適化・TTS・国際化対応）"
         - "schedules.json: スケジュール設定"
         - "__init__.py: パッケージ初期化"
         
     core:
-      purpose: "コア機能実装"
+      purpose: "コア機能実装（AI最適化・メモリ管理統合）"
       modules:
+        ai_optimizer: "AI処理最適化（フレームスキップ・バッチ処理）"
+        memory_manager: "メモリ管理強化（LRUキャッシュ・GC最適化）"
         camera: "カメラ制御とフレーム取得"
-        detector: "AI検出エンジン（YOLO, MediaPipe）"
-        detection: "検出処理の統合管理"
+        object_detector: "統合物体検出器（MediaPipe + YOLOv8）"
+        detection_renderer: "検出結果描画処理"
+        frame_processor: "フレーム処理エンジン"
         monitor: "監視機能のメインロジック"
         state: "状態管理（不在、スマホ使用等）"
+        status_broadcaster: "ステータス配信管理"
+        schedule_checker: "スケジュールチェック機能"
+        threshold_manager: "閾値管理システム"
+        detection: "検出処理の統合管理"
+        detector: "レガシー検出器（互換性維持）"
         
     services:
-      purpose: "外部サービス連携"
-      modules:
-        alert_manager: "アラート通知の統合管理"
-        alert_service: "アラート処理の抽象化"
-        line_service: "LINE Notify 連携"
-        llm_service: "LLM（GPT）連携"
-        schedule_manager: "スケジュール管理"
-        sound_service: "音声再生"
+      purpose: "外部サービス連携（モジュール化・拡張）"
+      structure:
+        communication:
+          - "alert_manager.py: アラート通知統合管理"
+          - "alert_service.py: アラート処理抽象化"
+          - "line_service.py: LINE Notify連携"
+        automation:
+          - "schedule_manager.py: スケジュール管理"
+        tts:
+          - "tts_service.py: Zonos TTS音声合成"
+          - "audio_processor.py: 音声処理"
+          - "emotion_manager.py: 感情制御"
+          - "device_manager.py: デバイス最適化"
+          - "quality_evaluator.py: 音質評価"
+          - "sound_service.py: 音声再生"
+        ai_ml:
+          - "llm_service.py: LLM連携"
+          - "advanced_behavior_analyzer.py: 高度行動分析"
+          - "pattern_recognition.py: パターン認識"
+        data:
+          - "data_collector.py: データ収集"
+          - "storage_service.py: データ保存"
+        analysis:
+          - "behavior_analyzer.py: 行動分析"
+        personalization:
+          - "personalization_engine.py: 個人化エンジン"
+          - "user_profile_builder.py: ユーザープロファイル"
+        monitoring:
+          - "performance_monitor.py: パフォーマンス監視"
+          - "alert_system.py: アラートシステム"
+        streaming:
+          - "streaming_processor.py: ストリーミング処理"
+      voice_manager: "音声ファイル管理サービス"
         
     web:
-      purpose: "Web API と WebSocket"
+      purpose: "Web API と WebSocket（Blueprint分割）"
       modules:
-        api: "Flask REST API エンドポイント"
+        api: "レガシーREST APIエンドポイント"
         app: "Flask アプリケーション設定"
         handlers: "ルートハンドラー"
-        websocket: "WebSocket通信"
+        websocket: "WebSocket通信（音声配信対応）"
+        routes:
+          - "basic_analysis_routes.py: 基本分析API"
+          - "advanced_analysis_routes.py: 高度分析API"
+          - "prediction_analysis_routes.py: 予測分析API"
+          - "realtime_analysis_routes.py: リアルタイム分析API"
+          - "tts_synthesis_routes.py: TTS音声合成API"
+          - "tts_voice_clone_routes.py: 音声クローンAPI"
+          - "tts_file_routes.py: TTSファイル管理API"
+          - "tts_emotion_routes.py: TTS感情制御API"
+          - "tts_streaming_routes.py: TTSストリーミングAPI"
+          - "tts_system_routes.py: TTSシステム管理API"
+          - "behavior_routes.py: 行動データAPI"
+          - "monitor_routes.py: 監視API"
         
     utils:
-      purpose: "共通ユーティリティ"
+      purpose: "共通ユーティリティ（例外処理強化）"
       modules:
-        config_manager: "設定ファイル読み込み・管理"
-        logger: "ロガー設定"
+        config_manager: "設定ファイル読み込み・管理（630行）"
+        logger: "ロガー設定（構造化ログ対応）"
+        exceptions: "カスタム例外体系（30+例外クラス）"
         yaml_utils: "YAML操作ユーティリティ"
+        
+    models:
+      purpose: "データモデル定義"
+      modules:
+        behavior_log: "行動ログモデル"
+        analysis_result: "分析結果モデル"
+        db: "データベース設定"
         
     sounds:
       purpose: "アラート音声ファイル"
       formats: ["wav"]
+      
+    data:
+      purpose: "データファイル保存"
+      structure:
+        - "backups/: バックアップファイル"
+        - "archives/: アーカイブファイル"
+        - "behavior_logs/: 行動ログ"
 
 # ===========================================
-# 3. クラス設計規約
+# 3. クラス設計規約（AI最適化対応）
 # ===========================================
 class_design:
   naming: "PascalCase"
   
   structure:
     initialization: "__init__ メソッドでの適切な初期化"
-    error_handling: "try-except での例外処理"
-    logging: "適切なログ出力"
+    error_handling: "カスタム例外による詳細なエラー処理"
+    logging: "構造化ログ出力"
+    performance: "AI処理の最適化考慮"
     
-  examples:
-    detector: |
-      class Detector:
-          def __init__(self, config_manager=None):
-              """初期化時にconfig_managerから設定を取得"""
+  ai_optimization_pattern:
+    example: |
+      class AIOptimizer:
+          def __init__(self, config_manager: Optional[ConfigManager] = None):
               try:
                   self.config_manager = config_manager
-                  self.setup_models()
+                  self.performance_monitor = PerformanceMonitor()
+                  self.frame_skipper = FrameSkipper(config_manager)
+                  self._load_optimization_settings()
+                  logger.info("AIOptimizer initialized successfully")
               except Exception as e:
-                  logger.error(f"Error initializing Detector: {e}")
+                  optimization_error = wrap_exception(
+                      e, OptimizationError,
+                      "AIOptimizer initialization failed",
+                      details={'optimization_disabled': True}
+                  )
+                  logger.error(f"AIOptimizer error: {optimization_error.to_dict()}")
+                  raise optimization_error
                   
-    service: |
-      class AlertService:
-          def send_alert(self, message: str) -> bool:
-              """アラート送信（戻り値で成功/失敗を示す）"""
+  service_pattern:
+    example: |
+      class TTSService:
+          def __init__(self, config: Dict[str, Any]):
+              self.config = TTSConfig(config)
+              self.device_manager = DeviceManager(self.config)
+              self.emotion_manager = EmotionManager()
               
+          async def generate_speech(self, text: str, **kwargs) -> str:
+              """音声生成（非同期処理）"""
+              try:
+                  # 生成処理
+                  return output_path
+              except Exception as e:
+                  raise AudioError(f"Speech generation failed: {str(e)}")
+
 # ===========================================
-# 4. エラーハンドリング規約
+# 4. エラーハンドリング規約（カスタム例外体系）
 # ===========================================
 error_handling:
   logging:
     logger_setup: "utils.logger.setup_logger(__name__)"
+    format: "構造化ログ（JSON形式）"
     levels:
-      DEBUG: "詳細なデバッグ情報"
+      DEBUG: "詳細なデバッグ情報（AI処理統計含む）"
       INFO: "正常な動作ログ"
       WARNING: "警告（処理は継続）"
       ERROR: "エラー（処理に影響）"
       CRITICAL: "致命的エラー（停止必要）"
       
+  custom_exceptions:
+    base: "KanshiChanError（ベース例外）"
+    categories:
+      ai_ml:
+        - "ModelError: AI/MLモデル関連"
+        - "ModelInitializationError: モデル初期化"
+        - "InferenceError: 推論処理"
+      performance:
+        - "PerformanceError: パフォーマンス関連"
+        - "OptimizationError: 最適化処理"
+        - "MemoryError: メモリ管理"
+        - "FrameSkipError: フレームスキップ"
+        - "BatchProcessingError: バッチ処理"
+      audio:
+        - "AudioError: 音声関連"
+        - "AudioPlaybackError: 音声再生"
+        - "AudioFileError: 音声ファイル"
+      api:
+        - "APIError: API関連"
+        - "LineAPIError: LINE API"
+        - "ValidationError: バリデーション"
+      system:
+        - "CameraInitializationError: カメラ初期化"
+        - "HardwareError: ハードウェア"
+        - "InitializationError: システム初期化"
+        
   exception_handling:
+    pattern: "wrap_exception() 関数の使用"
     specific_exceptions: "具体的な例外クラスをキャッチ"
-    generic_fallback: "Exception は最後の手段"
-    logging: "例外発生時は必ずログ出力"
+    details: "詳細情報をdetailsに記録"
+    logging: "例外発生時は必ずstructured log出力"
     user_feedback: "ユーザーに分かりやすいメッセージ"
     
   examples:
-    detection_error: |
+    ai_optimization_error: |
       try:
-          results = self.model(frame)
-      except torch.cuda.OutOfMemoryError:
-          logger.error("GPU memory insufficient, falling back to CPU")
-          self.model.to('cpu')
+          results = self.ai_optimizer.optimize_yolo_inference(model, frame)
+      except OptimizationError as e:
+          logger.warning(f"AI optimization failed, falling back to standard processing: {e.to_dict()}")
+          results = model(frame, verbose=False)
+      except ModelError as e:
+          logger.error(f"Model inference failed: {e.to_dict()}")
+          return default_results
       except Exception as e:
-          logger.error(f"Detection failed: {e}", exc_info=True)
+          unexpected_error = wrap_exception(
+              e, InferenceError,
+              "Unexpected error during AI inference",
+              details={'frame_shape': frame.shape if frame is not None else None}
+          )
+          logger.error(f"Inference error: {unexpected_error.to_dict()}")
           return default_results
 
 # ===========================================
-# 5. 設定管理規約
+# 5. 設定管理規約（拡張設定対応）
 # ===========================================
 configuration:
   format: "YAML"
@@ -158,6 +288,30 @@ configuration:
     validation: "ConfigManager による型検証"
     defaults: "デフォルト値の明示"
     
+  new_sections:
+    optimization:
+      - "target_fps: 目標フレームレート（15.0）"
+      - "min_fps: 最低フレームレート（10.0）"
+      - "max_skip_rate: 最大スキップレート（2）"
+      - "batch_processing: バッチ処理設定"
+    memory:
+      - "threshold_percent: メモリ閾値（80.0%）"
+      - "gc_interval_seconds: GC間隔（30.0秒）"
+      - "cache: キャッシュ設定"
+    tts:
+      - "model: Zonos TTSモデル設定"
+      - "enable_mps: Apple Silicon MPS使用"
+      - "device: デバイス最適化設定"
+      - "cache_dir: TTSキャッシュディレクトリ"
+    data_collection:
+      - "collection_interval_seconds: データ収集間隔（2.0秒）"
+      - "batch_save_size: バッチ保存サイズ（5）"
+      - "buffer_size: バッファサイズ（15）"
+    logging:
+      - "level: ログレベル（INFO）"
+      - "enable_file_output: ファイル出力有効化"
+      - "log_dir: ログディレクトリ"
+    
   access_pattern:
     manager: "ConfigManager を通じた一元アクセス"
     caching: "設定値のキャッシュ"
@@ -165,40 +319,72 @@ configuration:
     
   example:
     yaml_structure: |
-      detector:
-        use_mediapipe: true
-        use_yolo: true
-        mediapipe_options:
-          pose:
-            min_detection_confidence: 0.5
+      optimization:
+        target_fps: 15.0
+        batch_processing:
+          enabled: true
+          batch_size: 8
+          timeout_ms: 33
+      tts:
+        model: "Zyphra/Zonos-v0.1-transformer"
+        enable_mps: false
+        cache_dir: "voice_data/tts_cache"
             
     access_code: |
-      confidence = config_manager.get('detector.mediapipe_options.pose.min_detection_confidence', 0.5)
+      target_fps = config_manager.get('optimization.target_fps', 15.0)
+      tts_model = config_manager.get('tts.model', 'default-model')
 
 # ===========================================
-# 6. API 設計規約
+# 6. API 設計規約（Blueprint分割対応）
 # ===========================================
 api_design:
   rest_endpoints:
     naming: "kebab-case"
     versioning: "/api/v1/"
     structure:
-      - "/api/status - システム状態"
-      - "/api/config - 設定管理"
-      - "/api/video_feed - 映像ストリーム"
+      legacy:
+        - "/api/status - システム状態"
+        - "/api/config - 設定管理"
+        - "/api/video_feed - 映像ストリーム"
+      new_endpoints:
+        analysis:
+          - "/api/analysis/basic - 基本分析"
+          - "/api/analysis/advanced - 高度分析"
+          - "/api/analysis/prediction - 予測分析"
+          - "/api/analysis/realtime - リアルタイム分析"
+        tts:
+          - "/api/tts/synthesize - 音声合成"
+          - "/api/tts/clone_voice - 音声クローン"
+          - "/api/tts/upload_voice_sample - 音声サンプル"
+          - "/api/tts/emotion_control - 感情制御"
+          - "/api/tts/streaming - ストリーミング"
+          - "/api/tts/status - システム状態"
+        monitoring:
+          - "/api/monitor/performance - パフォーマンス統計"
+          - "/api/monitor/health - ヘルスチェック"
+        behavior:
+          - "/api/behavior/logs - 行動ログ"
+          - "/api/behavior/analysis - 行動分析"
       
   response_format:
     success: |
       {
+        "success": true,
         "status": "success",
         "data": {...},
-        "timestamp": "ISO 8601"
+        "timestamp": "ISO 8601",
+        "processing_time_ms": 45.2
       }
     error: |
       {
+        "success": false,
         "status": "error",
-        "error": "Human readable message",
-        "code": "MACHINE_READABLE_CODE",
+        "error": {
+          "type": "ValidationError",
+          "code": "INVALID_INPUT",
+          "message": "Human readable message",
+          "details": {...}
+        },
         "timestamp": "ISO 8601"
       }
       
@@ -206,12 +392,14 @@ api_design:
     events:
       status_update: "リアルタイム状態更新"
       alert_triggered: "アラート発生通知"
+      performance_stats: "パフォーマンス統計"
+      audio_notification: "音声配信通知"
       
 # ===========================================
-# 7. テスト規約
+# 7. テスト規約（拡張版）
 # ===========================================
 testing:
-  framework: "pytest"
+  framework: "pytest >=8.3.5"
   structure:
     unit_tests: "tests/test_*.py"
     fixtures: "tests/conftest.py"
@@ -223,77 +411,170 @@ testing:
     
   coverage:
     minimum: "80%"
+    current: "79.13%"
+    target: "90%"
     measurement: "pytest-cov"
     
+  special_tests:
+    ai_optimization: "AI最適化機能のパフォーマンステスト"
+    memory_management: "メモリリーク検出テスト"
+    tts_functionality: "TTS音声生成テスト"
+    exception_handling: "カスタム例外処理テスト"
+    
   examples:
-    unit_test: |
-      def test_detect_objects_with_valid_frame_returns_results():
+    ai_optimization_test: |
+      def test_ai_optimizer_improves_fps():
           # Arrange
-          detector = Detector()
-          frame = np.zeros((480, 640, 3), dtype=np.uint8)
+          config = {'optimization': {'target_fps': 15.0}}
+          optimizer = AIOptimizer(config)
           
           # Act
-          results = detector.detect_objects(frame)
+          performance_before = optimizer.get_performance_stats()
+          # ... processing ...
+          performance_after = optimizer.get_performance_stats()
           
           # Assert
-          assert 'detections' in results
-          assert isinstance(results['detections'], dict)
+          assert performance_after['fps'] >= performance_before['fps']
+          
+    exception_handling_test: |
+      def test_tts_service_handles_invalid_input():
+          # Arrange
+          tts_service = TTSService(config)
+          
+          # Act & Assert
+          with pytest.raises(ValidationError) as exc_info:
+              tts_service.generate_speech("")
+          
+          assert "text cannot be empty" in str(exc_info.value)
+          assert exc_info.value.error_code == "VALIDATION_ERROR"
 
 # ===========================================
-# 8. 依存関係管理
+# 8. 依存関係管理（最新版）
 # ===========================================
 dependencies:
   management:
     file: "requirements.txt"
     versioning: "固定バージョン指定（>=x.y.z）"
     security: "定期的な脆弱性チェック"
+    count: "185パッケージ"
     
   categories:
     ai_libraries:
-      - "torch>=1.9.0"
-      - "ultralytics"
-      - "mediapipe>=0.8.0"
-      - "opencv-python>=4.5.0"
+      - "torch>=2.5.1"
+      - "ultralytics>=8.3.87"
+      - "mediapipe>=0.10.21"
+      - "opencv-contrib-python>=4.11.0.86"
       
     web_framework:
-      - "Flask>=2.0.0"
-      - "Flask-SocketIO"
+      - "Flask>=2.3.3"
+      - "Flask-SocketIO>=5.5.1"
+      - "Flask-CORS>=5.0.1"
+      
+    optimization:
+      - "psutil>=7.0.0"
+      - "numpy>=1.26.4"
+      
+    tts_audio:
+      - "librosa>=0.11.0"
+      - "soundfile>=0.13.1"
+      - "playsound>=1.2.2"
+      
+    ai_services:
+      - "ollama>=0.4.3"
+      - "openai>=1.70.0"
       
     utilities:
-      - "PyYAML"
-      - "Pillow"
-      - "numpy"
+      - "PyYAML>=6.0.2"
+      - "Pillow>=10.0.0"
+      - "requests>=2.32.3"
 
 # ===========================================
-# 9. パフォーマンス規約
+# 9. パフォーマンス規約（AI最適化版）
 # ===========================================
 performance:
   ai_processing:
-    frame_rate: "15 FPS 以上を目標"
-    memory_management: "適切なメモリ解放"
-    gpu_utilization: "GPU利用可能時の最適化"
-    
+    target_metrics:
+      - "FPS: 15+ (実績)"
+      - "推論時間: <50ms平均"
+      - "メモリ使用量: 動的管理"
+    optimization_features:
+      - "動的フレームスキップ (FrameSkipper)"
+      - "LRUキャッシュシステム (MemoryCache)"
+      - "ガベージコレクション最適化"
+      - "バッチ処理（実験的機能）"
+    monitoring:
+      - "リアルタイムFPS監視"
+      - "メモリ使用量追跡"
+      - "推論時間測定"
+      - "GPU/CPU使用率監視"
+      
   web_api:
-    response_time: "200ms 以下"
+    response_time: "200ms 以下（実績）"
     concurrent_requests: "複数リクエストの適切な処理"
+    websocket: "低遅延リアルタイム通信"
+    
+  tts_processing:
+    generation_time: "高速モード 30秒以内"
+    quality: "高品質音声生成"
+    caching: "効率的な音声キャッシュ"
     
   monitoring:
-    metrics: "レスポンス時間、メモリ使用量、FPS"
-    logging: "パフォーマンス関連ログ"
+    metrics: "FPS、メモリ使用量、推論時間、API応答時間"
+    logging: "パフォーマンス関連構造化ログ"
+    alerts: "閾値超過時の自動アラート"
 
 # ===========================================
-# 10. セキュリティ規約
+# 10. セキュリティ規約（AI・音声対応）
 # ===========================================
 security:
   input_validation:
-    frame_data: "画像データの検証"
+    frame_data: "画像データの検証・サニタイズ"
     config_data: "設定値の型・範囲チェック"
     api_requests: "リクエストデータのサニタイズ"
+    audio_data: "音声データの安全性検証"
+    text_input: "TTS入力テキストのサニタイズ"
     
   secrets_management:
     env_vars: "機密情報は環境変数"
     config_exclusion: "設定ファイルから機密情報除外"
+    tts_keys: "TTS APIキーの安全な管理"
+    line_tokens: "LINE APIトークンの保護"
     
-  camera_access:
-    permission: "カメラアクセス権限の適切な管理"
-    privacy: "映像データの適切な取り扱い" 
+  data_protection:
+    camera_access: "カメラアクセス権限の適切な管理"
+    privacy: "映像データの適切な取り扱い"
+    audio_privacy: "音声データの一時的な保存のみ"
+    user_data: "個人情報の最小限の収集"
+    
+  ai_security:
+    model_integrity: "AIモデルの完全性検証"
+    inference_safety: "推論結果の妥当性チェック"
+    resource_limits: "AIリソース使用量の制限"
+
+# ===========================================
+# 11. 新機能開発規約
+# ===========================================
+new_features:
+  ai_optimization:
+    implementation: "core/ai_optimizer.py, core/memory_manager.py"
+    guidelines:
+      - "パフォーマンス監視の実装必須"
+      - "フォールバック機能の提供"
+      - "設定による有効/無効の制御"
+      - "詳細なログ出力"
+      
+  tts_integration:
+    implementation: "services/tts/"
+    guidelines:
+      - "デバイス最適化（MPS/CUDA/CPU）"
+      - "エラーハンドリングの徹底"
+      - "音声品質の評価"
+      - "キャッシュ機能の活用"
+      
+  service_architecture:
+    pattern: "モジュール化・パッケージ分割"
+    guidelines:
+      - "services/以下にドメイン別パッケージ"
+      - "__init__.py での適切なエクスポート"
+      - "依存性注入パターンの採用"
+      - "設定管理の統一" 

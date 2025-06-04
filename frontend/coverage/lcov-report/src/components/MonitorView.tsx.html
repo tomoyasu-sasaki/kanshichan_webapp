@@ -413,7 +413,7 @@ export const MonitorView = () =&gt; {
     if (videoRef.current) {
       // MJPEGストリームのエンドポイントを直接srcに設定
       // キャッシュ無効化のタイムスタンプは不要
-      videoRef.current.src = 'http://localhost:5001/api/video_feed';
+      videoRef.current.src = 'http://localhost:8000/api/video_feed';
     }
   }, []); // マウント時に一度だけ実行
 &nbsp;

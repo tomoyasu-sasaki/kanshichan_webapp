@@ -14,7 +14,7 @@ logger = setup_logger(__name__)
 DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.yaml')
 # 設定のデフォルト値を定義 (例)
 DEFAULT_CONFIG = {
-    'server': {'port': 5001},
+    'server': {'port': 8000},
     'display': {'show_opencv_window': True},
     'conditions': {
         'absence': {'threshold_seconds': 5},

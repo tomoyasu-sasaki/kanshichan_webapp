@@ -22,7 +22,7 @@ jest.mock('axios', () => ({
 // HTMLImageElementのsrcプロパティをモック化
 Object.defineProperty(HTMLImageElement.prototype, 'src', {
   set: jest.fn(),
-  get: jest.fn(() => 'http://localhost:5001/api/video_feed'),
+  get: jest.fn(() => 'http://localhost:8000/api/video_feed'),
 });
 
 // 全画面API関連のモック

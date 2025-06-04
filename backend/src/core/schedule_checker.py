@@ -1,9 +1,9 @@
 import time
-import datetime
-from typing import Set, Optional
+from datetime import datetime, timedelta
+from typing import Set, Optional, Dict, Any
 from utils.logger import setup_logger
-from services.alert_manager import AlertManager
-from services.schedule_manager import ScheduleManager
+from services.communication.alert_manager import AlertManager
+from services.automation.schedule_manager import ScheduleManager
 from web.websocket import socketio
 from utils.exceptions import (
     ScheduleError, ScheduleExecutionError, NetworkError,
@@ -55,7 +55,7 @@ class ScheduleChecker:
             return False  # スケジュールマネージャーが設定されていない場合は何もしない
         
         # 現在時刻を取得（HH:MM形式）
-        now = datetime.datetime.now()
+        now = datetime.now()
         current_time = now.strftime("%H:%M")
         current_minute = now.strftime("%H:%M")  # 分単位で記録
         

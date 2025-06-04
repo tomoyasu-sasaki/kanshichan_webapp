@@ -38,7 +38,7 @@ def app(tmp_path):
             'smartphone_usage': {'threshold_seconds': 3.0}
         },
         'line': { 'enabled': False, 'token': 'test_token' },
-        'server': {'port': 5001},
+        'server': {'port': 8000},
         'display': {'show_opencv_window': False}
         # 他の必要なデフォルト設定
     }

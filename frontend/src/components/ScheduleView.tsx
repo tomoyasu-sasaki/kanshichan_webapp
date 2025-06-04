@@ -1,7 +1,7 @@
 import { Box, Heading, Divider, Text, useColorModeValue, FormControl, FormLabel, Input, Button, HStack, VStack, useToast, Table, Thead, Tbody, Tr, Th, Td, IconButton } from '@chakra-ui/react'
 import { DeleteIcon } from '@chakra-ui/icons'
 import { useState, useEffect, useCallback } from 'react'
-import { websocketManager, ScheduleAlert } from '../utils/websocket'
+import { websocketManager, ScheduleAlert } from '../utils/websocket.ts'
 
 interface Schedule {
   id: string
