@@ -33,8 +33,12 @@ import {
   FaLightbulb, 
   FaEye,
   FaExclamationTriangle,
-  FaCheckCircle
+  FaCheckCircle,
+  FaArrowUp,
+  FaArrowDown,
+  FaMinus
 } from 'react-icons/fa';
+import { logger } from '../utils/logger';
 
 interface BehaviorInsightsProps {
   refreshInterval?: number; // リフレッシュ間隔（秒）
@@ -54,6 +58,18 @@ interface BehaviorTrend {
     presence_rate?: number;
     smartphone_usage_rate?: number;
     total_sessions?: number;
+    basic_statistics?: {
+      mean?: number;
+      high_focus_ratio?: number;
+      low_focus_ratio?: number;
+    };
+    trend_analysis?: {
+      trend?: 'improving' | 'declining' | 'stable';
+      trend_strength?: number;
+    };
+    hourly_patterns?: {
+      hourly_statistics?: { [key: string]: number };
+    };
   };
   anomalies?: unknown[];
   trend_summary?: unknown;
@@ -68,8 +84,8 @@ interface DailyInsight {
   insights?: {
     focus_score?: number;
     productivity_score?: number;
-    key_findings?: string[];
-    improvement_areas?: string[];
+    key_findings?: (string | InsightItem)[];
+    improvement_areas?: (string | InsightItem)[];
   };
   summary?: {
     summary?: string;
@@ -106,8 +122,14 @@ interface BehaviorSummary {
   };
 }
 
+interface InsightItem {
+  message?: string;
+  action?: string;
+  [key: string]: unknown;
+}
+
 export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
-  refreshInterval = 30,
+  refreshInterval = 300, // 30秒 → 5分（300秒）に変更
   onNavigate
 }) => {
   // 分析データ状態
@@ -116,17 +138,88 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [behaviorSummary, setBehaviorSummary] = useState<BehaviorSummary | null>(null);
 
-  // UI状態
-  const [loading, setLoading] = useState(true);
+  // UI状態（段階的ローディング対応）
+  const [summaryLoading, setSummaryLoading] = useState(true); // サマリー専用ローディング
+  const [insightsLoading, setInsightsLoading] = useState(true); // インサイト専用ローディング
+  const [trendsLoading, setTrendsLoading] = useState(true); // トレンド専用ローディング
+  const [error, setError] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState('today'); // today, week, month
   const [priorityFilter, setPriorityFilter] = useState('all'); // all, high, medium, low
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const toast = useToast();
 
-  // 行動トレンドデータを取得
+  // 行動サマリーを取得（最優先・高速）
+  const fetchBehaviorSummary = useCallback(async () => {
+    try {
+      setSummaryLoading(true);
+      setError(null);
+      
+      await logger.info('BehaviorInsights: サマリーデータ取得開始', 
+        { component: 'BehaviorInsights', action: 'fetch_summary_start' }, 
+        'BehaviorInsights'
+      );
+      
+      const response = await fetch('/api/behavior/summary/dashboard');
+      
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      if (data.status === 'success') {
+        setBehaviorSummary(data.data);
+        await logger.info('BehaviorInsights: サマリーデータ取得完了', 
+          { 
+            component: 'BehaviorInsights', 
+            action: 'fetch_summary_success',
+            data_keys: Object.keys(data.data || {})
+          }, 
+          'BehaviorInsights'
+        );
+      } else {
+        throw new Error(data.error || 'Unknown API error');
+      }
+    } catch (error) {
+      console.error('Failed to fetch behavior summary:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setError(`データ取得に失敗しました: ${errorMessage}`);
+      
+      await logger.error('BehaviorInsights: サマリーデータ取得エラー', 
+        { 
+          component: 'BehaviorInsights', 
+          action: 'fetch_summary_error',
+          error: errorMessage
+        }, 
+        'BehaviorInsights'
+      );
+      
+      toast({
+        title: 'データ取得エラー',
+        description: `行動サマリーの取得に失敗しました: ${errorMessage}`,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, [toast]);
+
+  // 行動トレンドデータを取得（中優先）
   const fetchBehaviorTrends = useCallback(async (selectedTimeframe: string) => {
     try {
+      setTrendsLoading(true);
+      
+      await logger.info('BehaviorInsights: トレンドデータ取得開始', 
+        { 
+          component: 'BehaviorInsights', 
+          action: 'fetch_trends_start',
+          timeframe: selectedTimeframe
+        }, 
+        'BehaviorInsights'
+      );
+
       // フロントエンドの表示値をAPIパラメータにマッピング
       const timeframeMapping: { [key: string]: string } = {
         'today': 'daily',
@@ -141,31 +234,103 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
         const data = await response.json();
         if (data.status === 'success') {
           setBehaviorTrends(data.data || null);
+          await logger.info('BehaviorInsights: トレンドデータ取得完了', 
+            { 
+              component: 'BehaviorInsights', 
+              action: 'fetch_trends_success',
+              timeframe: selectedTimeframe
+            }, 
+            'BehaviorInsights'
+          );
         }
       }
     } catch (error) {
       console.error('Failed to fetch behavior trends:', error);
+      await logger.error('BehaviorInsights: トレンドデータ取得エラー', 
+        { 
+          component: 'BehaviorInsights', 
+          action: 'fetch_trends_error',
+          error: error instanceof Error ? error.message : String(error)
+        }, 
+        'BehaviorInsights'
+      );
+    } finally {
+      setTrendsLoading(false);
     }
   }, []);
 
-  // 今日の洞察を取得
+  // 今日の洞察を取得（低優先・重い処理）
   const fetchDailyInsights = useCallback(async () => {
     try {
+      setInsightsLoading(true);
+      
+      await logger.info('BehaviorInsights: インサイトデータ取得開始', 
+        { component: 'BehaviorInsights', action: 'fetch_insights_start' }, 
+        'BehaviorInsights'
+      );
+
       const response = await fetch('/api/analysis/insights');
       if (response.ok) {
         const data = await response.json();
         if (data.status === 'success') {
-          setDailyInsights(data.data || null);
+          // API応答データの構造に合わせて設定
+          const insights = data.data || {};
+          
+          // insights.summary.insights から focus_score と productivity_score を取得
+          const summaryInsights = insights.summary?.insights || {};
+          
+          // DailyInsight型に適合するデータ構造を作成
+          const dailyInsightData: DailyInsight = {
+            target_date: insights.target_date || new Date().toISOString().split('T')[0],
+            logs_analyzed: insights.logs_analyzed || 0,
+            insights: {
+              focus_score: summaryInsights.focus_score || 0,
+              productivity_score: summaryInsights.productivity_score || 0,
+              key_findings: summaryInsights.key_findings || [],
+              improvement_areas: summaryInsights.improvement_areas || []
+            },
+            summary: insights.summary || {}
+          };
+          
+          setDailyInsights(dailyInsightData);
+          
+          await logger.info('BehaviorInsights: インサイトデータ取得完了', 
+            { 
+              component: 'BehaviorInsights', 
+              action: 'fetch_insights_success',
+              logs_analyzed: insights.logs_analyzed
+            }, 
+            'BehaviorInsights'
+          );
         }
       }
     } catch (error) {
       console.error('Failed to fetch daily insights:', error);
+      await logger.error('BehaviorInsights: インサイトデータ取得エラー', 
+        { 
+          component: 'BehaviorInsights', 
+          action: 'fetch_insights_error',
+          error: error instanceof Error ? error.message : String(error)
+        }, 
+        'BehaviorInsights'
+      );
+    } finally {
+      setInsightsLoading(false);
     }
   }, []);
 
-  // 推奨事項を取得
+  // 推奨事項を取得（低優先）
   const fetchRecommendations = useCallback(async (priority: string) => {
     try {
+      await logger.debug('BehaviorInsights: 推奨事項取得開始', 
+        { 
+          component: 'BehaviorInsights', 
+          action: 'fetch_recommendations_start',
+          priority 
+        }, 
+        'BehaviorInsights'
+      );
+
       const url = priority === 'all' 
         ? '/api/analysis/recommendations'
         : `/api/analysis/recommendations?priority=${priority}`;
@@ -182,33 +347,58 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
     }
   }, []);
 
-  // 行動サマリーを取得
-  const fetchBehaviorSummary = useCallback(async () => {
-    try {
-      const response = await fetch('/api/behavior/summary?detailed=true');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.status === 'success') {
-          setBehaviorSummary(data.data || null);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch behavior summary:', error);
-    }
-  }, []);
+  // 高速データ更新（サマリーのみ）
+  const refreshFastData = useCallback(async () => {
+    await logger.info('BehaviorInsights: 高速データ更新開始', 
+      { component: 'BehaviorInsights', action: 'refresh_fast_start' }, 
+      'BehaviorInsights'
+    );
+    
+    await fetchBehaviorSummary();
+    setLastUpdated(new Date());
+    
+    await logger.info('BehaviorInsights: 高速データ更新完了', 
+      { component: 'BehaviorInsights', action: 'refresh_fast_complete' }, 
+      'BehaviorInsights'
+    );
+  }, [fetchBehaviorSummary]);
 
-  // 全データ更新
+  // 全データ更新（段階的実行）
   const refreshAllData = useCallback(async () => {
-    setLoading(true);
+    await logger.info('BehaviorInsights: 全データ更新開始', 
+      { component: 'BehaviorInsights', action: 'refresh_all_start' }, 
+      'BehaviorInsights'
+    );
+
     try {
+      // Phase 1: 高速でサマリーデータを表示
+      await fetchBehaviorSummary();
+      
+      // Phase 2: 並行してトレンドと推奨事項を取得
       await Promise.all([
         fetchBehaviorTrends(timeframe),
-        fetchDailyInsights(),
-        fetchRecommendations(priorityFilter),
-        fetchBehaviorSummary()
+        fetchRecommendations(priorityFilter)
       ]);
+      
+      // Phase 3: 最後に重いインサイトを取得（バックグラウンド）
+      void fetchDailyInsights(); // 非同期で実行、完了を待たない
+      
       setLastUpdated(new Date());
-    } catch {
+      
+      await logger.info('BehaviorInsights: 全データ更新完了', 
+        { component: 'BehaviorInsights', action: 'refresh_all_complete' }, 
+        'BehaviorInsights'
+      );
+    } catch (error) {
+      await logger.error('BehaviorInsights: 全データ更新エラー', 
+        { 
+          component: 'BehaviorInsights', 
+          action: 'refresh_all_error',
+          error: error instanceof Error ? error.message : String(error)
+        }, 
+        'BehaviorInsights'
+      );
+      
       toast({
         title: 'データ更新エラー',
         description: 'データの更新に失敗しました',
@@ -216,18 +406,22 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
         duration: 3000,
         isClosable: true,
       });
-    } finally {
-      setLoading(false);
     }
-  }, [timeframe, priorityFilter, fetchBehaviorTrends, fetchDailyInsights, fetchRecommendations, fetchBehaviorSummary, toast]);
+  }, [timeframe, priorityFilter, fetchBehaviorSummary, fetchBehaviorTrends, fetchRecommendations, fetchDailyInsights, toast]);
 
-  // 初期化とリフレッシュ
+  // 初期化とリフレッシュ（段階的実行）
   useEffect(() => {
     refreshAllData();
     
-    const interval = setInterval(refreshAllData, refreshInterval * 1000);
-    return () => clearInterval(interval);
-  }, [refreshAllData, refreshInterval]);
+    // 高速データは1分間隔、全データは5分間隔で更新
+    const fastInterval = setInterval(refreshFastData, 60 * 1000); // 1分間隔
+    const fullInterval = setInterval(refreshAllData, refreshInterval * 1000); // 5分間隔
+    
+    return () => {
+      clearInterval(fastInterval);
+      clearInterval(fullInterval);
+    };
+  }, [refreshAllData, refreshFastData, refreshInterval]);
 
   // 時間枠変更ハンドラ
   const handleTimeframeChange = useCallback((newTimeframe: string) => {
@@ -258,19 +452,19 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
     switch (direction) {
       case 'up':
         return {
-          icon: <StatArrow type="increase" />,
+          icon: <FaArrowUp />,
           color: 'green',
           text: `+${percentage.toFixed(1)}%`
         };
       case 'down':
         return {
-          icon: <StatArrow type="decrease" />,
+          icon: <FaArrowDown />,
           color: 'red',
           text: `-${percentage.toFixed(1)}%`
         };
       default:
         return {
-          icon: null,
+          icon: <FaMinus />,
           color: 'gray',
           text: '変化なし'
         };
@@ -296,13 +490,35 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
                   <option value="week">今週</option>
                   <option value="month">今月</option>
                 </Select>
-                <Button onClick={refreshAllData} size="sm" isLoading={loading}>
+                <Button onClick={refreshAllData} size="sm" isLoading={summaryLoading || trendsLoading || insightsLoading}>
                   更新
                 </Button>
                 {lastUpdated && (
                   <Text fontSize="xs" color="gray.500">
                     最終更新: {lastUpdated.toLocaleTimeString()}
                   </Text>
+                )}
+                {/* ローディング進捗インジケーター */}
+                {(summaryLoading || trendsLoading || insightsLoading) && (
+                  <VStack spacing={1} align="start">
+                    <Text fontSize="xs" color="blue.500">
+                      {summaryLoading && "📊 基本データ取得中..."}
+                      {!summaryLoading && trendsLoading && "📈 トレンド分析中..."}
+                      {!summaryLoading && !trendsLoading && insightsLoading && "🧠 AI洞察生成中..."}
+                    </Text>
+                    <Box bg="gray.200" height="2px" width="100px" borderRadius="full" overflow="hidden">
+                      <Box 
+                        bg="blue.400" 
+                        height="100%" 
+                        width={
+                          !summaryLoading && !trendsLoading && !insightsLoading ? "100%" :
+                          !summaryLoading && !trendsLoading ? "80%" :
+                          !summaryLoading ? "50%" : "20%"
+                        }
+                        transition="width 0.3s ease"
+                      />
+                    </Box>
+                  </VStack>
                 )}
               </HStack>
             </HStack>
@@ -311,11 +527,23 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
 
         {/* サマリー統計 */}
         <Grid templateColumns="repeat(auto-fit, minmax(200px, 1fr))" gap={4}>
-          {loading ? (
+          {error ? (
+            <Card gridColumn="1 / -1">
+              <CardBody>
+                <Alert status="error">
+                  <AlertIcon />
+                  {error}
+                </Alert>
+              </CardBody>
+            </Card>
+          ) : summaryLoading ? (
             Array.from({ length: 4 }).map((_, index) => (
               <Card key={index}>
                 <CardBody>
                   <Skeleton height="60px" />
+                  <Text fontSize="xs" color="blue.500" mt={2}>
+                    高速データ取得中... 約1秒で表示されます
+                  </Text>
                 </CardBody>
               </Card>
             ))
@@ -411,7 +639,7 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
             </HStack>
           </CardHeader>
           <CardBody>
-            {loading ? (
+            {trendsLoading ? (
               <SkeletonText noOfLines={4} spacing="4" />
             ) : behaviorTrends ? (
               <Grid templateColumns="repeat(auto-fit, minmax(250px, 1fr))" gap={6}>
@@ -421,13 +649,19 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
                     <Text>平均集中度:</Text>
                     <HStack>
                       <Badge colorScheme="blue">
-                        {formatPercentage(behaviorTrends.focus_analysis?.average_focus || 0)}
+                        {formatPercentage(
+                          behaviorTrends.focus_analysis?.average_focus || 
+                          behaviorTrends.focus_analysis?.basic_statistics?.mean || 0
+                        )}
                       </Badge>
                       {(() => {
-                        const trend = getTrendDisplay(
-                          behaviorTrends.focus_analysis?.trend_direction || 'stable',
-                          behaviorTrends.focus_analysis?.trend_percentage || 0
-                        );
+                        const trendDirection = behaviorTrends.focus_analysis?.trend_direction || 
+                                             (behaviorTrends.focus_analysis?.trend_analysis?.trend === 'improving' ? 'up' : 
+                                              behaviorTrends.focus_analysis?.trend_analysis?.trend === 'declining' ? 'down' : 'stable');
+                        const trendPercentage = behaviorTrends.focus_analysis?.trend_percentage || 
+                                              behaviorTrends.focus_analysis?.trend_analysis?.trend_strength || 0;
+                        
+                        const trend = getTrendDisplay(trendDirection, trendPercentage);
                         return (
                           <HStack color={trend.color}>
                             {trend.icon}
@@ -445,13 +679,17 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
                     <Text>良い姿勢:</Text>
                     <HStack>
                       <Badge colorScheme="green">
-                        {formatPercentage(behaviorTrends.focus_analysis?.good_posture_percentage || 0)}
+                        {formatPercentage(
+                          behaviorTrends.focus_analysis?.good_posture_percentage ||
+                          behaviorTrends.focus_analysis?.basic_statistics?.high_focus_ratio || 0
+                        )}
                       </Badge>
                       {(() => {
-                        const trend = getTrendDisplay(
-                          behaviorTrends.focus_analysis?.trend_direction || 'stable',
-                          0 // 姿勢の変化率は別途計算が必要
-                        );
+                        const trendDirection = behaviorTrends.focus_analysis?.trend_direction || 
+                                             (behaviorTrends.focus_analysis?.trend_analysis?.trend === 'improving' ? 'up' : 
+                                              behaviorTrends.focus_analysis?.trend_analysis?.trend === 'declining' ? 'down' : 'stable');
+                        
+                        const trend = getTrendDisplay(trendDirection, 0);
                         return (
                           <HStack color={trend.color}>
                             {trend.icon}
@@ -467,18 +705,27 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
                   <VStack spacing={1} align="stretch" fontSize="sm">
                     <HStack justify="space-between">
                       <Text>在席率:</Text>
-                      <Badge>{formatPercentage(behaviorTrends.focus_analysis?.presence_rate || 0)}</Badge>
+                      <Badge>
+                        {formatPercentage(
+                          behaviorTrends.focus_analysis?.presence_rate || 
+                          (1 - (behaviorTrends.focus_analysis?.basic_statistics?.low_focus_ratio || 0))
+                        )}
+                      </Badge>
                     </HStack>
                     <HStack justify="space-between">
                       <Text>スマホ使用率:</Text>
                       <Badge colorScheme="orange">
-                        {formatPercentage(behaviorTrends.focus_analysis?.smartphone_usage_rate || 0)}
+                        {formatPercentage(
+                          behaviorTrends.focus_analysis?.smartphone_usage_rate ||
+                          behaviorTrends.focus_analysis?.basic_statistics?.low_focus_ratio || 0
+                        )}
                       </Badge>
                     </HStack>
                     <HStack justify="space-between">
                       <Text>セッション数:</Text>
                       <Badge colorScheme="purple">
-                        {behaviorTrends.focus_analysis?.total_sessions || 0}回
+                        {behaviorTrends.focus_analysis?.total_sessions || 
+                         Object.keys(behaviorTrends.focus_analysis?.hourly_patterns?.hourly_statistics || {}).length}回
                       </Badge>
                     </HStack>
                   </VStack>
@@ -502,7 +749,7 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
             </HStack>
           </CardHeader>
           <CardBody>
-            {loading ? (
+            {insightsLoading ? (
               <SkeletonText noOfLines={6} spacing="4" />
             ) : dailyInsights ? (
               <VStack spacing={4} align="stretch">
@@ -542,12 +789,21 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
                     <Box>
                       <Text fontWeight="bold" mb={2}>主な発見</Text>
                       <List spacing={1}>
-                        {(dailyInsights.insights?.key_findings ?? []).map((finding: string, index: number) => (
-                          <ListItem key={index}>
-                            <ListIcon as={FaEye} color="blue.500" />
-                            <Text as="span">{finding}</Text>
-                          </ListItem>
-                        ))}
+                        {(dailyInsights.insights?.key_findings ?? []).map((finding, index: number) => {
+                          // 型安全な文字列変換
+                          const findingText = typeof finding === 'string' 
+                            ? finding 
+                            : typeof finding === 'object' && finding !== null 
+                              ? (finding as InsightItem).message || JSON.stringify(finding)
+                              : String(finding);
+                          
+                          return (
+                            <ListItem key={index}>
+                              <ListIcon as={FaEye} color="blue.500" />
+                              <Text as="span">{findingText}</Text>
+                            </ListItem>
+                          );
+                        })}
                       </List>
                     </Box>
                   </>
@@ -559,12 +815,21 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
                     <Box>
                       <Text fontWeight="bold" mb={2}>改善領域</Text>
                       <List spacing={1}>
-                        {(dailyInsights.insights?.improvement_areas ?? []).map((area: string, index: number) => (
-                          <ListItem key={index}>
-                            <ListIcon as={FaExclamationTriangle} color="orange.500" />
-                            <Text as="span">{area}</Text>
-                          </ListItem>
-                        ))}
+                        {(dailyInsights.insights?.improvement_areas ?? []).map((area, index: number) => {
+                          // 型安全な文字列変換
+                          const areaText = typeof area === 'string' 
+                            ? area 
+                            : typeof area === 'object' && area !== null 
+                              ? (area as InsightItem).message || (area as InsightItem).action || JSON.stringify(area)
+                              : String(area);
+                          
+                          return (
+                            <ListItem key={index}>
+                              <ListIcon as={FaExclamationTriangle} color="orange.500" />
+                              <Text as="span">{areaText}</Text>
+                            </ListItem>
+                          );
+                        })}
                       </List>
                     </Box>
                   </>
@@ -601,7 +866,7 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
             </HStack>
           </CardHeader>
           <CardBody>
-            {loading ? (
+            {insightsLoading ? (
               <SkeletonText noOfLines={4} spacing="4" />
             ) : recommendations.length > 0 ? (
               <VStack spacing={3} align="stretch">
@@ -620,7 +885,7 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
                     </Box>
                     <Badge colorScheme={rec.priority === 'high' ? 'red' : rec.priority === 'medium' ? 'orange' : 'green'}>
                       {rec.priority === 'high' ? '重要' : rec.priority === 'medium' ? '普通' : '軽微'}
-                            </Badge>
+                    </Badge>
                   </Alert>
                 ))}
               </VStack>

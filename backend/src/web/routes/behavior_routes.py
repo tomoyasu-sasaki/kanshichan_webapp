@@ -98,6 +98,42 @@ def get_behavior_logs():
         }), 500
 
 
+@behavior_bp.route('/summary/dashboard', methods=['GET'])
+def get_dashboard_summary():
+    """ダッシュボード専用サマリーAPI
+    
+    今日・昨日のデータをtoday/yesterday構造で返す
+    フロントエンド期待値に完全対応
+    """
+    try:
+        logger.info("Dashboard summary API called")
+        user_id = request.args.get('user_id')
+        
+        # 今日・昨日のデータ取得
+        today_data = _get_daily_dashboard_data('today', user_id)
+        yesterday_data = _get_daily_dashboard_data('yesterday', user_id)
+        
+        response_data = {
+            'status': 'success',
+            'data': {
+                'today': today_data,
+                'yesterday': yesterday_data
+            },
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        
+        logger.info(f"Dashboard summary generated: today={today_data.get('total_time', 0)}s, yesterday={yesterday_data.get('total_time', 0)}s")
+        return jsonify(response_data)
+        
+    except Exception as e:
+        logger.error(f"Dashboard summary error: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'error': 'Failed to get dashboard summary',
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
+
 @behavior_bp.route('/summary', methods=['GET'])
 def get_behavior_summary():
     """行動データサマリー情報取得API
@@ -471,6 +507,68 @@ def _get_timeframe_range(timeframe: str, start_date: str = None, end_date: str =
     return start_time, end_time
 
 
+def _calculate_posture_alerts(logs: List[BehaviorLog]) -> int:
+    """姿勢アラート回数を計算
+    
+    Args:
+        logs: 行動ログリスト
+        
+    Returns:
+        int: 姿勢アラート回数
+    """
+    try:
+        alert_count = 0
+        for log in logs:
+            if hasattr(log, 'posture_data') and log.posture_data:
+                posture_score = log.posture_data.get('score', 1.0)
+                # 姿勢スコアが閾値60%以下の場合をアラートとする
+                if posture_score < 0.6:
+                    alert_count += 1
+        return alert_count
+    except Exception as e:
+        logger.error(f"Error calculating posture alerts: {e}")
+        return 0
+
+
+def _calculate_productivity_score(logs: List[BehaviorLog]) -> float:
+    """生産性スコアを算出
+    
+    Args:
+        logs: 行動ログリスト
+        
+    Returns:
+        float: 生産性スコア (0.0-1.0の範囲)
+    """
+    try:
+        if not logs:
+            return 0.0
+        
+        # 重み付け設定
+        focus_weight = 0.6
+        presence_weight = 0.3
+        smartphone_penalty = 0.1
+        
+        # 各指標の計算
+        focus_scores = [log.focus_level for log in logs if log.focus_level is not None]
+        avg_focus = sum(focus_scores) / len(focus_scores) if focus_scores else 0.0
+        
+        presence_rate = sum(1 for log in logs if log.presence_status == 'present') / len(logs)
+        
+        smartphone_penalty_rate = sum(1 for log in logs if log.smartphone_detected) / len(logs)
+        
+        # 生産性スコア算出
+        score = (avg_focus * focus_weight + 
+                presence_rate * presence_weight - 
+                smartphone_penalty_rate * smartphone_penalty)
+        
+        # 0.0-1.0の範囲に正規化
+        return max(0.0, min(1.0, score))
+        
+    except Exception as e:
+        logger.error(f"Error calculating productivity score: {e}")
+        return 0.0
+
+
 def _calculate_basic_summary(logs: List[BehaviorLog], timeframe: str) -> Dict[str, Any]:
     """基本統計サマリーの計算"""
     if not logs:
@@ -485,6 +583,9 @@ def _calculate_basic_summary(logs: List[BehaviorLog], timeframe: str) -> Dict[st
     smartphone_count = sum(1 for log in logs if log.smartphone_detected)
     present_count = sum(1 for log in logs if log.presence_status == 'present')
     
+    posture_alerts = _calculate_posture_alerts(logs)
+    productivity_score = _calculate_productivity_score(logs)
+    
     return {
         'timeframe': timeframe,
         'period_start': logs[-1].timestamp.isoformat(),
@@ -494,7 +595,9 @@ def _calculate_basic_summary(logs: List[BehaviorLog], timeframe: str) -> Dict[st
         'smartphone_usage_rate': smartphone_count / total_logs,
         'presence_rate': present_count / total_logs,
         'active_time_minutes': total_logs * 0.5,  # 30秒間隔と仮定
-        'data_completeness': len(focus_scores) / total_logs if total_logs > 0 else 0
+        'data_completeness': len(focus_scores) / total_logs if total_logs > 0 else 0,
+        'posture_alerts': posture_alerts,
+        'productivity_score': productivity_score
     }
 
 
@@ -736,4 +839,73 @@ def _generate_json_export(logs: List[BehaviorLog], fields: List[str], field_map:
             record[field] = field_map[field](log)
         export_data.append(record)
     
-    return export_data 
+    return export_data
+
+
+def _get_daily_dashboard_data(timeframe: str, user_id: str = None) -> Dict[str, Any]:
+    """日次ダッシュボードデータ取得
+    
+    Args:
+        timeframe: 'today' または 'yesterday'
+        user_id: ユーザーID（オプション）
+        
+    Returns:
+        dict: ダッシュボード用データ（秒単位）
+    """
+    try:
+        # 時間範囲の取得
+        start_time, end_time = _get_timeframe_range(timeframe)
+        if isinstance(start_time, dict):  # エラーの場合
+            logger.warning(f"Invalid timeframe: {timeframe}")
+            return _empty_dashboard_data()
+        
+        # ログデータ取得
+        logs = BehaviorLog.get_logs_by_timerange(start_time, end_time, user_id)
+        
+        if not logs:
+            logger.info(f"No logs found for {timeframe}")
+            return _empty_dashboard_data()
+        
+        # 基本統計計算
+        total_seconds = len(logs) * 30  # 30秒間隔と仮定
+        
+        # 集中度関連計算
+        focus_scores = [log.focus_level for log in logs if log.focus_level is not None]
+        avg_focus = sum(focus_scores) / len(focus_scores) if focus_scores else 0
+        
+        # 在席率計算
+        presence_rate = sum(1 for log in logs if log.presence_status == 'present') / len(logs)
+        
+        # スマートフォン使用率計算
+        smartphone_rate = sum(1 for log in logs if log.smartphone_detected) / len(logs)
+        
+        # 姿勢アラート計算
+        posture_alerts = _calculate_posture_alerts(logs)
+        
+        dashboard_data = {
+            'total_time': total_seconds,
+            'focus_time': int(total_seconds * avg_focus),
+            'break_time': int(total_seconds * (1 - avg_focus) * presence_rate),
+            'absence_time': int(total_seconds * (1 - presence_rate)),
+            'smartphone_usage_time': int(total_seconds * smartphone_rate),
+            'posture_alerts': posture_alerts
+        }
+        
+        logger.info(f"Dashboard data for {timeframe}: {dashboard_data}")
+        return dashboard_data
+        
+    except Exception as e:
+        logger.error(f"Error getting daily dashboard data for {timeframe}: {e}", exc_info=True)
+        return _empty_dashboard_data()
+
+
+def _empty_dashboard_data() -> Dict[str, Any]:
+    """空のダッシュボードデータを返す"""
+    return {
+        'total_time': 0,
+        'focus_time': 0,
+        'break_time': 0,
+        'absence_time': 0,
+        'smartphone_usage_time': 0,
+        'posture_alerts': 0
+    } 

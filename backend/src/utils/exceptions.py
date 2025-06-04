@@ -158,6 +158,11 @@ class RenderingError(AIProcessingError):
     pass
 
 
+class SmoothingError(AIProcessingError):
+    """検出結果平滑化関連エラー"""
+    pass
+
+
 # ========== ネットワーク・通信関連例外 ==========
 
 class NetworkError(KanshiChanError):

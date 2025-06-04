@@ -10,9 +10,10 @@ from utils.config_manager import ConfigManager
 from utils.exceptions import (
     ModelError, ModelInitializationError, ModelInferenceError,
     YOLOError, MediaPipeError, DetectionError, ConfigError,
-    HardwareError, OptimizationError, wrap_exception
+    HardwareError, OptimizationError, SmoothingError, wrap_exception
 )
 from core.ai_optimizer import AIOptimizer
+from core.detection_smoother import DetectionSmoother
 
 logger = setup_logger(__name__)
 
@@ -23,6 +24,7 @@ class ObjectDetector:
     - YOLO初期化と推論
     - MediaPipe初期化と推論
     - 検出結果の統合処理
+    - 検出結果の平滑化（点滅抑制）
     """
     
     def __init__(self, config_manager: Optional[ConfigManager] = None):
@@ -64,6 +66,19 @@ class ObjectDetector:
                 )
                 logger.warning(f"AIOptimizer error: {optimization_error.to_dict()}")
                 self.ai_optimizer = None
+            
+            # 検出結果平滑化システムの初期化
+            try:
+                self.detection_smoother = DetectionSmoother(config_manager)
+                logger.info("DetectionSmoother integrated successfully")
+            except Exception as e:
+                smoothing_error = wrap_exception(
+                    e, SmoothingError,
+                    "DetectionSmoother initialization failed, disabling smoothing",
+                    details={'smoothing_disabled': True}
+                )
+                logger.warning(f"DetectionSmoother error: {smoothing_error.to_dict()}")
+                self.detection_smoother = None
             
             logger.info("ObjectDetector initialized successfully.")
             
@@ -267,6 +282,24 @@ class ObjectDetector:
             if self.ai_optimizer:
                 self.ai_optimizer.update_performance_stats()
             
+            # 検出結果の平滑化処理（点滅抑制）
+            if self.detection_smoother:
+                try:
+                    results = self.detection_smoother.smooth_detections(results)
+                    logger.debug("Detection smoothing applied successfully")
+                except Exception as e:
+                    smoothing_error = wrap_exception(
+                        e, SmoothingError,
+                        "Detection smoothing failed, using original results",
+                        details={
+                            'frame_info': results.get('frame_info', {}),
+                            'detection_count': len(results.get('detections', {})),
+                            'fallback_to_original': True
+                        }
+                    )
+                    logger.warning(f"Smoothing error: {smoothing_error.to_dict()}")
+                    # エラー時は元の結果をそのまま使用
+            
             # 結果要約のログ
             logger.debug(f"Detection completed - Person: {results['person_detected']}, "
                         f"Pose: {results['pose_landmarks'] is not None}, "
@@ -415,7 +448,7 @@ class ObjectDetector:
                         scaled_x2 = int(x2 * scale_x)
                         scaled_y2 = int(y2 * scale_y)
                         
-                        logger.info(f"物体を検出: {obj_settings.get('name')} (confidence: {conf:.3f}, bbox: ({scaled_x1}, {scaled_y1}, {scaled_x2}, {scaled_y2}))")
+                        logger.debug(f"物体を検出: {obj_settings.get('name')} (confidence: {conf:.3f}, bbox: ({scaled_x1}, {scaled_y1}, {scaled_x2}, {scaled_y2}))")
                         
                         detections.append({
                             'bbox': (scaled_x1, scaled_y1, scaled_x2, scaled_y2),

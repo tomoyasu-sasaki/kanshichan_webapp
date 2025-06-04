@@ -173,6 +173,49 @@ def get_behavior_trends():
         # 集中度パターン分析
         focus_analysis = analyzer.analyze_focus_pattern(logs)
         
+        # 🆕 フロントエンド用の追加メトリクス計算
+        total_logs = len(logs)
+        present_count = sum(1 for log in logs if log.presence_status == 'present')
+        smartphone_count = sum(1 for log in logs if log.smartphone_detected)
+        
+        # focus_analysisにフロントエンド互換データを追加
+        if focus_analysis and 'error' not in focus_analysis:
+            # 既存のbasic_statisticsに追加データを含める
+            if 'basic_statistics' not in focus_analysis:
+                focus_analysis['basic_statistics'] = {}
+            
+            # 在席率の計算
+            presence_rate = present_count / total_logs if total_logs > 0 else 0
+            focus_analysis['presence_rate'] = presence_rate
+            
+            # スマートフォン使用率の計算
+            smartphone_usage_rate = smartphone_count / total_logs if total_logs > 0 else 0
+            focus_analysis['smartphone_usage_rate'] = smartphone_usage_rate
+            
+            # セッション数（時間別統計の数）
+            hourly_sessions = len(focus_analysis.get('hourly_patterns', {}).get('hourly_statistics', {}))
+            focus_analysis['total_sessions'] = hourly_sessions
+            
+            # 平均集中度（フロントエンド互換用）
+            avg_focus = focus_analysis.get('basic_statistics', {}).get('mean', 0)
+            focus_analysis['average_focus'] = avg_focus
+            
+            # 良い姿勢の割合（高集中度の割合を代用）
+            good_posture_percentage = focus_analysis.get('basic_statistics', {}).get('high_focus_ratio', 0)
+            focus_analysis['good_posture_percentage'] = good_posture_percentage
+            
+            # トレンド方向（フロントエンド互換用）
+            trend_analysis = focus_analysis.get('trend_analysis', {})
+            trend_direction_map = {
+                'improving': 'up',
+                'declining': 'down',
+                'stable': 'stable'
+            }
+            focus_analysis['trend_direction'] = trend_direction_map.get(
+                trend_analysis.get('trend', 'stable'), 'stable'
+            )
+            focus_analysis['trend_percentage'] = trend_analysis.get('trend_strength', 0)
+        
         # 異常検知
         anomalies = analyzer.detect_anomalies(logs)
         
@@ -580,13 +623,33 @@ def _generate_daily_summary(insights_data: Dict[str, Any], logs: list) -> Dict[s
     productivity_analysis = insights_data.get('productivity_analysis', {})
     focus_analysis = insights_data.get('focus_analysis', {})
     
+    # フロントエンド期待値に対応したfocus_scoreとproductivity_scoreを追加
+    avg_focus = focus_analysis.get('basic_statistics', {}).get('mean', 0)
+    productivity_score = productivity_analysis.get('productivity_score', 0)
+    
+    # バックエンド計算による生産性スコア（フォールバック）
+    if productivity_score == 0 and logs:
+        # 一時的に behavior_routes の関数をインポート
+        try:
+            from . import behavior_routes
+            productivity_score = behavior_routes._calculate_productivity_score(logs)
+        except Exception:
+            productivity_score = 0
+    
     return {
         'total_active_time': f"{len(logs) * 0.5:.1f} minutes",
-        'productivity_score': productivity_analysis.get('productivity_score', 0),
-        'average_focus': focus_analysis.get('basic_statistics', {}).get('mean', 0),
+        'productivity_score': productivity_score,
+        'average_focus': avg_focus,
         'key_insights_count': len(insights_data.get('key_insights', [])),
         'recommendations_count': len(insights_data.get('recommendations', [])),
-        'overall_assessment': _assess_daily_performance(insights_data)
+        'overall_assessment': _assess_daily_performance(insights_data),
+        # フロントエンド期待値対応
+        'insights': {
+            'focus_score': avg_focus,
+            'productivity_score': productivity_score,
+            'key_findings': insights_data.get('key_insights', []),
+            'improvement_areas': insights_data.get('recommendations', [])
+        }
     }
 
 

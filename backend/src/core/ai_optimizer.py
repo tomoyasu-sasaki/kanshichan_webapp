@@ -177,10 +177,15 @@ class AIOptimizer:
             self.frame_skipper = FrameSkipper(config_manager)
             self.batch_processor = BatchProcessor()
             
+            # 🆕 検出結果キャッシュ（描画継続性のため）
+            self.last_yolo_results = None
+            self.last_yolo_results_age = 0  # キャッシュの経過フレーム数
+            self.max_cache_age = 10  # 最大キャッシュ保持フレーム数
+            
             # 最適化設定の読み込み
             self._load_optimization_settings()
             
-            logger.info("AIOptimizer initialized successfully")
+            logger.info("AIOptimizer initialized successfully with detection caching")
             
         except Exception as e:
             optimization_error = wrap_exception(
@@ -221,7 +226,7 @@ class AIOptimizer:
             
     def optimize_yolo_inference(self, model, frame: np.ndarray) -> Optional[Any]:
         """
-        YOLO推論の最適化
+        YOLO推論の最適化（描画継続性を考慮した改良版）
         
         Args:
             model: YOLOモデル
@@ -233,10 +238,24 @@ class AIOptimizer:
         try:
             inference_start = time.time()
             
+            # キャッシュの年齢を更新
+            self.last_yolo_results_age += 1
+            
             # フレームスキップ判定
             current_fps = self.performance_monitor.get_current_fps()
-            if not self.frame_skipper.should_process_frame(current_fps):
-                return None
+            should_skip = not self.frame_skipper.should_process_frame(current_fps)
+            
+            if should_skip:
+                # 🆕 スキップ時も前回の検出結果を返すモードを追加
+                if (self.last_yolo_results is not None and 
+                    self.last_yolo_results_age <= self.max_cache_age):
+                    # 前回結果を返して描画継続性を維持
+                    logger.debug(f"Using cached YOLO results (age: {self.last_yolo_results_age} frames)")
+                    return self.last_yolo_results
+                else:
+                    # キャッシュが古すぎる場合はNoneを返す
+                    logger.debug(f"Cache too old or empty, returning None (age: {self.last_yolo_results_age})")
+                    return None
                 
             # フレーム前処理の最適化
             optimized_frame = self._optimize_frame_preprocessing(frame)
@@ -245,9 +264,14 @@ class AIOptimizer:
             with torch.no_grad():  # 勾配計算を無効化
                 results = model(optimized_frame, verbose=False)
                 
+            # 🆕 成功した推論結果をキャッシュ
+            self.last_yolo_results = results
+            self.last_yolo_results_age = 0  # キャッシュをリフレッシュ
+            
             inference_time = time.time() - inference_start
             self.performance_monitor.record_inference_time(inference_time)
             
+            logger.debug(f"YOLO inference completed, results cached")
             return results
             
         except Exception as e:
@@ -257,8 +281,18 @@ class AIOptimizer:
                 details={'fallback_to_standard': True}
             )
             logger.warning(f"YOLO optimization error: {model_error.to_dict()}")
+            
+            # エラー時も前回結果でフォールバック
+            if (self.last_yolo_results is not None and 
+                self.last_yolo_results_age <= self.max_cache_age):
+                logger.debug("Fallback to cached YOLO results due to error")
+                return self.last_yolo_results
+            
             # フォールバック: 標準推論
-            return model(frame, verbose=False)
+            try:
+                return model(frame, verbose=False)
+            except Exception:
+                return None
             
     def optimize_mediapipe_pipeline(self, pose_model, frame: np.ndarray) -> Optional[Any]:
         """
@@ -328,7 +362,11 @@ class AIOptimizer:
         stats.update({
             'skip_rate': self.frame_skipper.skip_rate,
             'batch_enabled': self.batch_processor.enabled,
-            'optimization_active': True
+            'optimization_active': True,
+            # 🆕 キャッシュ統計を追加
+            'cache_active': self.last_yolo_results is not None,
+            'cache_age': self.last_yolo_results_age,
+            'max_cache_age': self.max_cache_age
         })
         return stats
         
