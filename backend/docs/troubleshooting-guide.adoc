@@ -1,0 +1,995 @@
+= 🔧 監視ちゃん(KanshiChan) トラブルシューティングガイド
+:toc: left
+:toc-title: 目次
+:toclevels: 4
+:numbered:
+:source-highlighter: highlight.js
+:icons: font
+:doctype: book
+:version: 1.0.0
+:author: KanshiChan Support Team
+:email: support@kanshichan.dev
+:revnumber: 1.0
+:revdate: {docdate}
+:experimental:
+
+== 📋 ドキュメント情報
+
+[cols="1,3", options="header"]
+|===
+|項目 |詳細
+|**作成者** |KanshiChan サポート・開発チーム
+|**最終更新日** |{docdate}
+|**対象読者** |インフラエンジニア、運用エンジニア、サポートエンジニア、開発者
+|**文書バージョン** |{revnumber}
+|**システムバージョン** |KanshiChan v2.0
+|**レビュー状況** |初版作成完了
+|===
+
+[IMPORTANT]
+====
+🎯 **このドキュメントの目的**
+
+監視ちゃん（KanshiChan）バックエンドシステムにおける問題の診断、解決、予防について、体系的な手順とベストプラクティスを提供します。迅速な問題解決と安定運用を支援します。
+
+**想定読者**: インフラエンジニア、運用エンジニア、サポートエンジニア、開発者
+====
+
+== 🌟 トラブルシューティング概要
+
+=== 📖 問題解決アプローチ
+
+監視ちゃんの問題解決は、段階的診断アプローチを採用します。
+
+[mermaid]
+....
+graph TD
+    A[問題報告] --> B{緊急度判定}
+    B -->|緊急| C[即座対応]
+    B -->|標準| D[詳細調査]
+    
+    C --> E[ログ確認]
+    D --> E
+    E --> F[エラー分析]
+    F --> G[根本原因特定]
+    G --> H[解決策実施]
+    H --> I[検証・監視]
+    I --> J[予防策検討]
+    
+    subgraph "🔍 診断ツール"
+        K[システムログ]
+        L[パフォーマンス監視]
+        M[エラートラッキング]
+        N[デバッグモード]
+    end
+    
+    E --> K
+    F --> L
+    F --> M
+    G --> N
+    
+    classDef emergency fill:#ffebee
+    classDef standard fill:#e8f5e8
+    classDef tools fill:#f3e5f5
+    
+    class C emergency
+    class D,E,F,G,H,I,J standard
+    class K,L,M,N tools
+....
+
+=== 🚨 緊急度分類
+
+[cols="1,2,3,2", options="header"]
+|===
+|緊急度 |影響範囲 |対応時間 |対応者
+|🔥 **CRITICAL** |システム全停止 |即座（15分以内） |上級エンジニア
+|⚠️ **HIGH** |主要機能停止 |1時間以内 |シニアエンジニア
+|📋 **MEDIUM** |一部機能に影響 |4時間以内 |担当エンジニア
+|📝 **LOW** |軽微な問題 |24時間以内 |サポート担当
+|===
+
+== 🔍 よくある問題と解決策
+
+=== 🚀 起動・初期化問題
+
+==== ❌ アプリケーション起動失敗
+
+**症状**: `python app.py` 実行時にエラーで停止
+
+**原因と解決策**:
+
+[source,bash]
+----
+# 1. 依存関係エラー
+ERROR: ModuleNotFoundError: No module named 'ultralytics'
+
+# 解決策: 必要なパッケージインストール
+cd backend
+pip install -r requirements.txt
+
+# 2. 設定ファイル不備
+ERROR: FileNotFoundError: config/config.yaml not found
+
+# 解決策: 設定ファイル確認・作成
+cp config/config.example.yaml config/config.yaml
+# 設定値を環境に合わせて調整
+
+# 3. ポート競合
+ERROR: Address already in use: Port 8000
+
+# 解決策: プロセス確認・停止
+sudo lsof -i :8000
+sudo kill -9 <PID>
+# または別ポート使用
+export FLASK_RUN_PORT=8001
+----
+
+==== ❌ AI/MLモデル初期化失敗
+
+**症状**: YOLO・MediaPipeモデルの読み込みエラー
+
+[source,python]
+----
+# ログでの確認方法
+tail -f backend/logs/kanshichan.log | grep -E "(YOLO|MediaPipe|Model)"
+
+# よくあるエラーパターン
+ERROR: [ModelError] YOLO object detector initialization failed
+ERROR: [InferenceError] MediaPipe pose detection failed
+ERROR: [MemoryError] Insufficient GPU memory for model loading
+----
+
+**解決手順**:
+
+[source,bash]
+----
+# 1. モデルファイル確認
+ls -la backend/src/models/yolo/
+# yolo11n.pt が存在することを確認
+
+# 2. GPU/CPU設定確認
+python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}')"
+python -c "import torch; print(f'MPS: {torch.backends.mps.is_available() if hasattr(torch.backends, \"mps\") else False}')"
+
+# 3. メモリ使用量確認
+free -h  # Linux
+vm_stat | head -5  # macOS
+
+# 4. 強制CPU動作（テスト用）
+export KANSHICHAN_FORCE_CPU=1
+python app.py
+----
+
+=== 🔗 API・通信問題
+
+==== ❌ REST API応答エラー
+
+**症状**: APIエンドポイントが500エラーを返す
+
+**診断手順**:
+
+[source,bash]
+----
+# 1. APIヘルスチェック
+curl -X GET http://localhost:8000/api/status
+# 期待されるレスポンス: {"status": "running"}
+
+# 2. 詳細エラーログ確認
+tail -f backend/logs/kanshichan.log | grep "ERROR"
+
+# 3. API別動作確認
+curl -X GET http://localhost:8000/api/analysis/basic?hours=1
+curl -X GET http://localhost:8000/api/analysis/advanced-patterns?timeframe=daily
+----
+
+**よくあるエラーと解決策**:
+
+[source,json]
+----
+// データ不足エラー
+{
+  "status": "error",
+  "error": "No behavior logs found",
+  "code": "DATA_NOT_FOUND"
+}
+// 解決策: 監視セッション実行後に再試行
+
+// 分析サービス停止
+{
+  "status": "error", 
+  "error": "Advanced analysis services not available",
+  "code": "SERVICE_UNAVAILABLE"
+}
+// 解決策: サービス再起動、依存関係確認
+----
+
+==== ❌ WebSocket接続問題
+
+**症状**: リアルタイム通信が機能しない
+
+[source,javascript]
+----
+// フロントエンド側エラー例
+WebSocket connection to 'ws://localhost:8000/socket.io/' failed
+----
+
+**解決手順**:
+
+[source,bash]
+----
+# 1. WebSocketサーバー状態確認
+netstat -an | grep 8000
+# LISTEN状態であることを確認
+
+# 2. SocketIOサービス確認
+curl -X GET http://localhost:8000/socket.io/
+# Socket.IO関連の応答があることを確認
+
+# 3. ファイアウォール・プロキシ確認
+# WebSocketプロトコルがブロックされていないか確認
+
+# 4. ブラウザ開発者ツールでの確認
+# Network タブでWebSocket接続状態を監視
+----
+
+=== 🤖 AI/ML処理問題
+
+==== ❌ 物体検出精度低下
+
+**症状**: 人物・スマートフォン検出が不安定
+
+**診断方法**:
+
+[source,python]
+----
+# デバッグログ有効化
+import logging
+logging.getLogger('src.core.object_detector').setLevel(logging.DEBUG)
+
+# 検出結果詳細確認
+tail -f backend/logs/kanshichan.log | grep -E "(Detection|confidence|objects)"
+----
+
+**解決策**:
+
+[source,yaml]
+----
+# config/config.yaml での調整
+yolo:
+  confidence_threshold: 0.3  # 0.5 → 0.3 (検出感度向上)
+  nms_threshold: 0.4        # 重複除去閾値調整
+  max_detections: 20        # 最大検出数増加
+
+# AI最適化設定の確認
+ai_optimization:
+  enabled: true
+  target_fps: 10.0  # より安定した動作のため低下
+  skip_threshold: 0.9  # スキップ閾値上昇
+----
+
+==== ❌ パフォーマンス劣化
+
+**症状**: フレームレート低下、応答遅延
+
+[source,bash]
+----
+# 1. システムリソース確認
+top -p $(pgrep -f kanshichan)
+# CPU、メモリ使用率確認
+
+# 2. GPU使用状況確認（NVIDIA）
+nvidia-smi
+# または
+watch -n 1 nvidia-smi
+
+# 3. パフォーマンスログ分析
+grep "Performance metric" backend/logs/kanshichan.log | tail -20
+----
+
+**最適化手順**:
+
+[source,python]
+----
+# AI最適化の有効化・調整
+ai_optimization:
+  enabled: true
+  adaptive_optimization: true
+  frame_skip:
+    enabled: true
+    max_skip_rate: 3
+  batch_processing:
+    enabled: true
+    batch_size: 8
+  memory_optimization:
+    enabled: true
+    cache_size: 100
+----
+
+=== 📊 データ・ストレージ問題
+
+==== ❌ データベース接続エラー
+
+**症状**: SQLite接続失敗、データ保存エラー
+
+[source,bash]
+----
+# 1. データベースファイル確認
+ls -la backend/data/
+# kanshichan.db の存在と権限確認
+
+# 2. ディスク容量確認
+df -h backend/data/
+# 容量不足でないか確認
+
+# 3. データベース整合性チェック
+sqlite3 backend/data/kanshichan.db "PRAGMA integrity_check;"
+----
+
+**復旧手順**:
+
+[source,bash]
+----
+# 1. バックアップからの復元
+cp backend/data/backups/kanshichan_latest.db backend/data/kanshichan.db
+
+# 2. データベース再初期化（非推奨：データ消失）
+rm backend/data/kanshichan.db
+python -c "from models.db import init_db; init_db()"
+
+# 3. 権限修正
+chmod 664 backend/data/kanshichan.db
+chown user:group backend/data/kanshichan.db
+----
+
+== 📊 ログ分析・デバッグ
+
+=== 📝 ログ構造理解
+
+監視ちゃんは構造化ログを使用します:
+
+[source,text]
+----
+[2024-01-15 10:30:45] [INFO] src.core.object_detector: Detection completed, objects=2, time=0.045s
+[2024-01-15 10:30:45] [DEBUG] src.core.ai_optimizer: Frame skip decision: skip=False, fps=15.2
+[2024-01-15 10:30:45] [ERROR] src.services.line_service: LINE message sending error: {...}
+----
+
+**ログレベル別用途**:
+
+[cols="1,2,3", options="header"]
+|===
+|レベル |用途 |確認タイミング
+|**DEBUG** |詳細な処理情報 |開発・詳細調査時
+|**INFO** |正常動作記録 |運用監視
+|**WARNING** |注意が必要な状況 |定期チェック
+|**ERROR** |処理エラー |問題発生時
+|**CRITICAL** |致命的エラー |緊急対応時
+|===
+
+=== 🔍 効果的なログ検索
+
+[source,bash]
+----
+# 1. エラーログの抽出
+grep -E "ERROR|CRITICAL" backend/logs/kanshichan.log | tail -50
+
+# 2. 特定サービスのログ
+grep "object_detector" backend/logs/kanshichan.log | tail -20
+
+# 3. 時間範囲指定
+grep "2024-01-15 1[0-1]:" backend/logs/kanshichan.log  # 10-11時
+
+# 4. パフォーマンス関連
+grep -E "Performance|fps|memory|timeout" backend/logs/kanshichan.log
+
+# 5. API関連エラー
+grep -E "api|endpoint|request" backend/logs/kanshichan.log | grep ERROR
+
+# 6. リアルタイム監視
+tail -f backend/logs/kanshichan.log | grep --color=always -E "ERROR|WARNING"
+----
+
+=== 🐛 デバッグモード有効化
+
+[source,bash]
+----
+# 1. 環境変数での有効化
+export KANSHICHAN_DEBUG=1
+export FLASK_ENV=development
+python app.py
+
+# 2. 設定ファイルでの有効化
+# config/config.yaml
+logging:
+  level: DEBUG
+  console_level: DEBUG
+  enable_console_output: true
+
+# 3. 特定モジュールのデバッグ
+# Python内で動的に変更
+import logging
+logging.getLogger('src.core.object_detector').setLevel(logging.DEBUG)
+----
+
+== 🛠️ 詳細診断ツール
+
+=== 🔬 システム診断スクリプト
+
+[source,python]
+----
+#!/usr/bin/env python3
+"""
+KanshiChan システム診断スクリプト
+使用方法: python diagnostics/system_check.py
+"""
+
+import sys
+import os
+import subprocess
+import json
+import psutil
+from pathlib import Path
+
+def check_python_environment():
+    """Python環境チェック"""
+    print("🐍 Python Environment Check")
+    print(f"Python Version: {sys.version}")
+    print(f"Executable: {sys.executable}")
+    
+    # 必須パッケージチェック
+    required_packages = [
+        'torch', 'ultralytics', 'opencv-python', 'mediapipe',
+        'flask', 'flask-socketio', 'numpy', 'psutil'
+    ]
+    
+    for package in required_packages:
+        try:
+            __import__(package.replace('-', '_'))
+            print(f"✅ {package}: OK")
+        except ImportError:
+            print(f"❌ {package}: MISSING")
+
+def check_system_resources():
+    """システムリソースチェック"""
+    print("\n💻 System Resources Check")
+    
+    # CPU使用率
+    cpu_percent = psutil.cpu_percent(interval=1)
+    print(f"CPU Usage: {cpu_percent}%")
+    
+    # メモリ使用率
+    memory = psutil.virtual_memory()
+    print(f"Memory Usage: {memory.percent}% ({memory.used//1024//1024}MB/{memory.total//1024//1024}MB)")
+    
+    # ディスク使用率
+    disk = psutil.disk_usage('/')
+    print(f"Disk Usage: {disk.percent}% ({disk.used//1024//1024//1024}GB/{disk.total//1024//1024//1024}GB)")
+
+def check_gpu_availability():
+    """GPU可用性チェック"""
+    print("\n🎮 GPU Availability Check")
+    
+    try:
+        import torch
+        print(f"PyTorch Version: {torch.__version__}")
+        print(f"CUDA Available: {torch.cuda.is_available()}")
+        if torch.cuda.is_available():
+            print(f"CUDA Version: {torch.version.cuda}")
+            print(f"GPU Count: {torch.cuda.device_count()}")
+            for i in range(torch.cuda.device_count()):
+                print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
+        
+        # MPS (Apple Silicon) チェック
+        if hasattr(torch.backends, 'mps'):
+            print(f"MPS Available: {torch.backends.mps.is_available()}")
+    except ImportError:
+        print("❌ PyTorch not available")
+
+def check_model_files():
+    """モデルファイルチェック"""
+    print("\n🤖 Model Files Check")
+    
+    model_paths = [
+        'backend/src/models/yolo/yolo11n.pt',
+        'backend/data/',
+        'backend/logs/'
+    ]
+    
+    for path in model_paths:
+        if os.path.exists(path):
+            if os.path.isfile(path):
+                size = os.path.getsize(path) // 1024 // 1024
+                print(f"✅ {path}: {size}MB")
+            else:
+                print(f"✅ {path}: Directory exists")
+        else:
+            print(f"❌ {path}: Missing")
+
+def check_network_connectivity():
+    """ネットワーク接続チェック"""
+    print("\n🌐 Network Connectivity Check")
+    
+    try:
+        import requests
+        # APIエンドポイントチェック
+        response = requests.get('http://localhost:8000/api/status', timeout=5)
+        if response.status_code == 200:
+            print("✅ API Server: Reachable")
+        else:
+            print(f"⚠️ API Server: HTTP {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"❌ API Server: {e}")
+
+if __name__ == "__main__":
+    print("🔧 KanshiChan System Diagnostics")
+    print("=" * 50)
+    
+    check_python_environment()
+    check_system_resources()
+    check_gpu_availability()
+    check_model_files()
+    check_network_connectivity()
+    
+    print("\n📊 Diagnostics Complete")
+----
+
+=== 📈 パフォーマンス監視
+
+[source,python]
+----
+# performance_monitor.py - リアルタイムパフォーマンス監視
+import time
+import psutil
+import threading
+from datetime import datetime
+
+class PerformanceMonitor:
+    """システムパフォーマンス監視"""
+    
+    def __init__(self, interval=10):
+        self.interval = interval
+        self.running = False
+        self.stats = []
+    
+    def start_monitoring(self):
+        """監視開始"""
+        self.running = True
+        monitor_thread = threading.Thread(target=self._monitor_loop)
+        monitor_thread.daemon = True
+        monitor_thread.start()
+        print("📊 Performance monitoring started")
+    
+    def stop_monitoring(self):
+        """監視停止"""
+        self.running = False
+        print("📊 Performance monitoring stopped")
+    
+    def _monitor_loop(self):
+        """監視ループ"""
+        while self.running:
+            stats = {
+                'timestamp': datetime.now().isoformat(),
+                'cpu_percent': psutil.cpu_percent(),
+                'memory_percent': psutil.virtual_memory().percent,
+                'disk_io': psutil.disk_io_counters()._asdict() if psutil.disk_io_counters() else {},
+                'network_io': psutil.net_io_counters()._asdict()
+            }
+            self.stats.append(stats)
+            
+            # アラート条件チェック
+            if stats['cpu_percent'] > 90:
+                print(f"⚠️ High CPU usage: {stats['cpu_percent']}%")
+            if stats['memory_percent'] > 85:
+                print(f"⚠️ High memory usage: {stats['memory_percent']}%")
+            
+            time.sleep(self.interval)
+    
+    def get_report(self):
+        """パフォーマンスレポート生成"""
+        if not self.stats:
+            return "No performance data collected"
+        
+        cpu_avg = sum(s['cpu_percent'] for s in self.stats) / len(self.stats)
+        memory_avg = sum(s['memory_percent'] for s in self.stats) / len(self.stats)
+        
+        return f"""
+📊 Performance Report
+Period: {self.stats[0]['timestamp']} - {self.stats[-1]['timestamp']}
+Data points: {len(self.stats)}
+Average CPU: {cpu_avg:.1f}%
+Average Memory: {memory_avg:.1f}%
+        """
+
+# 使用例
+if __name__ == "__main__":
+    monitor = PerformanceMonitor(interval=5)
+    monitor.start_monitoring()
+    
+    try:
+        input("Press Enter to stop monitoring...")
+    finally:
+        monitor.stop_monitoring()
+        print(monitor.get_report())
+----
+
+== 🔄 問題解決フロー
+
+=== 📋 標準解決手順
+
+[mermaid]
+....
+flowchart TD
+    A[問題報告受信] --> B[初期情報収集]
+    B --> C{既知の問題？}
+    C -->|Yes| D[既知解決策適用]
+    C -->|No| E[詳細調査開始]
+    
+    E --> F[ログ分析]
+    F --> G[システム状態確認]
+    G --> H[再現テスト]
+    H --> I[根本原因特定]
+    I --> J[解決策検討]
+    J --> K[修正実施]
+    K --> L[検証テスト]
+    L --> M{解決確認}
+    
+    M -->|No| N[追加調査]
+    N --> I
+    M -->|Yes| O[文書化]
+    O --> P[予防策検討]
+    P --> Q[完了]
+    
+    D --> L
+    
+    classDef start fill:#e1f5fe
+    classDef process fill:#f3e5f5
+    classDef decision fill:#fff3e0
+    classDef end fill:#e8f5e8
+    
+    class A start
+    class B,E,F,G,H,I,J,K,L,N,O,P process
+    class C,M decision
+    class D,Q end
+....
+
+=== 🚨 緊急時対応フロー
+
+**CRITICAL問題の場合**:
+
+1. **即座対応** (0-15分)
+   - サービス停止確認
+   - 影響範囲特定
+   - 緊急連絡
+
+2. **応急処置** (15-30分)
+   - サービス復旧試行
+   - バックアップからの復元
+   - 代替手段提供
+
+3. **根本解決** (30分-2時間)
+   - 原因調査
+   - 恒久対策実施
+   - 再発防止策
+
+[source,bash]
+----
+# 緊急時復旧スクリプト例
+#!/bin/bash
+# emergency_recovery.sh
+
+echo "🚨 Emergency Recovery Started"
+
+# 1. サービス状態確認
+echo "Checking service status..."
+pgrep -f kanshichan || echo "❌ Service not running"
+
+# 2. 基本的な復旧試行
+echo "Attempting basic recovery..."
+cd /path/to/kanshichan/backend
+
+# プロセス強制終了
+pkill -f kanshichan
+
+# 依存関係確認
+pip install -r requirements.txt --quiet
+
+# サービス再起動
+python app.py &
+
+# 3. 動作確認
+sleep 10
+curl -f http://localhost:8000/api/status || echo "❌ Service still not responding"
+
+echo "🚨 Emergency Recovery Completed"
+----
+
+=== 📞 エスカレーション基準
+
+[cols="2,3,3", options="header"]
+|===
+|状況 |エスカレーション先 |連絡方法
+|**システム全停止** |シニアエンジニア + マネージャー |即座に電話連絡
+|**データ損失リスク** |DBA + セキュリティチーム |緊急Slack + メール
+|**セキュリティ問題** |セキュリティ責任者 |セキュア通信
+|**性能劣化** |パフォーマンスチーム |Slack + チケット作成
+|===
+
+== 🔒 セキュリティ問題対応
+
+=== 🛡️ セキュリティインシデント対応
+
+**疑わしい活動を検出した場合**:
+
+[source,bash]
+----
+# 1. ログ緊急確認
+grep -E "(failed|unauthorized|attack|injection)" backend/logs/kanshichan.log
+
+# 2. アクセスログ分析
+tail -f /var/log/nginx/access.log | grep -E "(40[1-4]|50[0-9])"
+
+# 3. システム整合性チェック
+# ファイル改ざんチェック
+find backend/ -name "*.py" -newer /tmp/last_known_good_time
+
+# プロセス確認
+ps aux | grep -v grep | grep -E "(python|flask)"
+
+# 4. 緊急対策
+# 疑わしいプロセス停止
+pkill -f suspicious_process
+
+# ファイアウォール設定確認
+iptables -L -n
+----
+
+=== 🔐 データプライバシー保護
+
+**個人データ関連問題**:
+
+[source,python]
+----
+# データ匿名化確認スクリプト
+def check_data_privacy():
+    """データプライバシー保護状況確認"""
+    
+    # 1. 個人識別情報の存在チェック
+    import sqlite3
+    
+    conn = sqlite3.connect('backend/data/kanshichan.db')
+    cursor = conn.cursor()
+    
+    # 機密データパターンチェック
+    sensitive_patterns = [
+        "SELECT * FROM behavior_logs WHERE face_landmarks IS NOT NULL",
+        "SELECT COUNT(*) FROM behavior_logs WHERE session_id LIKE '%user%'"
+    ]
+    
+    for query in sensitive_patterns:
+        cursor.execute(query)
+        result = cursor.fetchall()
+        print(f"Query: {query}")
+        print(f"Results: {len(result)} records")
+    
+    conn.close()
+
+# データ削除・匿名化
+def anonymize_sensitive_data():
+    """機密データの匿名化"""
+    # 実装例は data-management.adoc を参照
+    pass
+----
+
+== 📊 予防的監視・メンテナンス
+
+=== 🔄 定期メンテナンス
+
+**日次メンテナンス**:
+
+[source,bash]
+----
+#!/bin/bash
+# daily_maintenance.sh
+
+echo "📅 Daily Maintenance Started: $(date)"
+
+# 1. ログローテーション
+find backend/logs/ -name "*.log" -size +50M -exec echo "Large log file: {}" \;
+
+# 2. 一時ファイル清理
+find backend/data/temp/ -type f -mtime +1 -delete
+
+# 3. データベース最適化
+sqlite3 backend/data/kanshichan.db "VACUUM;"
+
+# 4. 基本動作確認
+curl -f http://localhost:8000/api/status || echo "⚠️ Service check failed"
+
+echo "📅 Daily Maintenance Completed: $(date)"
+----
+
+**週次メンテナンス**:
+
+[source,bash]
+----
+#!/bin/bash
+# weekly_maintenance.sh
+
+echo "📅 Weekly Maintenance Started: $(date)"
+
+# 1. パフォーマンス統計収集
+python diagnostics/performance_summary.py
+
+# 2. エラーログ分析
+grep -c "ERROR" backend/logs/kanshichan.log.*
+
+# 3. ディスク使用量チェック
+du -sh backend/data/ backend/logs/
+
+# 4. セキュリティスキャン
+python diagnostics/security_check.py
+
+echo "📅 Weekly Maintenance Completed: $(date)"
+----
+
+=== 📈 監視アラート設定
+
+[source,yaml]
+----
+# monitoring/alerts.yaml
+alerts:
+  cpu_usage:
+    threshold: 80
+    duration: 300  # 5分継続
+    action: email
+    
+  memory_usage:
+    threshold: 85
+    duration: 180  # 3分継続
+    action: slack
+    
+  disk_usage:
+    threshold: 90
+    duration: 60   # 1分継続
+    action: email + slack
+    
+  error_rate:
+    threshold: 10  # 10エラー/分
+    duration: 60
+    action: page
+    
+  api_response_time:
+    threshold: 500  # 500ms
+    duration: 120   # 2分継続
+    action: slack
+----
+
+== 📚 FAQ・よくある質問
+
+=== ❓ システム設定関連
+
+**Q: YOLO モデルが CPU でしか動作しません**
+
+A: GPU 設定を確認してください：
+
+[source,bash]
+----
+# CUDA 環境確認
+python -c "import torch; print(torch.cuda.is_available())"
+
+# MPS (Apple Silicon) 確認  
+python -c "import torch; print(torch.backends.mps.is_available() if hasattr(torch.backends, 'mps') else False)"
+
+# 強制 GPU 使用設定
+export KANSHICHAN_FORCE_GPU=1
+----
+
+**Q: API が 404 エラーを返します**
+
+A: ルーティング設定を確認：
+
+[source,bash]
+----
+# 利用可能エンドポイント確認
+curl http://localhost:8000/api/
+# または
+flask routes  # Flask アプリ内で実行
+----
+
+**Q: ログファイルが生成されません**
+
+A: ログ設定と権限を確認：
+
+[source,bash]
+----
+# ログディレクトリ確認
+ls -la backend/logs/
+mkdir -p backend/logs/  # 存在しない場合
+
+# 権限確認
+chmod 755 backend/logs/
+chmod 644 backend/logs/kanshichan.log  # 存在する場合
+----
+
+=== ❓ パフォーマンス関連
+
+**Q: フレームレートが目標値に達しません**
+
+A: AI最適化設定を調整：
+
+[source,yaml]
+----
+# config/config.yaml
+ai_optimization:
+  enabled: true
+  target_fps: 10.0  # より現実的な値に設定
+  adaptive_optimization: true
+  frame_skip:
+    enabled: true
+    max_skip_rate: 5
+----
+
+**Q: メモリ使用量が継続的に増加します**
+
+A: メモリリーク対策：
+
+[source,python]
+----
+# ガベージコレクション強制実行
+import gc
+gc.collect()
+
+# メモリ使用量監視
+import psutil
+process = psutil.Process()
+print(f"Memory: {process.memory_info().rss / 1024 / 1024:.1f}MB")
+----
+
+== 📖 参考資料
+
+=== 🔗 関連ドキュメント
+
+* <<configuration-guide.adoc#,設定ガイド>>
+* <<development-guide.adoc#,開発ガイド>>
+* <<backend-architecture.adoc#,システムアーキテクチャ>>
+* <<monitoring-core.adoc#,監視システム>>
+
+=== 🛠️ 外部リソース
+
+* **システム監視**: htop, iostat, netstat
+* **ログ分析**: grep, awk, sed, jq
+* **ネットワーク診断**: curl, wget, nc, telnet
+* **データベース**: sqlite3, DB Browser for SQLite
+
+=== 📞 サポート連絡先
+
+[cols="2,3,2", options="header"]
+|===
+|問題種別 |連絡先 |対応時間
+|**緊急障害** |emergency@kanshichan.dev |24時間
+|**技術サポート** |tech-support@kanshichan.dev |平日 9-18時
+|**一般問い合わせ** |support@kanshichan.dev |平日 9-17時
+|**セキュリティ** |security@kanshichan.dev |24時間
+|===
+
+=== 📋 エラーコード一覧
+
+[cols="2,3", options="header"]
+|===
+|エラーコード |説明
+|`MODEL_ERROR` |AI/MLモデル関連エラー
+|`INFERENCE_ERROR` |推論処理エラー
+|`VALIDATION_ERROR` |入力値検証エラー
+|`API_ERROR` |API処理エラー
+|`DATA_RETRIEVAL_ERROR` |データ取得エラー
+|`SERVICE_UNAVAILABLE` |サービス利用不可
+|`CONFIGURATION_ERROR` |設定エラー
+|`HARDWARE_ERROR` |ハードウェアエラー
+|===
+
+---
+
+**📞 Contact**: support@kanshichan.dev +
+**🔗 Repository**: https://github.com/kanshichan/backend +
+**📅 Last Updated**: {docdate} +
+**📝 Document Version**: {revnumber} 

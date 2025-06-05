@@ -1,0 +1,1157 @@
+= 🌐 監視ちゃん(KanshiChan) WebSocket API仕様書
+:toc: left
+:toc-title: 目次
+:toclevels: 4
+:numbered:
+:source-highlighter: highlight.js
+:icons: font
+:doctype: book
+:version: 2.0.0
+:author: KanshiChan Development Team
+:email: team@kanshichan.dev
+:revnumber: 2.0
+:revdate: {docdate}
+:experimental:
+
+== 📖 概要
+
+監視ちゃん（KanshiChan）のリアルタイム通信を担うWebSocket API仕様書です。
+フロントエンドとバックエンド間のリアルタイムデータ交換、音声ストリーミング、状態通知機能について詳細な仕様を提供します。
+
+[NOTE]
+====
+📋 **ドキュメント情報**
+
+* **対象読者**: フロントエンド開発者、リアルタイム機能開発者、システム統合担当者
+* **技術スタック**: Socket.IO (Flask-SocketIO) / JavaScript/TypeScript Client
+* **通信方式**: WebSocket over HTTP/HTTPS、リアルタイム双方向通信
+* **主要機能**: 監視状態配信、音声ストリーミング、アラート通知、行動分析結果配信
+* **バージョン**: v2.0.0 (音声ストリーミング・TTS統合版)
+* **最終更新**: {docdate}
+
+**関連ドキュメント**: <<rest-api-reference>>, <<communication-system>>, <<development-guide>>
+====
+
+== 🎯 WebSocket API概要
+
+=== 💡 設計思想
+
+==== リアルタイム通信の原則
+* **低遅延**: 監視データの即座な配信（<100ms）
+* **信頼性**: 接続断絶時の自動再接続機能
+* **効率性**: 必要なデータのみの差分配信
+* **拡張性**: 新機能追加に対応した柔軟な設計
+* **国際化**: 多言語対応のメッセージフォーマット
+
+==== アーキテクチャ概要
+[mermaid]
+....
+graph TB
+    subgraph "クライアント側"
+        WEB[Webブラウザ]
+        WS_CLIENT[WebSocket Client<br/>Socket.IO Client]
+        AUDIO_MGR[AudioManager<br/>音声再生管理]
+        UI[UI Components<br/>MonitorView, etc.]
+    end
+    
+    subgraph "サーバー側"
+        WS_SERVER[WebSocket Server<br/>Flask-SocketIO]
+        STATUS_BC[StatusBroadcaster<br/>状態配信]
+        AUDIO_STREAM[AudioStreaming<br/>音声配信]
+        TTS_SRV[TTS Service<br/>音声合成]
+    end
+    
+    subgraph "バックエンドシステム"
+        DETECTOR[Object Detector<br/>物体検出]
+        STATE_MGR[State Manager<br/>状態管理]
+        BEHAVIOR[Behavior Analysis<br/>行動分析]
+        SCHEDULE[Schedule Checker<br/>スケジュール管理]
+    end
+    
+    WEB --> WS_CLIENT
+    WS_CLIENT <--> WS_SERVER
+    WS_CLIENT --> AUDIO_MGR
+    AUDIO_MGR --> UI
+    WS_CLIENT --> UI
+    
+    WS_SERVER --> STATUS_BC
+    WS_SERVER --> AUDIO_STREAM
+    STATUS_BC --> DETECTOR
+    STATUS_BC --> STATE_MGR
+    STATUS_BC --> BEHAVIOR
+    AUDIO_STREAM --> TTS_SRV
+    WS_SERVER --> SCHEDULE
+    
+    classDef client fill:#e3f2fd
+    classDef server fill:#f3e5f5
+    classDef backend fill:#e8f5e8
+    
+    class WEB,WS_CLIENT,AUDIO_MGR,UI client
+    class WS_SERVER,STATUS_BC,AUDIO_STREAM,TTS_SRV server
+    class DETECTOR,STATE_MGR,BEHAVIOR,SCHEDULE backend
+....
+
+=== 🔌 接続仕様
+
+==== 基本接続情報
+[cols="2,3", options="header"]
+|===
+|項目 |詳細
+|**プロトコル** |WebSocket (Socket.IO v4+)
+|**エンドポイント** |`ws://localhost:8000/socket.io/`
+|**名前空間** |デフォルト (`/`)
+|**認証** |現在は認証なし（v3.0で実装予定）
+|**CORS** |`*` (開発環境), 本番環境では制限必要
+|**ハートビート** |30秒間隔 (Socket.IO自動管理)
+|===
+
+==== 接続フロー
+[mermaid]
+....
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+    
+    Note over C: WebSocket接続開始
+    C->>S: connect()
+    S->>C: connect event
+    Note over S: client_idをconnected_clientsに追加
+    S-->>C: 初期状態データ (status_update)
+    
+    Note over C,S: リアルタイム通信開始
+    
+    loop 監視データ配信
+        S->>C: status_update (検出状態)
+        S->>C: behavior_data (行動データ)
+        S->>C: analysis_results (分析結果)
+    end
+    
+    loop 音声配信 (オプション)
+        S->>C: audio_notification (配信準備)
+        S->>C: audio_stream (音声データ)
+        C->>S: audio_playback_status (再生状態)
+    end
+    
+    Note over C: 接続終了
+    C->>S: disconnect()
+    Note over S: client_idをconnected_clientsから削除
+....
+
+== 📡 WebSocketイベント仕様
+
+=== 📤 サーバー送信イベント（Server → Client）
+
+==== 1. `status_update` - 監視状態更新
+
+**概要**: メインの監視状態データを配信します。
+
+**送信頻度**: 約30FPS（フレーム処理ごと）
+
+**ペイロード形式**:
+```json
+{
+  "personDetected": boolean,
+  "smartphoneDetected": boolean, 
+  "absenceTime": number,
+  "smartphoneUseTime": number,
+  "absenceAlert": boolean,
+  "smartphoneAlert": boolean,
+  "timestamp": "2024-01-20T10:30:45.123Z",
+  "frameId": number,
+  "detectionConfidence": {
+    "person": number,
+    "smartphone": number
+  }
+}
+```
+
+**実装例**:
+```python
+# サーバー側送信
+def broadcast_status(status):
+    socketio.emit('status_update', status)
+```
+
+```typescript
+// クライアント側受信
+websocketManager.onStatusUpdate((status: DetectionStatus) => {
+  console.log('Status updated:', status);
+  setMonitoringStatus(status);
+});
+```
+
+==== 2. `behavior_data` - 行動データ配信
+
+**概要**: 詳細な行動分析データを配信します。
+
+**送信条件**: 行動パターンの変化時、または分析完了時
+
+**ペイロード形式**:
+```json
+{
+  "userId": string,
+  "timestamp": "2024-01-20T10:30:45.123Z",
+  "behaviors": [
+    {
+      "type": "posture_change",
+      "confidence": 0.95,
+      "duration": 300,
+      "metadata": {
+        "fromPosture": "sitting",
+        "toPosture": "standing"
+      }
+    }
+  ],
+  "sessionData": {
+    "sessionId": string,
+    "totalDuration": number,
+    "activityCount": number
+  }
+}
+```
+
+==== 3. `analysis_results` - 分析結果配信
+
+**概要**: 行動分析の集計結果を配信します。
+
+**送信条件**: 分析処理完了時（通常5-10分間隔）
+
+**ペイロード形式**:
+```json
+{
+  "analysisId": string,
+  "timestamp": "2024-01-20T10:30:45.123Z",
+  "timeRange": {
+    "start": "2024-01-20T10:20:00.000Z",
+    "end": "2024-01-20T10:30:00.000Z"
+  },
+  "summary": {
+    "totalWorkTime": number,
+    "breakTime": number,
+    "smartphoneUsage": number,
+    "productivityScore": number
+  },
+  "patterns": [
+    {
+      "pattern": "focus_period",
+      "duration": 1800,
+      "quality": "high"
+    }
+  ]
+}
+```
+
+==== 4. `audio_stream` - 音声データ配信
+
+**概要**: TTS生成音声をリアルタイムストリーミング配信します。
+
+**送信条件**: TTSサービスで音声生成完了時
+
+**ペイロード形式**:
+```json
+{
+  "audio_data": string,  // Base64エンコード済み
+  "metadata": {
+    "audio_id": string,
+    "file_id": string,
+    "text_content": string,
+    "emotion": "neutral",
+    "language": "ja",
+    "synthesis_timestamp": "2024-01-20T10:30:45.123Z",
+    "file_size": number,
+    "streaming_mode": boolean,
+    "broadcast_mode": boolean
+  },
+  "timestamp": "2024-01-20T10:30:45.123Z",
+  "format": "audio/wav",
+  "encoding": "base64"
+}
+```
+
+**音声再生フロー**:
+[mermaid]
+....
+sequenceDiagram
+    participant TTS as TTS Service
+    participant WS as WebSocket Server
+    participant C as Client
+    participant AM as AudioManager
+    
+    Note over TTS: 音声合成処理
+    TTS->>WS: 音声データ準備完了
+    WS->>C: audio_notification (audio_ready)
+    WS->>C: audio_stream (音声データ)
+    
+    C->>AM: 音声データ受信
+    AM->>AM: Base64デコード
+    AM->>AM: AudioBuffer生成
+    AM->>AM: 音声再生開始
+    C->>WS: audio_playback_status (playing)
+    
+    Note over AM: 音声再生中...
+    
+    AM->>AM: 再生完了
+    C->>WS: audio_playback_status (finished)
+....
+
+==== 5. `audio_notification` - 音声関連通知
+
+**概要**: 音声処理の状態変化を通知します。
+
+**通知タイプ**: `tts_started`, `tts_completed`, `tts_error`, `audio_ready`, `broadcast_completed`, `broadcast_error`
+
+**ペイロード形式**:
+```json
+{
+  "type": "audio_ready",
+  "message": "音声ファイルが配信準備完了: 今日の作業状況をお知らせします...",
+  "audio_id": "audio_20240120_103045_123",
+  "timestamp": "2024-01-20T10:30:45.123Z"
+}
+```
+
+==== 6. `audio_status_update` - 音声再生状態共有
+
+**概要**: 他のクライアントの音声再生状態を共有します。
+
+**ペイロード形式**:
+```json
+{
+  "client_id": "socket_client_abc123",
+  "audio_id": "audio_20240120_103045_123", 
+  "status": "playing"  // "playing", "finished", "error"
+}
+```
+
+==== 7. `schedule_alert` - スケジュールアラート
+
+**概要**: スケジュール管理機能からのアラート通知です。
+
+**ペイロード形式**:
+```json
+{
+  "type": "schedule_alert",
+  "content": "10分後に会議が予定されています",
+  "time": "2024-01-20T10:40:00.000Z",
+  "severity": "info",  // "info", "warning", "critical"
+  "scheduleId": "schedule_abc123"
+}
+```
+
+==== 8. `broadcast_notification` - 一般通知配信
+
+**概要**: システム全体への一般的な通知を配信します。
+
+**ペイロード形式**:
+```json
+{
+  "message": "システムメンテナンスを開始します",
+  "type": "system",  // "system", "user", "alert"
+  "timestamp": "2024-01-20T10:30:45.123Z",
+  "priority": "high"  // "low", "normal", "high", "critical"
+}
+```
+
+=== 📥 クライアント送信イベント（Client → Server）
+
+==== 1. `connect` - 接続確立
+
+**概要**: WebSocket接続の確立時に自動送信されます。
+
+**処理内容**:
+- クライアントIDの生成とconnected_clientsリストへの追加
+- 初期状態データの送信
+- 接続ログの記録
+
+**実装例**:
+```python
+@socketio.on('connect')
+def handle_connect():
+    client_id = request.sid
+    connected_clients.append(client_id)
+    logger.info(f'Client connected: {client_id}')
+```
+
+==== 2. `disconnect` - 接続切断
+
+**概要**: WebSocket接続の切断時に自動送信されます。
+
+**処理内容**:
+- connected_clientsリストからの削除
+- リソースのクリーンアップ
+- 切断ログの記録
+
+==== 3. `audio_playback_status` - 音声再生状態通知
+
+**概要**: クライアント側の音声再生状態をサーバーに通知します。
+
+**送信タイミング**: 音声再生開始時、完了時、エラー時
+
+**ペイロード形式**:
+```json
+{
+  "status": "playing",  // "playing", "finished", "error"
+  "audio_id": "audio_20240120_103045_123",
+  "client_info": {
+    "browser": "Chrome",
+    "version": "120.0.0.0",
+    "audio_support": "webaudio"
+  }
+}
+```
+
+**実装例**:
+```typescript
+// クライアント側送信
+websocketManager.notifyAudioPlaybackStatus(audioId, 'playing');
+
+// サーバー側受信
+@socketio.on('audio_playback_status')
+def handle_audio_status(data):
+    client_id = request.sid
+    status = data.get('status')
+    audio_id = data.get('audio_id')
+    logger.info(f"Audio playback status from {client_id}: {status} for audio {audio_id}")
+```
+
+== 🔄 メッセージフォーマット詳細
+
+=== 📋 共通フィールド
+
+全てのWebSocketメッセージに含まれる共通フィールド：
+
+[cols="2,1,3", options="header"]
+|===
+|フィールド名 |型 |説明
+|**timestamp** |string |ISO 8601形式のタイムスタンプ
+|**messageId** |string |メッセージ一意識別子（オプション）
+|**version** |string |メッセージ形式バージョン（オプション）
+|===
+
+=== 🏗️ データ型定義
+
+==== TypeScript型定義
+```typescript
+// 基本検出状態
+interface DetectionStatus {
+  personDetected: boolean;
+  smartphoneDetected: boolean;
+  absenceTime: number;
+  smartphoneUseTime: number;
+  absenceAlert?: boolean;
+  smartphoneAlert?: boolean;
+  timestamp?: string;
+  frameId?: number;
+  detectionConfidence?: {
+    person: number;
+    smartphone: number;
+  };
+}
+
+// 音声ストリーミングデータ
+interface AudioStreamData {
+  audio_data: string;  // Base64エンコード
+  metadata: {
+    audio_id: string;
+    file_id?: string;
+    text_content: string;
+    emotion: string;
+    language: string;
+    synthesis_timestamp: string;
+    file_size: number;
+    streaming_mode?: boolean;
+    broadcast_mode?: boolean;
+  };
+  timestamp: string;
+  format: string;
+  encoding: string;
+}
+
+// 行動データ
+interface BehaviorData {
+  userId: string;
+  timestamp: string;
+  behaviors: BehaviorEvent[];
+  sessionData: {
+    sessionId: string;
+    totalDuration: number;
+    activityCount: number;
+  };
+}
+
+interface BehaviorEvent {
+  type: string;
+  confidence: number;
+  duration: number;
+  metadata: Record<string, any>;
+}
+```
+
+=== 🔧 エラーハンドリング
+
+==== エラーメッセージ形式
+```json
+{
+  "error": true,
+  "errorCode": "WEBSOCKET_ERROR_001",
+  "message": "Audio streaming failed",
+  "details": {
+    "audio_id": "audio_20240120_103045_123",
+    "client_id": "socket_client_abc123",
+    "error_type": "ENCODING_ERROR"
+  },
+  "timestamp": "2024-01-20T10:30:45.123Z"
+}
+```
+
+==== 一般的なエラーコード
+[cols="2,3,2", options="header"]
+|===
+|エラーコード |説明 |対処法
+|**CONNECTION_FAILED** |WebSocket接続に失敗 |ネットワーク状況確認、再接続
+|**AUDIO_DECODE_ERROR** |音声データのデコードに失敗 |音声形式確認、ブラウザ対応確認
+|**BUFFER_OVERFLOW** |データバッファのオーバーフロー |接続品質確認、バッファサイズ調整
+|**INVALID_MESSAGE** |無効なメッセージ形式 |メッセージ形式確認、バージョン確認
+|**AUTH_REQUIRED** |認証が必要（将来実装） |認証情報確認
+|===
+
+== 🚀 接続・切断処理
+
+=== 🔌 接続確立手順
+
+==== 1. 基本接続
+```typescript
+import { io, Socket } from 'socket.io-client';
+
+const socket: Socket = io('ws://localhost:8000', {
+  transports: ['websocket'],
+  timeout: 5000,
+  autoConnect: true
+});
+```
+
+==== 2. 接続確認とハンドラー設定
+```typescript
+socket.on('connect', () => {
+  console.log('Connected to KanshiChan WebSocket');
+  console.log('Socket ID:', socket.id);
+});
+
+socket.on('disconnect', (reason: string) => {
+  console.log('Disconnected:', reason);
+  if (reason === 'io server disconnect') {
+    // サーバー側からの切断の場合、手動再接続
+    socket.connect();
+  }
+});
+```
+
+==== 3. 自動再接続設定
+```typescript
+socket.on('connect_error', (error: Error) => {
+  console.error('Connection error:', error);
+  
+  // 指数バックオフで再接続
+  setTimeout(() => {
+    socket.connect();
+  }, Math.min(1000 * Math.pow(2, reconnectAttempts), 30000));
+});
+```
+
+=== 🔄 再接続戦略
+
+[mermaid]
+....
+stateDiagram-v2
+    [*] --> Disconnected
+    Disconnected --> Connecting : connect()
+    Connecting --> Connected : success
+    Connecting --> Error : failure
+    Connected --> Disconnected : network_error
+    Connected --> Disconnected : server_disconnect
+    Error --> Waiting : backoff
+    Waiting --> Connecting : retry
+    
+    note right of Error
+        指数バックオフ:
+        1s → 2s → 4s → 8s → 16s → 30s (max)
+    end note
+....
+
+==== 再接続実装例
+```typescript
+class WebSocketManager {
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 10;
+  private baseDelay = 1000;
+  
+  private handleReconnection() {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('Max reconnection attempts reached');
+      return;
+    }
+    
+    const delay = Math.min(
+      this.baseDelay * Math.pow(2, this.reconnectAttempts),
+      30000
+    );
+    
+    setTimeout(() => {
+      this.reconnectAttempts++;
+      this.socket?.connect();
+    }, delay);
+  }
+}
+```
+
+== ⚡ パフォーマンス考慮事項
+
+=== 📊 データ配信最適化
+
+==== フレームレート調整
+```python
+# サーバー側でのフレームレート制御
+class StatusBroadcaster:
+    def __init__(self):
+        self.last_broadcast_time = 0
+        self.min_broadcast_interval = 1/30  # 30FPS制限
+    
+    def broadcast_status(self):
+        current_time = time.time()
+        if current_time - self.last_broadcast_time >= self.min_broadcast_interval:
+            # ブロードキャスト実行
+            broadcast_status(status)
+            self.last_broadcast_time = current_time
+```
+
+==== データ圧縮と差分配信
+```python
+# 差分データのみ配信
+def create_delta_status(current_status, previous_status):
+    delta = {}
+    for key, value in current_status.items():
+        if key not in previous_status or previous_status[key] != value:
+            delta[key] = value
+    return delta if delta else None
+```
+
+=== 🎵 音声ストリーミング最適化
+
+==== バッファリング戦略
+```typescript
+class AudioManager {
+  private audioQueue: AudioBuffer[] = [];
+  private maxQueueSize = 5;
+  
+  async queueAudioBuffer(audioBuffer: AudioBuffer) {
+    if (this.audioQueue.length >= this.maxQueueSize) {
+      this.audioQueue.shift(); // 古いバッファを削除
+    }
+    this.audioQueue.push(audioBuffer);
+  }
+}
+```
+
+==== 品質調整
+[cols="2,2,2,2", options="header"]
+|===
+|ネットワーク状況 |音声品質 |ビットレート |バッファサイズ
+|**良好** |高品質 |44.1kHz/16bit |512KB
+|**普通** |標準品質 |22.05kHz/16bit |256KB
+|**不安定** |低品質 |11.025kHz/8bit |128KB
+|===
+
+=== 📈 パフォーマンス監視
+
+==== メトリクス収集
+```typescript
+interface WebSocketMetrics {
+  messagesSent: number;
+  messagesReceived: number;
+  averageLatency: number;
+  connectionUptime: number;
+  audioBufferUnderruns: number;
+  errorCount: number;
+}
+
+class MetricsCollector {
+  private metrics: WebSocketMetrics = {
+    messagesSent: 0,
+    messagesReceived: 0,
+    averageLatency: 0,
+    connectionUptime: 0,
+    audioBufferUnderruns: 0,
+    errorCount: 0
+  };
+  
+  recordMessage(type: 'sent' | 'received') {
+    if (type === 'sent') this.metrics.messagesSent++;
+    else this.metrics.messagesReceived++;
+  }
+}
+```
+
+== 🔐 セキュリティ考慮事項
+
+=== 🛡️ 現在のセキュリティ対策
+
+==== CORS設定
+```python
+# 開発環境
+socketio = SocketIO(cors_allowed_origins="*")
+
+# 本番環境（推奨）
+socketio = SocketIO(cors_allowed_origins=[
+    "https://kanshichan.yourdomain.com",
+    "https://app.kanshichan.yourdomain.com"
+])
+```
+
+==== データサニタイゼーション
+```python
+def sanitize_websocket_data(data):
+    """WebSocketデータのサニタイゼーション"""
+    if isinstance(data, dict):
+        sanitized = {}
+        for key, value in data.items():
+            # MediaPipeオブジェクトを安全な形式に変換
+            if hasattr(value, 'landmark'):
+                sanitized[key] = serialize_landmarks(value)
+            else:
+                sanitized[key] = value
+        return sanitized
+    return data
+```
+
+=== 🔒 将来のセキュリティ実装計画
+
+==== 認証・認可（v3.0予定）
+```typescript
+// JWT認証の実装予定
+const socket = io('wss://kanshichan.yourdomain.com', {
+  auth: {
+    token: 'jwt_token_here'
+  }
+});
+
+// サーバー側認証
+@socketio.on('connect')
+def handle_connect(auth):
+    token = auth.get('token')
+    if not verify_jwt_token(token):
+        disconnect()
+```
+
+==== レート制限
+```python
+# 接続あたりのメッセージレート制限
+class RateLimiter:
+    def __init__(self, max_messages_per_minute=100):
+        self.limits = {}
+        self.max_messages = max_messages_per_minute
+    
+    def check_rate(self, client_id):
+        current_time = time.time()
+        if client_id not in self.limits:
+            self.limits[client_id] = []
+        
+        # 1分以内のメッセージをカウント
+        recent_messages = [
+            t for t in self.limits[client_id] 
+            if current_time - t < 60
+        ]
+        
+        if len(recent_messages) >= self.max_messages:
+            return False
+        
+        self.limits[client_id] = recent_messages + [current_time]
+        return True
+```
+
+== 💻 クライアント実装例
+
+=== 🚀 基本実装（TypeScript）
+
+==== WebSocketマネージャークラス
+```typescript
+import { io, Socket } from 'socket.io-client';
+
+class WebSocketManager {
+  private socket: Socket | null = null;
+  private statusUpdateCallbacks: Array<(status: DetectionStatus) => void> = [];
+  private audioManager: AudioManager;
+  
+  constructor() {
+    this.audioManager = new AudioManager();
+  }
+  
+  public initialize() {
+    this.socket = io('ws://localhost:8000', {
+      transports: ['websocket'],
+      timeout: 5000
+    });
+    
+    this.setupEventHandlers();
+  }
+  
+  private setupEventHandlers() {
+    if (!this.socket) return;
+    
+    // 接続・切断
+    this.socket.on('connect', () => {
+      console.log('WebSocket connected');
+    });
+    
+    this.socket.on('disconnect', (reason) => {
+      console.log('WebSocket disconnected:', reason);
+    });
+    
+    // 状態更新
+    this.socket.on('status_update', (status: DetectionStatus) => {
+      this.statusUpdateCallbacks.forEach(callback => callback(status));
+    });
+    
+    // 音声ストリーミング
+    this.socket.on('audio_stream', async (data: AudioStreamData) => {
+      try {
+        await this.audioManager.playAudioData(data.audio_data, data.metadata);
+      } catch (error) {
+        console.error('Audio playback failed:', error);
+        this.notifyAudioPlaybackStatus(data.metadata.audio_id, 'error');
+      }
+    });
+  }
+  
+  public onStatusUpdate(callback: (status: DetectionStatus) => void) {
+    this.statusUpdateCallbacks.push(callback);
+    return () => {
+      const index = this.statusUpdateCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.statusUpdateCallbacks.splice(index, 1);
+      }
+    };
+  }
+  
+  public notifyAudioPlaybackStatus(audioId: string, status: 'playing' | 'finished' | 'error') {
+    if (this.socket) {
+      this.socket.emit('audio_playback_status', {
+        status,
+        audio_id: audioId
+      });
+    }
+  }
+}
+
+// シングルトンエクスポート
+export const websocketManager = new WebSocketManager();
+```
+
+==== React統合例
+```typescript
+import { useEffect, useState } from 'react';
+import { websocketManager, DetectionStatus } from '../utils/websocket';
+
+export const MonitorView = () => {
+  const [status, setStatus] = useState<DetectionStatus>({
+    personDetected: false,
+    smartphoneDetected: false,
+    absenceTime: 0,
+    smartphoneUseTime: 0
+  });
+  
+  useEffect(() => {
+    // WebSocket初期化
+    websocketManager.initialize();
+    
+    // 状態更新のリスナー設定
+    const unsubscribe = websocketManager.onStatusUpdate((newStatus) => {
+      setStatus(newStatus);
+    });
+    
+    // クリーンアップ
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+  
+  return (
+    <div className="monitor-view">
+      <div className="status-display">
+        <p>在席状態: {status.personDetected ? '在席' : '不在'}</p>
+        <p>スマートフォン: {status.smartphoneDetected ? '使用中' : '未使用'}</p>
+        <p>不在時間: {status.absenceTime}秒</p>
+      </div>
+    </div>
+  );
+};
+```
+
+=== 🎵 音声管理実装
+
+==== AudioManagerクラス
+```typescript
+class AudioManager {
+  private audioContext: AudioContext | null = null;
+  private currentSource: AudioBufferSourceNode | null = null;
+  private isPlaying = false;
+  
+  constructor() {
+    this.initializeAudioContext();
+  }
+  
+  private initializeAudioContext() {
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextClass) {
+        this.audioContext = new AudioContextClass();
+      }
+    } catch (error) {
+      console.error('AudioContext initialization failed:', error);
+    }
+  }
+  
+  async playAudioData(base64Data: string, metadata: any): Promise<void> {
+    if (!this.audioContext) return;
+    
+    try {
+      // AudioContextを有効化
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+      
+      // Base64デコード
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      
+      // AudioBufferに変換
+      const audioBuffer = await this.audioContext.decodeAudioData(bytes.buffer);
+      
+      // 再生
+      await this.playAudioBuffer(audioBuffer, metadata);
+      
+    } catch (error) {
+      console.error('Audio playback error:', error);
+      throw error;
+    }
+  }
+  
+  private async playAudioBuffer(audioBuffer: AudioBuffer, metadata: any) {
+    if (!this.audioContext) return;
+    
+    // 現在の再生を停止
+    if (this.currentSource) {
+      this.currentSource.stop();
+    }
+    
+    // 新しいSourceNodeを作成
+    this.currentSource = this.audioContext.createBufferSource();
+    this.currentSource.buffer = audioBuffer;
+    this.currentSource.connect(this.audioContext.destination);
+    
+    // イベントハンドラー設定
+    this.currentSource.onended = () => {
+      this.isPlaying = false;
+      this.currentSource = null;
+      websocketManager.notifyAudioPlaybackStatus(metadata.audio_id, 'finished');
+    };
+    
+    // 再生開始
+    this.isPlaying = true;
+    this.currentSource.start();
+    websocketManager.notifyAudioPlaybackStatus(metadata.audio_id, 'playing');
+  }
+}
+```
+
+== 🧪 テスト戦略
+
+=== 🔬 単体テスト
+
+==== WebSocketイベントテスト
+```javascript
+// Jest + Socket.IO テスト例
+describe('WebSocket Events', () => {
+  let clientSocket;
+  let serverSocket;
+  
+  beforeEach((done) => {
+    // テスト用サーバー起動
+    clientSocket = io('http://localhost:8000');
+    clientSocket.on('connect', done);
+  });
+  
+  afterEach(() => {
+    clientSocket.close();
+  });
+  
+  test('should receive status_update events', (done) => {
+    clientSocket.on('status_update', (data) => {
+      expect(data).toHaveProperty('personDetected');
+      expect(data).toHaveProperty('smartphoneDetected');
+      done();
+    });
+    
+    // テストデータ送信
+    clientSocket.emit('test_trigger_status');
+  });
+  
+  test('should handle audio_playback_status correctly', (done) => {
+    const testAudioId = 'test_audio_123';
+    
+    clientSocket.emit('audio_playback_status', {
+      status: 'playing',
+      audio_id: testAudioId
+    });
+    
+    setTimeout(() => {
+      // サーバー側での処理確認
+      done();
+    }, 100);
+  });
+});
+```
+
+=== 🔗 統合テスト
+
+==== エンドツーエンド通信テスト
+```typescript
+describe('WebSocket Integration', () => {
+  test('full communication flow', async () => {
+    const websocketManager = new WebSocketManager();
+    await websocketManager.initialize();
+    
+    // 状態更新の受信テスト
+    const statusPromise = new Promise<DetectionStatus>((resolve) => {
+      websocketManager.onStatusUpdate(resolve);
+    });
+    
+    const status = await statusPromise;
+    expect(status).toBeDefined();
+    expect(typeof status.personDetected).toBe('boolean');
+  });
+});
+```
+
+== 📚 エラー対応とトラブルシューティング
+
+=== 🔧 一般的な問題と解決方法
+
+[cols="2,3,3", options="header"]
+|===
+|問題 |原因 |解決方法
+|**接続が確立されない** |ネットワーク問題、CORS設定 |ネットワーク確認、CORS設定確認
+|**音声が再生されない** |AudioContext未初期化、ブラウザ制限 |ユーザー操作後にAudioContext初期化
+|**データが受信されない** |イベントハンドラー未設定 |イベントリスナーの設定確認
+|**頻繁な切断** |ネットワーク不安定、タイムアウト |再接続戦略の実装、タイムアウト調整
+|===
+
+=== 📊 デバッグ用ログ出力
+
+```typescript
+// デバッグモード用の詳細ログ
+class WebSocketDebugger {
+  private debug = process.env.NODE_ENV === 'development';
+  
+  logEvent(eventName: string, data?: any) {
+    if (this.debug) {
+      console.log(`[WebSocket] ${eventName}:`, data);
+    }
+  }
+  
+  logMetrics() {
+    if (this.debug) {
+      console.table({
+        connectionStatus: this.socket?.connected,
+        messagesSent: this.messagesSent,
+        messagesReceived: this.messagesReceived,
+        averageLatency: this.averageLatency
+      });
+    }
+  }
+}
+```
+
+== 📈 パフォーマンス監視
+
+=== 📊 監視項目
+
+[cols="2,2,2,2", options="header"]
+|===
+|メトリクス |目標値 |警告値 |測定方法
+|**接続レイテンシ** |<100ms |>500ms |ping/pong測定
+|**メッセージ配信レート** |30FPS |<15FPS |タイムスタンプ差分
+|**音声バッファ不足** |0% |>5% |再生エラー率
+|**再接続回数** |<1/hour |>5/hour |接続履歴
+|===
+
+=== 📈 リアルタイム監視
+
+```typescript
+interface PerformanceMetrics {
+  latency: number[];
+  messageRate: number;
+  errorRate: number;
+  connectionUptime: number;
+}
+
+class PerformanceMonitor {
+  private metrics: PerformanceMetrics = {
+    latency: [],
+    messageRate: 0,
+    errorRate: 0,
+    connectionUptime: 0
+  };
+  
+  measureLatency() {
+    const start = performance.now();
+    this.socket?.emit('ping', start);
+    
+    this.socket?.on('pong', (timestamp: number) => {
+      const latency = performance.now() - timestamp;
+      this.metrics.latency.push(latency);
+      
+      // 直近100件の平均を保持
+      if (this.metrics.latency.length > 100) {
+        this.metrics.latency.shift();
+      }
+    });
+  }
+}
+```
+
+== 📚 関連ドキュメント・リソース
+
+=== 📖 参照ドキュメント
+
+* **<<rest-api-reference>>**: REST API仕様（WebSocket補完）
+* **<<communication-system>>**: 通信・通知システム詳細
+* **<<development-guide>>**: 開発環境とベストプラクティス
+* **<<performance-optimization>>**: パフォーマンス最適化技術
+
+=== 🔗 外部リソース
+
+* **Socket.IO**: https://socket.io/docs/v4/
+* **Flask-SocketIO**: https://flask-socketio.readthedocs.io/
+* **Web Audio API**: https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API
+* **WebSocket Protocol**: https://tools.ietf.org/html/rfc6455
+
+=== 🛠️ 開発ツール
+
+```bash
+# WebSocketテストツール
+npm install -g wscat
+wscat -c ws://localhost:8000/socket.io/?EIO=4&transport=websocket
+
+# Socket.IOクライアントテスト
+npm install socket.io-client
+```
+
+---
+
+**📞 Contact**: team@kanshichan.dev +
+**🔗 Repository**: https://github.com/kanshichan/backend +
+**📅 Last Updated**: {docdate} +
+**📝 Document Version**: {revnumber} 

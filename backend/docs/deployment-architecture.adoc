@@ -1,0 +1,1183 @@
+=  🚀 監視ちゃん(KanshiChan) デプロイメント・インフラ設計
+:toc: left
+:toc-title: 目次
+:toclevels: 4
+:numbered:
+:source-highlighter: highlight.js
+:icons: font
+:doctype: book
+:version: 1.0.0
+:author: KanshiChan Development Team
+:email: team@kanshichan.dev
+:revnumber: 1.0
+:revdate: {docdate}
+:experimental:
+
+== 📖 概要
+
+監視ちゃん（KanshiChan）バックエンドシステムのデプロイメント戦略とインフラストラクチャ設計について説明します。
+開発環境から本番環境まで、効率的で信頼性の高いデプロイメント手法とインフラ構成を提供します。
+
+[NOTE]
+====
+📋 **ドキュメント情報**
+
+* **対象読者**: インフラエンジニア、DevOpsエンジニア、プロジェクトマネージャー、意思決定者
+* **前提知識**: Docker/Kubernetes、CI/CD、クラウド基盤、監視ツール
+* **デプロイメント時間**: 開発環境 15分、ステージング 30分、本番環境 1-2時間
+* **サポート対象**: AWS/GCP/Azure、オンプレミス
+* **最終更新**: {docdate}
+
+**関連ドキュメント**: <<installation-setup>>, <<backend-architecture>>, <<operations-monitoring>>
+====
+
+== 🎯 デプロイメント戦略
+
+=== 📊 環境別戦略概要
+
+[cols="2,2,2,2", options="header"]
+|===
+|環境 |目的 |デプロイ頻度 |可用性要件
+|**開発** |開発・テスト |随時 |低（単一インスタンス）
+|**ステージング** |統合テスト |日次 |中（冗長化）
+|**本番** |本運用 |週次/月次 |高（HA構成）
+|**災害復旧** |BCP対応 |必要時 |最高（分散配置）
+|===
+
+=== 🔄 デプロイメント手法
+
+==== ブルーグリーンデプロイメント（本番推奨）
+[mermaid]
+....
+graph LB
+    subgraph "Load Balancer"
+        LB[Nginx/ALB<br/>ロードバランサー]
+    end
+    
+    subgraph "Blue Environment (現行)"
+        B1[KanshiChan v1.9<br/>Instance 1]
+        B2[KanshiChan v1.9<br/>Instance 2]
+        B3[KanshiChan v1.9<br/>Instance 3]
+    end
+    
+    subgraph "Green Environment (新版)"
+        G1[KanshiChan v2.0<br/>Instance 1]
+        G2[KanshiChan v2.0<br/>Instance 2]
+        G3[KanshiChan v2.0<br/>Instance 3]
+    end
+    
+    subgraph "Shared Services"
+        REDIS[Redis Cluster<br/>セッション・キャッシュ]
+        MONITOR[Monitoring<br/>Prometheus/Grafana]
+    end
+    
+    LB -.->|100% traffic| B1
+    LB -.->|100% traffic| B2
+    LB -.->|100% traffic| B3
+    
+    LB -.->|0% traffic<br/>(準備中)| G1
+    LB -.->|0% traffic<br/>(準備中)| G2
+    LB -.->|0% traffic<br/>(準備中)| G3
+    
+    B1 --> REDIS
+    B2 --> REDIS
+    B3 --> REDIS
+    G1 --> REDIS
+    G2 --> REDIS
+    G3 --> REDIS
+    
+    MONITOR --> B1
+    MONITOR --> B2
+    MONITOR --> B3
+    MONITOR --> G1
+    MONITOR --> G2
+    MONITOR --> G3
+    
+    classDef current fill:#e3f2fd
+    classDef new fill:#e8f5e8
+    classDef shared fill:#fff3e0
+    classDef lb fill:#f3e5f5
+    
+    class B1,B2,B3 current
+    class G1,G2,G3 new
+    class REDIS,MONITOR shared
+    class LB lb
+....
+
+**切り替えプロセス**:
+1. Green環境に新バージョンをデプロイ
+2. ヘルスチェック・動作確認実施
+3. トラフィックを段階的に切り替え（10% → 50% → 100%）
+4. 問題発生時は即座にBlue環境へロールバック
+
+==== カナリアデプロイメント（段階的リリース）
+```bash
+# Phase 1: 5%のトラフィックを新版に転送
+kubectl patch ingress kanshichan-ingress --patch '
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            backend:
+              service:
+                name: kanshichan-v2
+                port:
+                  number: 8000
+            weight: 5
+          - path: /
+            backend:
+              service:
+                name: kanshichan-v1
+                port:
+                  number: 8000
+            weight: 95'
+
+# Phase 2: 監視結果に基づき段階的増加
+# 25% → 50% → 75% → 100%
+```
+
+== 🏗️ インフラストラクチャ設計
+
+=== 🌐 アーキテクチャ概要
+
+[mermaid]
+....
+graph TB
+    subgraph "🌍 External"
+        USERS[👥 Users<br/>Web/Mobile Clients]
+        ADMIN[👨‍💼 Administrators<br/>Management Console]
+        MONITOR_EXT[📊 External Monitoring<br/>Health Checks]
+    end
+    
+    subgraph "🔒 Edge Layer"
+        CDN[📡 CDN<br/>CloudFront/CloudFlare]
+        WAF[🛡️ WAF<br/>Web Application Firewall]
+        LB[⚖️ Load Balancer<br/>Application Load Balancer]
+    end
+    
+    subgraph "🚀 Application Layer"
+        subgraph "Pod/Container Group"
+            APP1[🐍 KanshiChan App<br/>Instance 1<br/>+ AI Models]
+            APP2[🐍 KanshiChan App<br/>Instance 2<br/>+ AI Models]
+            APP3[🐍 KanshiChan App<br/>Instance N<br/>+ AI Models]
+        end
+        
+        subgraph "Background Services"
+            WORKER1[⚙️ Background Worker<br/>Heavy AI Processing]
+            WORKER2[📊 Analytics Worker<br/>Behavior Analysis]
+            SCHEDULER[⏰ Scheduler<br/>Periodic Tasks]
+        end
+    end
+    
+    subgraph "💾 Data Layer"
+        REDIS_PRIMARY[🔴 Redis Primary<br/>Session/Cache]
+        REDIS_REPLICA[🔴 Redis Replica<br/>Read Scaling]
+        FS[📁 Persistent Storage<br/>EFS/NFS<br/>Logs/Models/Data]
+        BACKUP[💾 Backup Storage<br/>S3/GCS<br/>Automated Backup]
+    end
+    
+    subgraph "📊 Observability"
+        METRICS[📈 Metrics<br/>Prometheus]
+        LOGS[📋 Logs<br/>Fluentd/Fluent Bit]
+        TRACES[🔍 Traces<br/>Jaeger]
+        GRAFANA[📊 Dashboards<br/>Grafana]
+        ALERTS[🚨 Alerting<br/>AlertManager]
+    end
+    
+    subgraph "🔐 Security & Config"
+        SECRETS[🗝️ Secrets<br/>Vault/AWS Secrets]
+        CONFIG[⚙️ Configuration<br/>ConfigMaps/Consul]
+        CERT[📜 Certificates<br/>Let's Encrypt/ACM]
+    end
+    
+    %% External connections
+    USERS --> CDN
+    ADMIN --> WAF
+    MONITOR_EXT --> LB
+    
+    %% Edge to Application
+    CDN --> WAF
+    WAF --> LB
+    LB --> APP1
+    LB --> APP2
+    LB --> APP3
+    
+    %% Application to Data
+    APP1 --> REDIS_PRIMARY
+    APP2 --> REDIS_PRIMARY
+    APP3 --> REDIS_PRIMARY
+    APP1 --> REDIS_REPLICA
+    APP2 --> REDIS_REPLICA
+    APP3 --> REDIS_REPLICA
+    
+    APP1 --> FS
+    APP2 --> FS
+    APP3 --> FS
+    
+    %% Background processing
+    APP1 -.-> WORKER1
+    APP2 -.-> WORKER2
+    SCHEDULER -.-> APP1
+    
+    %% Data persistence
+    REDIS_PRIMARY --> BACKUP
+    FS --> BACKUP
+    
+    %% Observability
+    APP1 --> METRICS
+    APP2 --> METRICS
+    APP3 --> METRICS
+    WORKER1 --> METRICS
+    WORKER2 --> METRICS
+    
+    APP1 --> LOGS
+    APP2 --> LOGS
+    APP3 --> LOGS
+    
+    METRICS --> GRAFANA
+    LOGS --> GRAFANA
+    TRACES --> GRAFANA
+    METRICS --> ALERTS
+    
+    %% Security
+    APP1 --> SECRETS
+    APP2 --> CONFIG
+    LB --> CERT
+    
+    classDef external fill:#e8eaf6
+    classDef edge fill:#e3f2fd
+    classDef app fill:#e8f5e8
+    classDef worker fill:#f3e5f5
+    classDef data fill:#fff3e0
+    classDef observability fill:#fce4ec
+    classDef security fill:#f1f8e9
+    
+    class USERS,ADMIN,MONITOR_EXT external
+    class CDN,WAF,LB edge
+    class APP1,APP2,APP3 app
+    class WORKER1,WORKER2,SCHEDULER worker
+    class REDIS_PRIMARY,REDIS_REPLICA,FS,BACKUP data
+    class METRICS,LOGS,TRACES,GRAFANA,ALERTS observability
+    class SECRETS,CONFIG,CERT security
+....
+
+=== 🐳 コンテナ化戦略
+
+==== Dockerマルチステージビルド
+```dockerfile
+# Dockerfile.production
+FROM python:3.11-slim AS base
+WORKDIR /app
+
+# AI/ML dependencies stage
+FROM base AS ai-dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    libopencv-dev \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Application stage
+FROM ai-dependencies AS application
+COPY src/ ./src/
+COPY config/ ./config/
+COPY sounds/ ./sounds/
+
+# Security hardening
+RUN groupadd -r kanshichan && \
+    useradd -r -g kanshichan kanshichan && \
+    chown -R kanshichan:kanshichan /app
+
+USER kanshichan
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+EXPOSE 8000
+CMD ["python", "-m", "src.app"]
+```
+
+==== Kubernetes デプロイメント
+```yaml
+# k8s/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kanshichan-backend
+  namespace: kanshichan
+  labels:
+    app: kanshichan
+    component: backend
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: kanshichan
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: kanshichan
+        component: backend
+    spec:
+      containers:
+      - name: kanshichan-backend
+        image: kanshichan/backend:v2.0.0
+        ports:
+        - containerPort: 8000
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: kanshichan-secrets
+              key: redis-url
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+            nvidia.com/gpu: 1
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+            nvidia.com/gpu: 1
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+        - name: storage-volume
+          mountPath: /app/data
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: config-volume
+        configMap:
+          name: kanshichan-config
+      - name: storage-volume
+        persistentVolumeClaim:
+          claimName: kanshichan-storage
+```
+
+== 🌤️ クラウドプロバイダー別構成
+
+=== ☁️ AWS構成
+
+[mermaid]
+....
+graph TB
+    subgraph "🌐 Global"
+        ROUTE53[Route 53<br/>DNS管理]
+        CLOUDFRONT[CloudFront<br/>CDN配信]
+        WAF_AWS[AWS WAF<br/>セキュリティ]
+    end
+    
+    subgraph "🏢 Region: ap-northeast-1 (Tokyo)"
+        subgraph "AZ-1a"
+            ALB[Application<br/>Load Balancer]
+            EKS_1[EKS Node Group<br/>Worker 1]
+            RDS_PRIMARY[ElastiCache<br/>Redis Primary]
+        end
+        
+        subgraph "AZ-1c"
+            EKS_2[EKS Node Group<br/>Worker 2]
+            RDS_REPLICA[ElastiCache<br/>Redis Replica]
+        end
+        
+        subgraph "AZ-1d"
+            EKS_3[EKS Node Group<br/>Worker 3]
+        end
+        
+        subgraph "🔧 Managed Services"
+            EKS_CONTROL[EKS Control Plane<br/>Kubernetes管理]
+            ECR[ECR<br/>Container Registry]
+            EFS[EFS<br/>Shared Storage]
+            S3[S3<br/>Object Storage]
+            SECRETS_MGR[Secrets Manager<br/>機密情報管理]
+            CLOUDWATCH[CloudWatch<br/>監視・ログ]
+        end
+    end
+    
+    ROUTE53 --> CLOUDFRONT
+    CLOUDFRONT --> WAF_AWS
+    WAF_AWS --> ALB
+    
+    ALB --> EKS_1
+    ALB --> EKS_2
+    ALB --> EKS_3
+    
+    EKS_CONTROL --> EKS_1
+    EKS_CONTROL --> EKS_2
+    EKS_CONTROL --> EKS_3
+    
+    EKS_1 --> RDS_PRIMARY
+    EKS_2 --> RDS_REPLICA
+    EKS_3 --> RDS_REPLICA
+    
+    EKS_1 --> EFS
+    EKS_2 --> EFS
+    EKS_3 --> EFS
+    
+    EKS_1 --> S3
+    EKS_2 --> S3
+    EKS_3 --> S3
+    
+    EKS_1 --> SECRETS_MGR
+    EKS_1 --> CLOUDWATCH
+    
+    classDef global fill:#e8eaf6
+    classDef az1a fill:#e3f2fd
+    classDef az1c fill:#e8f5e8
+    classDef az1d fill:#fff3e0
+    classDef managed fill:#f3e5f5
+    
+    class ROUTE53,CLOUDFRONT,WAF_AWS global
+    class ALB,EKS_1,RDS_PRIMARY az1a
+    class EKS_2,RDS_REPLICA az1c
+    class EKS_3 az1d
+    class EKS_CONTROL,ECR,EFS,S3,SECRETS_MGR,CLOUDWATCH managed
+....
+
+==== AWS コスト最適化
+[cols="2,2,2,2", options="header"]
+|===
+|サービス |インスタンスタイプ |月額コスト（USD） |最適化手法
+|**EKS Cluster** |Control Plane |$72 |Reserved Instance
+|**EC2 (GPU)** |g4dn.xlarge × 3 |$486 |Spot Instance活用
+|**ElastiCache** |r6g.large × 2 |$182 |リザーブド契約
+|**EFS** |500GB |$150 |Intelligent Tiering
+|**S3** |1TB |$25 |Lifecycle Policy
+|**CloudWatch** |ログ・メトリクス |$50 |保存期間最適化
+|**合計** |- |**$965** |年間契約で30%削減
+|===
+
+=== 🔵 Azure構成
+
+```yaml
+# azure-deployment.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kanshichan-production
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kanshichan-backend
+  namespace: kanshichan-production
+spec:
+  replicas: 3
+  template:
+    spec:
+      nodeSelector:
+        agentpool: gpupool
+      containers:
+      - name: kanshichan
+        image: kanshichanacr.azurecr.io/backend:v2.0.0
+        resources:
+          requests:
+            nvidia.com/gpu: 1
+            memory: "4Gi"
+          limits:
+            nvidia.com/gpu: 1
+            memory: "8Gi"
+```
+
+=== 🟡 GCP構成
+
+```yaml
+# gcp-gke-config.yaml
+apiVersion: container.v1
+kind: Cluster
+metadata:
+  name: kanshichan-cluster
+spec:
+  location: asia-northeast1
+  nodePools:
+  - name: gpu-pool
+    config:
+      machineType: n1-standard-4
+      accelerators:
+      - acceleratorCount: 1
+        acceleratorType: nvidia-tesla-t4
+  - name: cpu-pool
+    config:
+      machineType: n1-standard-2
+    autoscaling:
+      enabled: true
+      minNodeCount: 2
+      maxNodeCount: 10
+```
+
+== 📊 スケーリング戦略
+
+=== 🔄 水平スケーリング（HPA）
+
+```yaml
+# hpa.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: kanshichan-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: kanshichan-backend
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: ai_processing_queue_length
+      target:
+        type: AverageValue
+        averageValue: "5"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 180
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 20
+        periodSeconds: 60
+```
+
+=== 📈 垂直スケーリング（VPA）
+
+```yaml
+# vpa.yaml
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: kanshichan-vpa
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: kanshichan-backend
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: kanshichan-backend
+      minAllowed:
+        cpu: 500m
+        memory: 2Gi
+      maxAllowed:
+        cpu: 4000m
+        memory: 8Gi
+      controlledResources: ["cpu", "memory"]
+```
+
+== 🔐 セキュリティ設計
+
+=== 🛡️ セキュリティレイヤー
+
+[mermaid]
+....
+graph TB
+    subgraph "🌐 Perimeter Security"
+        DDoS[🚫 DDoS Protection<br/>CloudFlare/AWS Shield]
+        WAF[🛡️ WAF Rules<br/>OWASP Top 10対策]
+        RATE[⏱️ Rate Limiting<br/>API制限]
+    end
+    
+    subgraph "🔐 Identity & Access"
+        TLS[🔒 TLS 1.3<br/>End-to-End暗号化]
+        JWT[🎫 JWT Authentication<br/>Token-based]
+        RBAC[👥 RBAC<br/>Role-based Access]
+        MFA[🔑 MFA<br/>Multi-Factor Auth]
+    end
+    
+    subgraph "🏗️ Infrastructure Security"
+        NET_POL[🕸️ Network Policies<br/>Micro-segmentation]
+        POD_SEC[📦 Pod Security<br/>Standards/Admission]
+        SECRETS[🗝️ Secrets Management<br/>Vault/K8s Secrets]
+        SCAN[🔍 Container Scanning<br/>Vulnerability Assessment]
+    end
+    
+    subgraph "📊 Security Monitoring"
+        AUDIT[📋 Audit Logging<br/>全操作記録]
+        SIEM[👁️ SIEM Integration<br/>Security Monitoring]
+        INTRUSION[🚨 Intrusion Detection<br/>Anomaly Detection]
+        COMPLIANCE[📜 Compliance<br/>SOC2/ISO27001]
+    end
+    
+    DDoS --> WAF
+    WAF --> RATE
+    RATE --> TLS
+    TLS --> JWT
+    JWT --> RBAC
+    RBAC --> MFA
+    
+    MFA --> NET_POL
+    NET_POL --> POD_SEC
+    POD_SEC --> SECRETS
+    SECRETS --> SCAN
+    
+    SCAN --> AUDIT
+    AUDIT --> SIEM
+    SIEM --> INTRUSION
+    INTRUSION --> COMPLIANCE
+    
+    classDef perimeter fill:#ffebee
+    classDef identity fill:#e8f5e8
+    classDef infra fill:#e3f2fd
+    classDef monitoring fill:#fff3e0
+    
+    class DDoS,WAF,RATE perimeter
+    class TLS,JWT,RBAC,MFA identity
+    class NET_POL,POD_SEC,SECRETS,SCAN infra
+    class AUDIT,SIEM,INTRUSION,COMPLIANCE monitoring
+....
+
+=== 🔒 セキュリティ設定例
+
+```yaml
+# security-policies.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kanshichan-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: kanshichan
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    - podSelector:
+        matchLabels:
+          app: kanshichan
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kanshichan-backend
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 2000
+  containers:
+  - name: kanshichan
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+        - ALL
+```
+
+== 📊 監視・ログ基盤
+
+=== 📈 監視システム構成
+
+[mermaid]
+....
+graph TB
+    subgraph "📊 Metrics Collection"
+        PROM[Prometheus<br/>メトリクス収集]
+        NODE_EXP[Node Exporter<br/>システムメトリクス]
+        POD_MON[Pod Monitor<br/>アプリメトリクス]
+        GPU_MON[GPU Exporter<br/>GPU使用率]
+    end
+    
+    subgraph "📋 Log Collection"
+        FLUENT[Fluent Bit<br/>ログ収集]
+        LOG_AGG[Log Aggregator<br/>ログ集約]
+        ELK[ELK Stack<br/>検索・分析]
+    end
+    
+    subgraph "📊 Visualization"
+        GRAFANA[Grafana<br/>ダッシュボード]
+        KIBANA[Kibana<br/>ログ可視化]
+        CUSTOM[Custom Dashboard<br/>KanshiChan専用]
+    end
+    
+    subgraph "🚨 Alerting"
+        ALERT_MGR[AlertManager<br/>アラート管理]
+        SLACK[Slack<br/>通知]
+        EMAIL[Email<br/>通知]
+        WEBHOOK[Webhook<br/>カスタム通知]
+    end
+    
+    subgraph "🔍 Tracing"
+        JAEGER[Jaeger<br/>分散トレーシング]
+        TRACE_COL[Trace Collector<br/>トレース収集]
+    end
+    
+    NODE_EXP --> PROM
+    POD_MON --> PROM
+    GPU_MON --> PROM
+    
+    FLUENT --> LOG_AGG
+    LOG_AGG --> ELK
+    
+    PROM --> GRAFANA
+    ELK --> KIBANA
+    GRAFANA --> CUSTOM
+    
+    PROM --> ALERT_MGR
+    ALERT_MGR --> SLACK
+    ALERT_MGR --> EMAIL
+    ALERT_MGR --> WEBHOOK
+    
+    POD_MON --> TRACE_COL
+    TRACE_COL --> JAEGER
+    JAEGER --> GRAFANA
+    
+    classDef metrics fill:#e3f2fd
+    classDef logs fill:#e8f5e8
+    classDef visualization fill:#fff3e0
+    classDef alerting fill:#ffebee
+    classDef tracing fill:#f3e5f5
+    
+    class PROM,NODE_EXP,POD_MON,GPU_MON metrics
+    class FLUENT,LOG_AGG,ELK logs
+    class GRAFANA,KIBANA,CUSTOM visualization
+    class ALERT_MGR,SLACK,EMAIL,WEBHOOK alerting
+    class JAEGER,TRACE_COL tracing
+....
+
+=== 📊 KanshiChan専用メトリクス
+
+```yaml
+# custom-metrics.yaml
+apiVersion: v1
+kind: ServiceMonitor
+metadata:
+  name: kanshichan-metrics
+spec:
+  selector:
+    matchLabels:
+      app: kanshichan
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+```
+
+```python
+# Application metrics example
+from prometheus_client import Counter, Histogram, Gauge, start_http_server
+
+# AI/ML specific metrics
+ai_inference_duration = Histogram(
+    'kanshichan_ai_inference_duration_seconds',
+    'Time spent on AI inference',
+    ['model_type', 'device']
+)
+
+detection_count = Counter(
+    'kanshichan_detections_total',
+    'Total number of detections',
+    ['object_type', 'confidence_level']
+)
+
+gpu_memory_usage = Gauge(
+    'kanshichan_gpu_memory_bytes',
+    'GPU memory usage in bytes'
+)
+
+frame_processing_rate = Gauge(
+    'kanshichan_fps',
+    'Current frame processing rate'
+)
+```
+
+== 🔄 CI/CD パイプライン
+
+=== 🚀 GitHub Actions ワークフロー
+
+```yaml
+# .github/workflows/deploy.yml
+name: KanshiChan Backend Deployment
+
+on:
+  push:
+    branches: [main, staging]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: kanshichan/backend
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    - name: Run tests
+      run: |
+        pytest tests/ --cov=src --cov-report=xml
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+  build-and-push:
+    needs: [test, security-scan]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+    - uses: actions/checkout@v4
+    - name: Log in to Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile.production
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  deploy-staging:
+    if: github.ref == 'refs/heads/staging'
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+    - name: Deploy to staging
+      run: |
+        kubectl set image deployment/kanshichan-backend \
+          kanshichan-backend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging \
+          --namespace=kanshichan-staging
+
+  deploy-production:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+    - name: Deploy to production
+      run: |
+        # Blue-Green deployment
+        kubectl apply -f k8s/production/ --namespace=kanshichan-production
+        kubectl rollout status deployment/kanshichan-backend --namespace=kanshichan-production
+```
+
+=== 🔄 デプロイメント自動化
+
+```bash
+#!/bin/bash
+# scripts/deploy.sh
+
+set -euo pipefail
+
+ENVIRONMENT=${1:-staging}
+IMAGE_TAG=${2:-latest}
+NAMESPACE="kanshichan-${ENVIRONMENT}"
+
+echo "🚀 Deploying KanshiChan Backend to ${ENVIRONMENT}"
+echo "📦 Image: ${IMAGE_TAG}"
+echo "🎯 Namespace: ${NAMESPACE}"
+
+# Pre-deployment checks
+echo "🔍 Running pre-deployment checks..."
+kubectl cluster-info
+kubectl get nodes
+
+# Update deployment
+echo "📝 Updating deployment..."
+kubectl set image deployment/kanshichan-backend \
+  kanshichan-backend=ghcr.io/kanshichan/backend:${IMAGE_TAG} \
+  --namespace=${NAMESPACE}
+
+# Wait for rollout
+echo "⏳ Waiting for rollout to complete..."
+kubectl rollout status deployment/kanshichan-backend \
+  --namespace=${NAMESPACE} \
+  --timeout=600s
+
+# Health check
+echo "🏥 Performing health check..."
+kubectl wait --for=condition=ready pod \
+  -l app=kanshichan \
+  --namespace=${NAMESPACE} \
+  --timeout=300s
+
+# Verify deployment
+echo "✅ Verifying deployment..."
+REPLICAS=$(kubectl get deployment kanshichan-backend \
+  --namespace=${NAMESPACE} \
+  -o jsonpath='{.status.readyReplicas}')
+
+echo "🎉 Deployment successful! ${REPLICAS} replicas ready."
+
+# Run smoke tests
+echo "🧪 Running smoke tests..."
+./scripts/smoke-test.sh ${ENVIRONMENT}
+
+echo "✅ Deployment completed successfully!"
+```
+
+== 🚨 災害復旧計画
+
+=== 📋 RTO/RPO 目標
+
+[cols="2,2,2,2", options="header"]
+|===
+|障害レベル |RTO (復旧時間) |RPO (データ損失) |対応手順
+|**Pod障害** |< 2分 |0 |自動再起動
+|**Node障害** |< 5分 |0 |自動Pod再配置
+|**AZ障害** |< 15分 |< 1分 |Multi-AZ自動切り替え
+|**Region障害** |< 4時間 |< 15分 |DR環境への手動切り替え
+|===
+
+=== 🔄 バックアップ戦略
+
+```yaml
+# backup-cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: redis-backup
+spec:
+  schedule: "0 2 * * *"  # 毎日午前2時
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: redis-backup
+            image: redis:7-alpine
+            command:
+            - /bin/sh
+            - -c
+            - |
+              redis-cli -h redis-primary.kanshichan.svc.cluster.local \
+                --rdb /backup/redis-$(date +%Y%m%d).rdb
+              aws s3 cp /backup/ s3://kanshichan-backups/redis/ --recursive
+          restartPolicy: OnFailure
+```
+
+=== 🚨 障害対応手順
+
+```bash
+#!/bin/bash
+# scripts/disaster-recovery.sh
+
+DISASTER_TYPE=${1:-unknown}
+DR_REGION=${2:-us-west-2}
+
+echo "🚨 災害復旧プロセス開始: ${DISASTER_TYPE}"
+
+case ${DISASTER_TYPE} in
+  "region-outage")
+    echo "🌐 Region障害対応: DR環境への切り替え"
+    
+    # DNS切り替え
+    aws route53 change-resource-record-sets \
+      --hosted-zone-id Z123456789 \
+      --change-batch file://dr-dns-change.json
+    
+    # DR環境アクティベート
+    kubectl config use-context ${DR_REGION}
+    kubectl scale deployment kanshichan-backend --replicas=5
+    
+    # データベース切り替え
+    redis-cli -h dr-redis.${DR_REGION}.amazonaws.com \
+      CONFIG SET slave-read-only no
+    ;;
+    
+  "data-corruption")
+    echo "💾 データ破損対応: バックアップからの復旧"
+    
+    # 最新バックアップ取得
+    LATEST_BACKUP=$(aws s3 ls s3://kanshichan-backups/redis/ \
+      --recursive | sort | tail -n 1 | awk '{print $4}')
+    
+    # バックアップ復元
+    aws s3 cp s3://kanshichan-backups/${LATEST_BACKUP} ./
+    redis-cli -h redis-primary.kanshichan.svc.cluster.local \
+      --rdb ${LATEST_BACKUP}
+    ;;
+esac
+
+echo "✅ 災害復旧プロセス完了"
+```
+
+== 📋 運用チェックリスト
+
+=== ✅ デプロイメント前チェック
+
+* [ ] **コード品質**
+  * [ ] 全テストケースの成功
+  * [ ] セキュリティスキャンの実行
+  * [ ] パフォーマンステストの実行
+  * [ ] コードカバレッジ基準（80%以上）の達成
+
+* [ ] **インフラ準備**
+  * [ ] 必要なリソース（CPU/メモリ/GPU）の確保
+  * [ ] ネットワークポリシーの確認
+  * [ ] Secretsの更新
+  * [ ] ConfigMapsの更新
+
+* [ ] **監視・アラート**
+  * [ ] メトリクス収集の確認
+  * [ ] ダッシュボードの準備
+  * [ ] アラートルールの設定
+  * [ ] 通知設定の確認
+
+=== ✅ デプロイメント後チェック
+
+* [ ] **動作確認**
+  * [ ] ヘルスチェックエンドポイントの確認
+  * [ ] AI検出機能の動作確認
+  * [ ] WebSocket接続の確認
+  * [ ] TTS機能の確認
+
+* [ ] **パフォーマンス**
+  * [ ] レスポンス時間の確認
+  * [ ] スループットの確認
+  * [ ] リソース使用率の確認
+  * [ ] エラー率の確認
+
+* [ ] **セキュリティ**
+  * [ ] SSL証明書の確認
+  * [ ] 認証・認可の確認
+  * [ ] ネットワークアクセスの確認
+  * [ ] ログ出力の確認
+
+== 🔗 関連ドキュメント
+
+=== 📖 必須参照ドキュメント
+* **<<installation-setup>>**: 詳細インストール手順
+* **<<backend-architecture>>**: システムアーキテクチャ概要
+* **<<configuration-guide>>**: 設定管理ガイド
+* **<<operations-monitoring>>**: 運用・監視手順
+
+=== 🛠️ 運用者向けリソース
+* **<<troubleshooting-guide>>**: トラブルシューティング
+* **<<maintenance-procedures>>**: 保守手順書
+* **<<performance-optimization>>**: パフォーマンス最適化
+* **<<security-specifications>>**: セキュリティ仕様
+
+[NOTE]
+====
+🔄 **継続的改善**
+
+デプロイメント・インフラ設計は技術進歩と運用実績に基づいて
+継続的に見直し・最適化を行います。
+
+**フィードバック**: team@kanshichan.dev +
+**改善提案**: GitHub Issues での報告推奨 +
+**緊急時連絡**: Slack #kanshichan-ops
+====
+
+---
+
+**📞 Contact**: team@kanshichan.dev +
+**🔗 Repository**: https://github.com/kanshichan/backend +
+**📅 Last Updated**: {docdate} +
+**📝 Document Version**: {revnumber} 

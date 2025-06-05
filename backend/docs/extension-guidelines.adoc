@@ -1,0 +1,908 @@
+= 🚀 監視ちゃん(KanshiChan) 拡張・カスタマイズガイド
+:toc: left
+:toc-title: 目次
+:toclevels: 3
+:numbered:
+:source-highlighter: highlight.js
+:icons: font
+:doctype: book
+:author: KanshiChan Development Team
+:email: team@kanshichan.dev
+:revnumber: 1.0
+:revdate: {docdate}
+:experimental:
+
+[NOTE]
+====
+📋 **ドキュメント情報**
+
+* **作成者**: KanshiChan Development Team
+* **最終更新日**: {docdate}
+* **対象読者**: 開発者、システムアーキテクト、カスタマイズ担当者
+* **前提知識**: Python/Flask開発、プラグインアーキテクチャ、API設計
+* **関連ドキュメント**: <<system-design.adoc>>, <<development-guide.adoc>>, <<backend-architecture.adoc>>
+====
+
+== 📖 概要
+
+監視ちゃん（KanshiChan）システムの機能拡張とカスタマイズのための開発者ガイドです。
+プラグインシステム、カスタムコンポーネント開発、新機能追加の包括的な指針を提供します。
+
+=== 🎯 拡張目標
+
+* **プラグイン化**: モジュール型で柔軟な機能拡張
+* **互換性維持**: 既存機能への影響なし
+* **標準化**: 一貫した拡張パターン
+* **性能保持**: 拡張による性能劣化の最小化
+
+== 🏗️ 拡張アーキテクチャ
+
+=== システム拡張全体構成
+
+[mermaid]
+....
+graph TB
+    subgraph "Core System"
+        CORE[KanshiChan Core<br/>基幹システム]
+        API[REST/WebSocket API<br/>標準インターフェース]
+        DB[(Database<br/>PostgreSQL)]
+    end
+    
+    subgraph "Extension Framework"
+        PLUGIN[Plugin Manager<br/>プラグイン管理]
+        HOOK[Hook System<br/>イベントフック]
+        CONFIG[Extension Config<br/>拡張設定]
+    end
+    
+    subgraph "Built-in Extensions"
+        AI[AI Detection<br/>YOLO + MediaPipe]
+        TTS[TTS Service<br/>音声合成]
+        BEHAVIOR[Behavior Analytics<br/>行動分析]
+    end
+    
+    subgraph "Custom Extensions"
+        CUSTOM1[Custom Plugin 1<br/>カスタムAI機能]
+        CUSTOM2[Custom Plugin 2<br/>外部API連携]
+        CUSTOM3[Custom Plugin 3<br/>独自分析機能]
+    end
+    
+    subgraph "Extension Points"
+        EP1[Detection Hook<br/>検出処理拡張]
+        EP2[Analysis Hook<br/>分析処理拡張]
+        EP3[Notification Hook<br/>通知処理拡張]
+        EP4[API Hook<br/>API処理拡張]
+    end
+    
+    CORE --> API
+    CORE --> DB
+    
+    PLUGIN --> HOOK
+    PLUGIN --> CONFIG
+    
+    AI --> EP1
+    TTS --> EP3
+    BEHAVIOR --> EP2
+    
+    CUSTOM1 --> EP1
+    CUSTOM2 --> EP4
+    CUSTOM3 --> EP2
+    
+    HOOK --> EP1
+    HOOK --> EP2
+    HOOK --> EP3
+    HOOK --> EP4
+....
+
+== 🔧 拡張ポイント一覧
+
+=== 主要拡張ポイント
+
+**検出システム拡張**
+```python
+# src/extensions/detection/__init__.py
+from abc import ABC, abstractmethod
+from typing import Dict, List, Any, Optional
+
+class DetectionExtension(ABC):
+    """検出システム拡張基底クラス"""
+    
+    @abstractmethod
+    def get_name(self) -> str:
+        """拡張名を取得"""
+        pass
+        
+    @abstractmethod
+    def get_version(self) -> str:
+        """拡張バージョンを取得"""
+        pass
+        
+    @abstractmethod
+    def initialize(self, config: Dict[str, Any]) -> bool:
+        """拡張初期化"""
+        pass
+        
+    @abstractmethod
+    def detect(self, image_data: bytes, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """検出処理実行"""
+        pass
+        
+    @abstractmethod
+    def cleanup(self) -> None:
+        """拡張終了処理"""
+        pass
+
+# カスタム検出拡張例
+class CustomObjectDetector(DetectionExtension):
+    """カスタムオブジェクト検出拡張"""
+    
+    def __init__(self):
+        self.model = None
+        self.config = None
+        
+    def get_name(self) -> str:
+        return "custom_object_detector"
+        
+    def get_version(self) -> str:
+        return "1.0.0"
+        
+    def initialize(self, config: Dict[str, Any]) -> bool:
+        """カスタムモデル初期化"""
+        try:
+            self.config = config
+            model_path = config.get('model_path')
+            
+            # カスタムモデル読み込み
+            self.model = self._load_custom_model(model_path)
+            
+            logger.info(f"Custom detector initialized: {model_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Custom detector initialization failed: {e}")
+            return False
+            
+    def detect(self, image_data: bytes, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """カスタム検出処理"""
+        if not self.model:
+            return []
+            
+        try:
+            # 画像前処理
+            image = self._preprocess_image(image_data)
+            
+            # 推論実行
+            predictions = self.model.predict(image)
+            
+            # 結果変換
+            detections = self._convert_predictions(predictions)
+            
+            return detections
+            
+        except Exception as e:
+            logger.error(f"Custom detection failed: {e}")
+            return []
+            
+    def _load_custom_model(self, model_path: str):
+        """カスタムモデル読み込み"""
+        # 実装例: TensorFlow, PyTorch, ONNXなど
+        import onnxruntime as ort
+        return ort.InferenceSession(model_path)
+```
+
+**分析システム拡張**
+```python
+# src/extensions/analysis/__init__.py
+class AnalysisExtension(ABC):
+    """分析システム拡張基底クラス"""
+    
+    @abstractmethod
+    def analyze(self, behavior_data: List[Dict[str, Any]], 
+                user_context: Dict[str, Any]) -> Dict[str, Any]:
+        """分析処理実行"""
+        pass
+
+class CustomBehaviorAnalyzer(AnalysisExtension):
+    """カスタム行動分析拡張"""
+    
+    def __init__(self):
+        self.ml_model = None
+        
+    def initialize(self, config: Dict[str, Any]) -> bool:
+        """機械学習モデル初期化"""
+        try:
+            from sklearn.ensemble import IsolationForest
+            
+            # 異常検知モデル初期化
+            self.ml_model = IsolationForest(
+                contamination=config.get('contamination', 0.1),
+                random_state=42
+            )
+            
+            # 事前学習データがある場合は読み込み
+            model_data_path = config.get('model_data_path')
+            if model_data_path:
+                self._load_pretrained_model(model_data_path)
+                
+            return True
+            
+        except Exception as e:
+            logger.error(f"Custom analyzer initialization failed: {e}")
+            return False
+            
+    def analyze(self, behavior_data: List[Dict[str, Any]], 
+                user_context: Dict[str, Any]) -> Dict[str, Any]:
+        """カスタム分析処理"""
+        
+        # 特徴量抽出
+        features = self._extract_features(behavior_data, user_context)
+        
+        # 異常検知
+        anomaly_score = self._detect_anomalies(features)
+        
+        # パターン分析
+        patterns = self._analyze_patterns(behavior_data)
+        
+        # 個人化推奨
+        recommendations = self._generate_recommendations(
+            features, anomaly_score, patterns, user_context
+        )
+        
+        return {
+            'anomaly_score': anomaly_score,
+            'behavior_patterns': patterns,
+            'recommendations': recommendations,
+            'analysis_timestamp': datetime.now().isoformat(),
+            'analyzer_version': self.get_version()
+        }
+        
+    def _extract_features(self, behavior_data: List[Dict[str, Any]], 
+                         user_context: Dict[str, Any]) -> np.ndarray:
+        """特徴量抽出"""
+        features = []
+        
+        # 時系列特徴量
+        if behavior_data:
+            # 作業時間パターン
+            work_hours = [self._extract_hour(entry) for entry in behavior_data]
+            features.extend([
+                np.mean(work_hours),
+                np.std(work_hours),
+                len(set(work_hours))  # 作業時間帯の多様性
+            ])
+            
+            # 集中度特徴量
+            focus_scores = [entry.get('focus_score', 0) for entry in behavior_data]
+            features.extend([
+                np.mean(focus_scores),
+                np.std(focus_scores),
+                np.min(focus_scores),
+                np.max(focus_scores)
+            ])
+            
+            # 中断回数・パターン
+            interruptions = [entry.get('interruption_count', 0) for entry in behavior_data]
+            features.extend([
+                np.sum(interruptions),
+                np.mean(interruptions),
+                len([i for i in interruptions if i > 0])  # 中断発生日数
+            ])
+            
+        # ユーザーコンテキスト特徴量
+        features.extend([
+            user_context.get('productivity_baseline', 0.5),
+            user_context.get('stress_level', 0.5),
+            user_context.get('workload_intensity', 0.5)
+        ])
+        
+        return np.array(features).reshape(1, -1)
+```
+
+=== プラグインアーキテクチャ
+
+**プラグインマネージャー**
+```python
+# src/core/plugin_manager.py
+import importlib
+import inspect
+from pathlib import Path
+from typing import Dict, List, Type, Any, Optional
+
+class PluginManager:
+    """プラグイン管理システム"""
+    
+    def __init__(self, plugin_directories: List[str]):
+        self.plugin_directories = plugin_directories
+        self.loaded_plugins: Dict[str, Any] = {}
+        self.plugin_configs: Dict[str, Dict[str, Any]] = {}
+        self.hooks: Dict[str, List[callable]] = {}
+        
+    def discover_plugins(self) -> List[str]:
+        """プラグイン自動発見"""
+        discovered_plugins = []
+        
+        for plugin_dir in self.plugin_directories:
+            plugin_path = Path(plugin_dir)
+            if not plugin_path.exists():
+                continue
+                
+            for plugin_file in plugin_path.glob("*.py"):
+                if plugin_file.name.startswith("__"):
+                    continue
+                    
+                plugin_name = plugin_file.stem
+                discovered_plugins.append(plugin_name)
+                
+        return discovered_plugins
+        
+    def load_plugin(self, plugin_name: str, config: Optional[Dict[str, Any]] = None) -> bool:
+        """プラグイン読み込み"""
+        try:
+            # プラグインモジュール動的インポート
+            for plugin_dir in self.plugin_directories:
+                plugin_path = Path(plugin_dir) / f"{plugin_name}.py"
+                if plugin_path.exists():
+                    spec = importlib.util.spec_from_file_location(plugin_name, plugin_path)
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                    
+                    # プラグインクラス検索
+                    plugin_class = self._find_plugin_class(module)
+                    if not plugin_class:
+                        logger.warning(f"No plugin class found in {plugin_name}")
+                        return False
+                        
+                    # プラグインインスタンス化
+                    plugin_instance = plugin_class()
+                    
+                    # 設定適用
+                    plugin_config = config or self.plugin_configs.get(plugin_name, {})
+                    if hasattr(plugin_instance, 'initialize'):
+                        if not plugin_instance.initialize(plugin_config):
+                            logger.error(f"Plugin initialization failed: {plugin_name}")
+                            return False
+                            
+                    # プラグイン登録
+                    self.loaded_plugins[plugin_name] = plugin_instance
+                    
+                    # フック登録
+                    self._register_plugin_hooks(plugin_name, plugin_instance)
+                    
+                    logger.info(f"Plugin loaded successfully: {plugin_name}")
+                    return True
+                    
+        except Exception as e:
+            logger.error(f"Plugin loading failed: {plugin_name}: {e}")
+            return False
+            
+        logger.warning(f"Plugin not found: {plugin_name}")
+        return False
+        
+    def unload_plugin(self, plugin_name: str) -> bool:
+        """プラグインアンロード"""
+        if plugin_name not in self.loaded_plugins:
+            return False
+            
+        try:
+            plugin_instance = self.loaded_plugins[plugin_name]
+            
+            # クリーンアップ処理
+            if hasattr(plugin_instance, 'cleanup'):
+                plugin_instance.cleanup()
+                
+            # フック解除
+            self._unregister_plugin_hooks(plugin_name)
+            
+            # プラグイン削除
+            del self.loaded_plugins[plugin_name]
+            
+            logger.info(f"Plugin unloaded: {plugin_name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Plugin unloading failed: {plugin_name}: {e}")
+            return False
+            
+    def execute_hook(self, hook_name: str, *args, **kwargs) -> List[Any]:
+        """フック実行"""
+        results = []
+        
+        if hook_name in self.hooks:
+            for hook_func in self.hooks[hook_name]:
+                try:
+                    result = hook_func(*args, **kwargs)
+                    results.append(result)
+                except Exception as e:
+                    logger.error(f"Hook execution failed: {hook_name}: {e}")
+                    
+        return results
+        
+    def _find_plugin_class(self, module) -> Optional[Type]:
+        """プラグインクラス検索"""
+        for name, obj in inspect.getmembers(module):
+            if inspect.isclass(obj) and hasattr(obj, 'get_name'):
+                return obj
+        return None
+        
+    def _register_plugin_hooks(self, plugin_name: str, plugin_instance: Any):
+        """プラグインフック登録"""
+        hook_methods = [
+            'on_detection_start',
+            'on_detection_complete', 
+            'on_analysis_start',
+            'on_analysis_complete',
+            'on_notification_trigger'
+        ]
+        
+        for hook_method in hook_methods:
+            if hasattr(plugin_instance, hook_method):
+                if hook_method not in self.hooks:
+                    self.hooks[hook_method] = []
+                self.hooks[hook_method].append(getattr(plugin_instance, hook_method))
+```
+
+=== カスタムコンポーネント開発
+
+**カスタムAPIエンドポイント作成**
+```python
+# src/extensions/api_endpoints/custom_endpoints.py
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity
+
+# カスタムBlueprint作成
+custom_api = Blueprint('custom_api', __name__, url_prefix='/api/v1/custom')
+
+class CustomAPIExtension:
+    """カスタムAPIエンドポイント拡張"""
+    
+    def __init__(self, app, plugin_manager):
+        self.app = app
+        self.plugin_manager = plugin_manager
+        self.setup_routes()
+        
+    def setup_routes(self):
+        """カスタムルート設定"""
+        
+        @custom_api.route('/advanced-analysis', methods=['POST'])
+        @jwt_required()
+        def advanced_analysis():
+            """高度分析API"""
+            try:
+                user_id = get_jwt_identity()
+                data = request.get_json()
+                
+                # パラメータ検証
+                if not self._validate_analysis_params(data):
+                    return jsonify({'error': 'Invalid parameters'}), 400
+                    
+                # カスタム分析実行
+                analysis_result = self._execute_advanced_analysis(user_id, data)
+                
+                # プラグインフック実行
+                self.plugin_manager.execute_hook(
+                    'on_advanced_analysis_complete',
+                    user_id, analysis_result
+                )
+                
+                return jsonify({
+                    'status': 'success',
+                    'analysis': analysis_result,
+                    'timestamp': datetime.now().isoformat()
+                })
+                
+            except Exception as e:
+                logger.error(f"Advanced analysis failed: {e}")
+                return jsonify({'error': 'Analysis failed'}), 500
+                
+        @custom_api.route('/ai-model-switch', methods=['POST'])
+        @jwt_required()
+        def switch_ai_model():
+            """AIモデル動的切り替え"""
+            try:
+                user_id = get_jwt_identity()
+                data = request.get_json()
+                
+                model_name = data.get('model_name')
+                model_config = data.get('config', {})
+                
+                # モデル切り替え実行
+                success = self._switch_detection_model(user_id, model_name, model_config)
+                
+                if success:
+                    return jsonify({
+                        'status': 'success',
+                        'message': f'Switched to model: {model_name}'
+                    })
+                else:
+                    return jsonify({'error': 'Model switch failed'}), 500
+                    
+            except Exception as e:
+                logger.error(f"Model switch failed: {e}")
+                return jsonify({'error': 'Model switch failed'}), 500
+        
+        # アプリケーションにBlueprint登録
+        self.app.register_blueprint(custom_api)
+        
+    def _validate_analysis_params(self, data: Dict[str, Any]) -> bool:
+        """分析パラメータ検証"""
+        required_fields = ['analysis_type', 'time_range']
+        return all(field in data for field in required_fields)
+        
+    def _execute_advanced_analysis(self, user_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """高度分析実行"""
+        analysis_type = params['analysis_type']
+        
+        # 分析タイプに応じた処理分岐
+        if analysis_type == 'productivity_optimization':
+            return self._analyze_productivity_optimization(user_id, params)
+        elif analysis_type == 'attention_pattern':
+            return self._analyze_attention_patterns(user_id, params)
+        elif analysis_type == 'distraction_prediction':
+            return self._predict_distractions(user_id, params)
+        else:
+            raise ValueError(f"Unknown analysis type: {analysis_type}")
+```
+
+== 🔄 新機能追加手順
+
+=== 標準追加プロセス
+
+**新機能開発フロー**
+[mermaid]
+....
+flowchart TD
+    START[新機能要件定義] --> DESIGN[設計・アーキテクチャ検討]
+    DESIGN --> PLUGIN_CHECK{プラグイン化可能?}
+    
+    PLUGIN_CHECK -->|Yes| PLUGIN_DEV[プラグイン開発]
+    PLUGIN_CHECK -->|No| CORE_DEV[コア機能開発]
+    
+    PLUGIN_DEV --> PLUGIN_TEST[プラグインテスト]
+    CORE_DEV --> CORE_TEST[コア機能テスト]
+    
+    PLUGIN_TEST --> INTEGRATION[統合テスト]
+    CORE_TEST --> INTEGRATION
+    
+    INTEGRATION --> COMPATIBILITY[互換性チェック]
+    COMPATIBILITY --> PASS{テスト合格?}
+    
+    PASS -->|No| DEBUG[デバッグ・修正]
+    DEBUG --> INTEGRATION
+    
+    PASS -->|Yes| DOCUMENTATION[ドキュメント更新]
+    DOCUMENTATION --> DEPLOYMENT[デプロイメント]
+    DEPLOYMENT --> MONITORING[監視・評価]
+    
+    MONITORING --> END[機能リリース完了]
+....
+
+**新機能追加チェックリスト**
+```yaml
+# new_feature_checklist.yml
+feature_development:
+  planning:
+    - name: "要件定義完了"
+      required: true
+      description: "機能要件と非機能要件の明確化"
+      
+    - name: "設計レビュー完了" 
+      required: true
+      description: "アーキテクチャ設計とインターフェース設計"
+      
+    - name: "互換性影響評価"
+      required: true
+      description: "既存機能への影響評価と対策"
+      
+  implementation:
+    - name: "プラグイン化検討"
+      required: true
+      description: "コア機能とプラグイン機能の適切な分離"
+      
+    - name: "エラーハンドリング実装"
+      required: true
+      description: "例外処理と障害時の動作定義"
+      
+    - name: "ログ・監視項目追加"
+      required: true
+      description: "運用監視のためのログ出力"
+      
+    - name: "設定パラメータ化"
+      required: true
+      description: "設定ファイルによる動作制御"
+      
+  testing:
+    - name: "単体テスト実装"
+      required: true
+      coverage_threshold: 80
+      
+    - name: "統合テスト実装"
+      required: true
+      description: "既存機能との連携テスト"
+      
+    - name: "性能テスト実行"
+      required: true
+      description: "新機能追加による性能影響評価"
+      
+    - name: "セキュリティテスト"
+      required: true
+      description: "セキュリティ脆弱性の確認"
+      
+  documentation:
+    - name: "API ドキュメント更新"
+      required: true
+      description: "新規APIエンドポイントの文書化"
+      
+    - name: "設定ガイド更新"
+      required: true
+      description: "新規設定項目の説明追加"
+      
+    - name: "サンプルコード作成"
+      required: true
+      description: "使用例とベストプラクティス"
+      
+  deployment:
+    - name: "マイグレーション手順"
+      required: true
+      description: "データベーススキーマ変更時の手順"
+      
+    - name: "ロールバック手順"
+      required: true
+      description: "問題発生時の復旧手順"
+      
+    - name: "監視項目設定"
+      required: true
+      description: "新機能の監視・アラート設定"
+```
+
+=== 互換性保持戦略
+
+**API バージョニング戦略**
+```python
+# src/api/versioning.py
+from flask import Blueprint, request, jsonify
+from typing import Dict, Any, Optional
+
+class APIVersionManager:
+    """APIバージョン管理"""
+    
+    def __init__(self):
+        self.supported_versions = ['v1', 'v2']
+        self.default_version = 'v1'
+        self.deprecated_versions = []
+        
+    def get_api_version(self, request) -> str:
+        """リクエストからAPIバージョン取得"""
+        
+        # ヘッダーからバージョン取得
+        version = request.headers.get('API-Version')
+        if version and self._is_supported_version(version):
+            return version
+            
+        # URLパスからバージョン取得
+        path_parts = request.path.split('/')
+        if len(path_parts) > 2 and path_parts[2].startswith('v'):
+            version = path_parts[2]
+            if self._is_supported_version(version):
+                return version
+                
+        # デフォルトバージョン返却
+        return self.default_version
+        
+    def handle_version_compatibility(self, version: str, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """バージョン互換性処理"""
+        
+        # バージョン固有の変換処理
+        if version == 'v1' and endpoint == 'behavior_analysis':
+            return self._convert_v1_to_v2_behavior_analysis(data)
+        elif version == 'v1' and endpoint == 'detection_results':
+            return self._convert_v1_to_v2_detection_results(data)
+            
+        return data
+        
+    def _convert_v1_to_v2_behavior_analysis(self, v1_data: Dict[str, Any]) -> Dict[str, Any]:
+        """v1からv2への行動分析データ変換"""
+        v2_data = v1_data.copy()
+        
+        # v2で追加されたフィールドのデフォルト値設定
+        if 'emotional_state' not in v2_data:
+            v2_data['emotional_state'] = {
+                'valence': 0.5,
+                'arousal': 0.5,
+                'confidence': 0.0
+            }
+            
+        # v1で廃止されたフィールドの除去
+        if 'legacy_score' in v2_data:
+            del v2_data['legacy_score']
+            
+        return v2_data
+
+# 互換性チェック自動化
+class CompatibilityTester:
+    """互換性テスト自動化"""
+    
+    def __init__(self):
+        self.test_scenarios = self._load_compatibility_scenarios()
+        
+    def run_compatibility_tests(self, feature_branch: str) -> Dict[str, Any]:
+        """互換性テスト実行"""
+        results = {
+            'api_compatibility': self._test_api_compatibility(),
+            'data_compatibility': self._test_data_compatibility(),
+            'plugin_compatibility': self._test_plugin_compatibility(),
+            'performance_impact': self._test_performance_impact()
+        }
+        
+        return results
+        
+    def _test_api_compatibility(self) -> Dict[str, Any]:
+        """API互換性テスト"""
+        test_results = {}
+        
+        for scenario in self.test_scenarios['api_tests']:
+            try:
+                # 既存APIエンドポイントのテスト
+                response = self._execute_api_test(scenario)
+                test_results[scenario['name']] = {
+                    'status': 'passed',
+                    'response_time': response.elapsed.total_seconds(),
+                    'status_code': response.status_code
+                }
+            except Exception as e:
+                test_results[scenario['name']] = {
+                    'status': 'failed',
+                    'error': str(e)
+                }
+                
+        return test_results
+```
+
+== 📋 設計ガイドライン
+
+=== アーキテクチャ原則
+
+**拡張設計の基本原則**
+[cols="2,3,2", options="header"]
+|===
+|原則 |説明 |実装方法
+|**単一責任** |各拡張は一つの明確な責任を持つ |機能ごとのプラグイン分離
+|**依存性逆転** |コアシステムは拡張に依存しない |インターフェース経由の疎結合
+|**開放閉鎖** |拡張には開放、修正には閉鎖 |プラグインアーキテクチャ活用
+|**リスコフ置換** |拡張は基底クラスと置換可能 |抽象基底クラスの継承
+|**インターフェース分離** |必要な機能のみを公開 |最小限のインターフェース定義
+|===
+
+**コーディング規約**
+```python
+# 拡張開発コーディング規約例
+
+# 1. プラグインクラス命名規約
+class CustomDetectionExtension(DetectionExtension):
+    """
+    命名規約:
+    - クラス名: {Purpose}{Type}Extension
+    - ファイル名: {plugin_name}_extension.py
+    - モジュール名: extensions.{category}.{plugin_name}
+    """
+    
+    # 2. 必須メソッド実装
+    def get_name(self) -> str:
+        """プラグイン名 (英数字とアンダースコアのみ)"""
+        return "custom_detection"
+        
+    def get_version(self) -> str:
+        """セマンティックバージョニング"""
+        return "1.2.3"
+        
+    def get_description(self) -> str:
+        """プラグインの説明"""
+        return "Custom object detection using proprietary AI model"
+        
+    def get_author(self) -> str:
+        """作成者情報"""
+        return "Development Team <dev@company.com>"
+        
+    def get_dependencies(self) -> List[str]:
+        """依存関係"""
+        return ["numpy>=1.21.0", "opencv-python>=4.5.0"]
+        
+    # 3. 設定バリデーション
+    def validate_config(self, config: Dict[str, Any]) -> bool:
+        """設定値検証"""
+        required_keys = ['model_path', 'confidence_threshold']
+        return all(key in config for key in required_keys)
+        
+    # 4. エラーハンドリング
+    def initialize(self, config: Dict[str, Any]) -> bool:
+        try:
+            if not self.validate_config(config):
+                raise ValueError("Invalid configuration")
+                
+            self._load_model(config['model_path'])
+            self.confidence_threshold = config['confidence_threshold']
+            
+            logger.info(f"Plugin {self.get_name()} v{self.get_version()} initialized")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Plugin initialization failed: {e}")
+            return False
+            
+    # 5. リソース管理
+    def cleanup(self) -> None:
+        """リソース解放"""
+        if hasattr(self, 'model') and self.model:
+            del self.model
+            
+        if hasattr(self, 'temp_files'):
+            for temp_file in self.temp_files:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+                    
+        logger.info(f"Plugin {self.get_name()} cleanup completed")
+
+# 6. テスト実装必須
+class TestCustomDetectionExtension(unittest.TestCase):
+    """プラグインテストクラス"""
+    
+    def setUp(self):
+        self.plugin = CustomDetectionExtension()
+        self.test_config = {
+            'model_path': 'test_models/test_model.onnx',
+            'confidence_threshold': 0.7
+        }
+        
+    def test_initialization(self):
+        """初期化テスト"""
+        result = self.plugin.initialize(self.test_config)
+        self.assertTrue(result)
+        
+    def test_detection(self):
+        """検出処理テスト"""
+        # テスト画像データ
+        test_image = self._load_test_image()
+        
+        # 検出実行
+        detections = self.plugin.detect(test_image, {})
+        
+        # 結果検証
+        self.assertIsInstance(detections, list)
+        if detections:
+            self.assertIn('confidence', detections[0])
+            self.assertIn('bbox', detections[0])
+```
+
+== 🎯 まとめ
+
+KanshiChanの拡張・カスタマイズシステムは以下の包括的フレームワークで構成されています：
+
+=== 主要拡張機能
+
+* ✅ **プラグインアーキテクチャ**: 動的な機能拡張システム
+* ✅ **拡張ポイント**: 検出・分析・通知・API処理の拡張
+* ✅ **互換性保持**: APIバージョニングと後方互換性
+* ✅ **開発ガイドライン**: 標準化された拡張開発プロセス
+
+=== 拡張開発の流れ
+
+[cols="3,2,2", options="header"]
+|===
+|開発段階 |主要作業 |成果物
+|**設計** |要件定義・アーキテクチャ設計 |設計書・インターフェース仕様
+|**実装** |プラグイン開発・テスト実装 |拡張コード・テストコード
+|**統合** |互換性チェック・性能評価 |統合テスト結果・性能レポート
+|**運用** |デプロイ・監視・保守 |運用手順書・監視設定
+|===
+
+=== 品質保証
+
+1. **標準化**: 統一されたプラグインインターフェース
+2. **自動化**: 互換性チェックとテストの自動実行
+3. **監視**: 拡張機能の性能・安定性監視
+4. **文書化**: 包括的な開発ガイドとAPIドキュメント
+
+---
+
+**📞 Contact**: team@kanshichan.dev +
+**🔗 Repository**: https://github.com/kanshichan/backend +
+**📅 Last Updated**: {docdate} +
+**📝 Document Version**: {revnumber}

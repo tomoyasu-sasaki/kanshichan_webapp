@@ -1,0 +1,816 @@
+= 🔗 通信・通知システム - Communication & Notification System
+:author: KanshiChan Development Team
+:version: 1.0
+:date: 2024-12-27
+:target_audience: バックエンド開発者、フロントエンド開発者
+:document_type: システム詳細仕様書
+:toc: left
+:toclevels: 4
+:sectnums:
+:source-highlighter: highlight.js
+
+== 📋 概要
+
+=== 📖 このドキュメントについて
+
+本ドキュメントは、KanshiChanシステムの通信・通知機能における詳細な技術仕様とアーキテクチャを定義します。
+
+**対象読者**: バックエンド開発者、フロントエンド開発者 +
+**前提知識**: Python/Flask、WebSocket、TTS技術 +
+**関連ドキュメント**: <<websocket-api>>, <<rest-api-reference>>, <<system-design>>
+
+=== 🎯 システム目的
+
+* **リアルタイム通信**: WebSocketベースの双方向通信
+* **智慧的通知**: 文脈に応じたアラート配信
+* **音声合成**: TTS技術による動的音声生成
+* **マルチチャネル配信**: LINE API、音声、画面通知の統合
+
+=== 🏗️ システム構成概要
+
+[mermaid]
+....
+graph TB
+    subgraph "🌐 クライアント層"
+        WEB[Web Frontend]
+        MOBILE[Mobile Client]
+    end
+    
+    subgraph "🔗 通信層"
+        WS[WebSocket Handler]
+        REST[REST API]
+        SB[Status Broadcaster]
+    end
+    
+    subgraph "🚨 アラートエンジン"
+        AM[Alert Manager]
+        AS[Alert Service]
+        ND[Notification Delivery]
+    end
+    
+    subgraph "🔊 音声システム"
+        TTS[TTS Service]
+        SOUND[Sound Service]
+        STREAM[Audio Streaming]
+    end
+    
+    subgraph "📱 外部連携"
+        LINE[LINE API]
+        EMAIL[Email Service]
+        PUSH[Push Notification]
+    end
+    
+    subgraph "🧠 コアシステム"
+        MONITOR[Monitor Engine]
+        STATE[State Manager]
+        DETECTOR[Object Detector]
+    end
+    
+    %% 通信フロー
+    WEB <==> WS
+    MOBILE <==> REST
+    WS --> SB
+    SB --> AM
+    AM --> AS
+    AS --> ND
+    
+    %% 音声フロー
+    TTS --> SOUND
+    TTS --> STREAM
+    STREAM --> WS
+    
+    %% 外部連携
+    ND --> LINE
+    ND --> EMAIL
+    ND --> PUSH
+    
+    %% コアシステム連携
+    MONITOR --> STATE
+    STATE --> SB
+    DETECTOR --> AM
+    
+    classDef client fill:#e3f2fd
+    classDef communication fill:#e8f5e8
+    classDef alert fill:#fff3e0
+    classDef audio fill:#f3e5f5
+    classDef external fill:#fce4ec
+    classDef core fill:#e8eaf6
+    
+    class WEB,MOBILE client
+    class WS,REST,SB communication
+    class AM,AS,ND alert
+    class TTS,SOUND,STREAM audio
+    class LINE,EMAIL,PUSH external
+    class MONITOR,STATE,DETECTOR core
+....
+
+== 🌐 WebSocket通信システム
+
+=== 📡 WebSocketアーキテクチャ
+
+[mermaid]
+....
+classDiagram
+    class WebSocketManager {
+        -socketio: SocketIO
+        -connected_clients: List[str]
+        -audio_queue: Queue
+        
+        +init_websocket(app: Flask): void
+        +handle_connect(): void
+        +handle_disconnect(): void
+        +broadcast_status(status: dict): void
+        +broadcast_audio_stream(audio_data: bytes): void
+        +broadcast_audio_notification(type: str): void
+    }
+    
+    class StatusBroadcaster {
+        -detector: Detector
+        -state_manager: StateManager
+        -frame_lock: threading.Lock
+        
+        +broadcast_status(): void
+        +broadcast_behavior_data(data: dict): void
+        +broadcast_analysis_results(results: dict): void
+        +broadcast_enhanced_status(status: dict): void
+    }
+    
+    class AudioStreamHandler {
+        -audio_queue: Queue
+        -connected_clients: List[str]
+        
+        +queue_audio_for_streaming(file_path: str): void
+        +stream_audio_to_clients(audio_data: bytes): void
+        +handle_audio_playback_status(status: dict): void
+    }
+    
+    WebSocketManager --> StatusBroadcaster
+    WebSocketManager --> AudioStreamHandler
+....
+
+=== 🔌 接続管理とイベント処理
+
+**基本WebSocket実装**
+
+```python
+# backend/src/web/websocket.py
+from flask_socketio import SocketIO, emit
+from flask import request
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
+socketio = SocketIO()
+connected_clients: List[str] = []
+
+def init_websocket(app):
+    """WebSocketの初期化"""
+    socketio.init_app(app, cors_allowed_origins="*")
+
+    @socketio.on('connect')
+    def handle_connect():
+        client_id = request.sid
+        connected_clients.append(client_id)
+        logger.info(f'Client connected: {client_id}')
+
+    @socketio.on('disconnect')
+    def handle_disconnect():
+        client_id = request.sid
+        if client_id in connected_clients:
+            connected_clients.remove(client_id)
+        logger.info(f'Client disconnected: {client_id}')
+```
+
+=== 📨 WebSocketイベント仕様
+
+[cols="1,2,3", options="header"]
+|===
+|イベント名 |方向 |データ構造
+|**status_update** |Server → Client |DetectionStatus
+|**schedule_alert** |Server → Client |ScheduleAlert
+|**audio_stream** |Server → Client |AudioStreamData
+|**audio_notification** |Server → Client |AudioNotification
+|**audio_playback_status** |Client → Server |PlaybackStatus
+|**behavior_data** |Server → Client |BehaviorData
+|**analysis_results** |Server → Client |AnalysisResults
+|===
+
+**イベントデータ構造**
+
+```typescript
+// フロントエンド型定義
+interface DetectionStatus {
+  personDetected: boolean;
+  smartphoneDetected: boolean;
+  absenceTime: number;
+  smartphoneUseTime: number;
+  absenceAlert?: boolean;
+  smartphoneAlert?: boolean;
+}
+
+interface AudioStreamData {
+  audio_data: string;  // Base64エンコード
+  metadata: AudioMetadata;
+  timestamp: string;
+  format: string;
+  encoding: string;
+}
+
+interface AudioNotification {
+  type: 'tts_started' | 'tts_completed' | 'tts_error' | 'audio_ready';
+  message: string;
+  audio_id?: string;
+  timestamp: string;
+}
+```
+
+=== 🔄 リアルタイムステータス配信
+
+```python
+# backend/src/core/status_broadcaster.py
+class StatusBroadcaster:
+    def broadcast_enhanced_status(self, enhanced_status: Dict[str, Any]) -> None:
+        """拡張ステータス情報をWebSocketで配信"""
+        try:
+            # MediaPipeオブジェクトを安全な形式に変換
+            safe_status = create_websocket_safe_status(enhanced_status)
+            
+            socketio.emit('status', safe_status)
+            
+            # 個別イベントとしても配信
+            if 'behavior_data' in safe_status:
+                socketio.emit('behavior_data', safe_status['behavior_data'])
+                
+            if 'analysis_results' in safe_status:
+                socketio.emit('analysis_results', safe_status['analysis_results'])
+                
+        except Exception as e:
+            logger.error(f"Enhanced status broadcast error: {e}")
+```
+
+== 🚨 アラート管理システム
+
+=== 🎛️ アラートエンジン設計
+
+[mermaid]
+....
+classDiagram
+    class AlertManager {
+        -alert_config: dict
+        -active_alerts: List[Alert]
+        -sound_service: SoundService
+        -tts_service: TTSService
+        -line_service: LineService
+        
+        +trigger_alert(alert_type: AlertType): void
+        +clear_alert(alert_id: str): void
+        +get_active_alerts(): List[Alert]
+        +schedule_alert(alert: Alert, delay: int): void
+    }
+    
+    class Alert {
+        +id: str
+        +type: AlertType
+        +message: str
+        +severity: int
+        +timestamp: datetime
+        +context: dict
+        +is_active: bool
+        
+        +to_dict(): dict
+        +should_repeat(): bool
+        +get_notification_channels(): List[str]
+    }
+    
+    class AlertService {
+        -config_manager: ConfigManager
+        -line_service: LineService
+        -sound_service: SoundService
+        
+        +trigger_alert(message: str): void
+        +trigger_absence_alert(duration: float): void
+        +trigger_smartphone_alert(duration: float): void
+    }
+    
+    class NotificationDelivery {
+        -delivery_stats: dict
+        
+        +deliver_alert(alert: AlertMessage, channel: AlertChannel): bool
+        +_deliver_tts_alert(alert: AlertMessage): bool
+        +_deliver_websocket_alert(alert: AlertMessage): bool
+        +_deliver_email_alert(alert: AlertMessage): bool
+    }
+    
+    AlertManager --> Alert
+    AlertManager --> AlertService
+    AlertService --> NotificationDelivery
+....
+
+=== 🔔 アラート種類と処理
+
+**アラートレベル階層**
+
+```python
+# backend/src/services/monitoring/alert_system.py
+class AlertLevel(Enum):
+    """アラートレベル階層"""
+    INFO = "info"
+    WARNING = "warning" 
+    ALERT = "alert"
+    CRITICAL = "critical"
+
+class AlertChannel(Enum):
+    """アラート配信チャネル"""
+    TTS_VOICE = "tts_voice"
+    SCREEN_POPUP = "screen_popup"
+    BROWSER_NOTIFICATION = "browser_notification"
+    EMAIL = "email"
+    WEBSOCKET = "websocket"
+    LINE_API = "line_api"
+```
+
+**専用アラート処理**
+
+```python
+# backend/src/services/communication/alert_service.py
+class AlertService:
+    def trigger_absence_alert(self, absence_duration):
+        """不在アラートをトリガー"""
+        message = f"ユーザーが席を離れて {absence_duration:.0f} 秒が経過しました。"
+        logger.warning(message)
+        self._send_line_notify(f"🚶‍♂️ 不在検知: {message}")
+        
+        # 不在アラート用の音声
+        sound_file = self.alert_sounds.get("absence", "alert.wav")
+        self.sound_service.play_alert(sound_file)
+
+    def trigger_smartphone_alert(self, usage_duration):
+        """スマートフォン使用アラート"""
+        message = f"ユーザーがスマートフォンを {usage_duration:.0f} 秒間使用しています。"
+        logger.warning(message)
+        self._send_line_notify(f"📱 スマホ使用検知: {message}")
+        
+        sound_file = self.alert_sounds.get("smartphone", "alert.wav")
+        self.sound_service.play_alert(sound_file)
+```
+
+=== 📱 通知配信チャネル
+
+[mermaid]
+....
+sequenceDiagram
+    participant AM as Alert Manager
+    participant ND as Notification Delivery
+    participant TTS as TTS Service
+    participant WS as WebSocket
+    participant LINE as LINE API
+    participant EMAIL as Email Service
+    
+    AM->>ND: deliver_alert(alert, channels)
+    
+    alt TTS Voice Channel
+        ND->>TTS: synthesize_alert_message()
+        TTS-->>ND: audio_data
+        ND->>WS: broadcast_audio_stream()
+    end
+    
+    alt WebSocket Channel
+        ND->>WS: broadcast_alert_notification()
+        WS-->>Client: alert_event
+    end
+    
+    alt LINE API Channel
+        ND->>LINE: send_push_message()
+        LINE-->>User: LINE通知
+    end
+    
+    alt Email Channel
+        ND->>EMAIL: send_alert_email()
+        EMAIL-->>User: メール通知
+    end
+    
+    ND-->>AM: delivery_results
+....
+
+== 🔊 TTS音声合成システム
+
+=== 🎙️ TTS アーキテクチャ
+
+[mermaid]
+....
+classDiagram
+    class TTSService {
+        -engine: ZonosTTS
+        -voice_config: dict
+        -audio_queue: Queue
+        -emotion_manager: EmotionManager
+        
+        +synthesize_text(text: str, emotion: str): AudioData
+        +synthesize_text_fast(text: str): AudioResult
+        +play_tts_alert(message: str): void
+        +get_available_voices(): List[str]
+        +clone_voice(sample_data: bytes): VoiceModel
+    }
+    
+    class SoundService {
+        -audio_device: AudioDevice
+        -sound_cache: dict
+        -volume_level: float
+        
+        +play_sound(sound_file: str): void
+        +play_tts_audio(audio_data: AudioData): void
+        +play_alert(sound_file: str): void
+        +set_volume(level: float): void
+        +stop_all_sounds(): void
+    }
+    
+    class EmotionManager {
+        -emotion_profiles: dict
+        
+        +apply_emotion(audio: AudioData, emotion: str): AudioData
+        +get_emotion_parameters(emotion: str): dict
+        +blend_emotions(primary: str, secondary: str): dict
+    }
+    
+    class AudioProcessor {
+        +process_audio_quality(audio: AudioData): AudioData
+        +apply_effects(audio: AudioData, effects: dict): AudioData
+        +normalize_volume(audio: AudioData): AudioData
+    }
+    
+    TTSService --> SoundService
+    TTSService --> EmotionManager
+    TTSService --> AudioProcessor
+....
+
+=== 🎵 音声ストリーミング機能
+
+**リアルタイム音声配信**
+
+```python
+# backend/src/web/websocket.py
+def broadcast_audio_stream(audio_data: bytes, audio_metadata: Dict[str, Any], 
+                          target_clients: Optional[List[str]] = None):
+    """音声データのストリーミング配信"""
+    try:
+        # Base64エンコードして配信
+        encoded_audio = base64.b64encode(audio_data).decode('utf-8')
+        
+        payload = {
+            'audio_data': encoded_audio,
+            'metadata': audio_metadata,
+            'timestamp': audio_metadata.get('timestamp', ''),
+            'format': 'audio/wav',
+            'encoding': 'base64'
+        }
+        
+        # 配信対象の決定
+        if target_clients:
+            for client_id in target_clients:
+                if client_id in connected_clients:
+                    socketio.emit('audio_stream', payload, room=client_id)
+        else:
+            socketio.emit('audio_stream', payload)
+            
+    except Exception as e:
+        logger.error(f"Audio stream broadcast error: {e}")
+```
+
+**ストリーミングAPI**
+
+```python
+# backend/src/web/routes/tts_streaming_routes.py
+@tts_streaming_bp.route('/stream-audio', methods=['POST'])
+def stream_audio():
+    """WebSocket経由でのリアルタイム音声配信"""
+    try:
+        data = request.get_json()
+        text = data.get('text')
+        emotion = data.get('emotion', 'neutral')
+        broadcast_all = data.get('broadcast_all', False)
+        
+        # 音声合成実行
+        audio_result = tts_service.synthesize_text_fast(
+            text=text, emotion=emotion
+        )
+        
+        # ストリーミング配信
+        audio_file_path = audio_result.get('file_path')
+        if audio_file_path:
+            queue_audio_for_streaming(audio_file_path, {
+                'type': 'real_time_synthesis',
+                'text': text,
+                'emotion': emotion,
+                'broadcast_all': broadcast_all
+            })
+        
+        return jsonify({'success': True, 'audio_file_id': audio_result['audio_file_id']})
+    except Exception as e:
+        return jsonify({'error': 'synthesis_failed'}), 500
+```
+
+=== 🎭 感情制御とボイスクローニング
+
+```python
+# backend/src/services/tts/emotion_manager.py
+class EmotionManager:
+    def apply_emotion(self, audio_data: AudioData, emotion: str) -> AudioData:
+        """感情パラメータを音声に適用"""
+        emotion_params = self.get_emotion_parameters(emotion)
+        
+        # ピッチ調整
+        if 'pitch_shift' in emotion_params:
+            audio_data = self._adjust_pitch(audio_data, emotion_params['pitch_shift'])
+        
+        # 速度調整
+        if 'speed_factor' in emotion_params:
+            audio_data = self._adjust_speed(audio_data, emotion_params['speed_factor'])
+        
+        # 音量調整
+        if 'volume_factor' in emotion_params:
+            audio_data = self._adjust_volume(audio_data, emotion_params['volume_factor'])
+        
+        return audio_data
+```
+
+== 📱 外部API連携
+
+=== 📞 LINE API統合
+
+```python
+# backend/src/services/communication/line_service.py
+class LineService:
+    def __init__(self, config_manager: ConfigManager):
+        self.enabled = config_manager.get('line.enabled', False)
+        self.token = config_manager.get('line.token')
+        self.user_id = config_manager.get('line.user_id')
+        
+        if self.enabled and self.token:
+            configuration = Configuration(access_token=self.token)
+            self.api_client = ApiClient(configuration)
+            self.messaging_api = MessagingApi(self.api_client)
+
+    def send_message(self, message):
+        """LINE メッセージ送信"""
+        if not self.enabled or not self.messaging_api:
+            return
+            
+        try:
+            request = PushMessageRequest(
+                to=self.user_id,
+                messages=[TextMessage(text=message)]
+            )
+            self.messaging_api.push_message(request)
+            logger.info("LINE message sent successfully")
+        except Exception as e:
+            logger.error(f"LINE message sending error: {e}")
+```
+
+=== 📧 マルチチャネル通知
+
+[mermaid]
+....
+flowchart TD
+    START[アラート発生] --> EVAL[通知チャネル評価]
+    
+    EVAL --> URGENT{緊急度判定}
+    
+    URGENT -->|高| MULTI[複数チャネル同時配信]
+    URGENT -->|中| PREF[設定優先チャネル]
+    URGENT -->|低| LOG[ログ記録のみ]
+    
+    MULTI --> TTS_CH[TTS音声]
+    MULTI --> WS_CH[WebSocket]
+    MULTI --> LINE_CH[LINE通知]
+    
+    PREF --> SINGLE[単一チャネル配信]
+    
+    TTS_CH --> RESULT[配信結果記録]
+    WS_CH --> RESULT
+    LINE_CH --> RESULT
+    SINGLE --> RESULT
+    LOG --> RESULT
+    
+    RESULT --> END[処理完了]
+....
+
+== ⚙️ 設定管理と最適化
+
+=== 🔧 通信設定仕様
+
+```yaml
+# config/config.yaml - 通信システム設定例
+communication:
+  websocket:
+    cors_allowed_origins: "*"
+    ping_timeout: 60
+    ping_interval: 25
+    max_http_buffer_size: 1000000
+    
+  alerts:
+    enabled: true
+    default_channels: ["tts_voice", "websocket"]
+    severity_thresholds:
+      absence_alert: 300  # 5分
+      smartphone_alert: 180  # 3分
+    
+  line_api:
+    enabled: true
+    token: "YOUR_LINE_NOTIFY_TOKEN"
+    user_id: "YOUR_LINE_USER_ID"
+    rate_limit: 1000  # messages per hour
+    
+  tts:
+    default_voice: "neutral"
+    default_emotion: "neutral"
+    audio_format: "wav"
+    sample_rate: 22050
+    streaming_enabled: true
+    
+  audio_streaming:
+    buffer_size: 8192
+    max_clients: 50
+    compression_enabled: true
+```
+
+=== 📊 パフォーマンス監視
+
+```python
+# backend/src/web/routes/realtime_analysis_routes.py
+@realtime_analysis_bp.route('/streaming-status', methods=['GET'])
+def get_streaming_status():
+    """ストリーミング処理状態取得"""
+    try:
+        connected_clients = get_connected_clients_count()
+        
+        response = {
+            'streaming_system': {
+                'status': 'active' if connected_clients > 0 else 'idle',
+                'connected_clients': connected_clients,
+                'active_streams': 0,
+                'total_streamed': 0
+            },
+            'services': {
+                'tts_service': 'available' if tts_service else 'unavailable',
+                'websocket': 'active'
+            }
+        }
+        
+        return jsonify(response)
+    except Exception as e:
+        return jsonify({'error': 'internal_error'}), 500
+```
+
+== 🔒 セキュリティとエラーハンドリング
+
+=== 🛡️ セキュリティ考慮事項
+
+**認証・認可**
+- WebSocket接続時のトークン検証
+- API呼び出しの認証ヘッダー確認
+- レート制限による不正利用防止
+
+**データ保護**
+- 音声データの一時的保存と自動削除
+- 個人情報を含む通知の暗号化
+- 通信ログの匿名化
+
+=== ⚠️ エラーハンドリング戦略
+
+```python
+# backend/src/utils/exceptions.py
+class CommunicationError(Exception):
+    """通信関連の基底例外"""
+    pass
+
+class WebSocketError(CommunicationError):
+    """WebSocket通信エラー"""
+    pass
+
+class AudioStreamError(CommunicationError):
+    """音声ストリーミングエラー"""  
+    pass
+
+class NotificationDeliveryError(CommunicationError):
+    """通知配信エラー"""
+    pass
+```
+
+**復旧処理パターン**
+
+[mermaid]
+....
+flowchart TD
+    ERROR[エラー発生] --> TYPE{エラー種別判定}
+    
+    TYPE -->|WebSocket切断| RECONNECT[自動再接続]
+    TYPE -->|音声合成失敗| FALLBACK[フォールバック音声]
+    TYPE -->|LINE API エラー| RETRY[リトライ機構]
+    TYPE -->|システムエラー| LOG[ログ記録]
+    
+    RECONNECT --> SUCCESS{再接続成功}
+    SUCCESS -->|Yes| RESUME[サービス復旧]
+    SUCCESS -->|No| MANUAL[手動介入要求]
+    
+    FALLBACK --> CACHE[キャッシュ音声再生]
+    RETRY --> LIMIT{リトライ制限}
+    LIMIT -->|未達| WAIT[待機後再試行]
+    LIMIT -->|超過| DISABLE[機能一時無効]
+    
+    RESUME --> END[正常運用継続]
+    CACHE --> END
+    WAIT --> RETRY
+    DISABLE --> END
+    MANUAL --> END
+    LOG --> END
+....
+
+== 🧪 テスト戦略
+
+=== 🔬 単体テスト
+
+```python
+# tests/test_communication_system.py
+import pytest
+from unittest.mock import MagicMock, patch
+from services.communication.alert_service import AlertService
+
+class TestAlertService:
+    def test_trigger_absence_alert(self):
+        """不在アラートのテスト"""
+        config_manager = MagicMock()
+        alert_service = AlertService(config_manager)
+        
+        with patch.object(alert_service, '_send_line_notify') as mock_line:
+            alert_service.trigger_absence_alert(300)
+            mock_line.assert_called_once()
+            
+    def test_websocket_broadcast(self):
+        """WebSocket配信のテスト"""
+        from web.websocket import broadcast_status
+        
+        test_status = {'personDetected': True, 'absenceTime': 0}
+        
+        with patch('web.websocket.socketio') as mock_socketio:
+            broadcast_status(test_status)
+            mock_socketio.emit.assert_called_with('status_update', test_status)
+```
+
+=== 🌐 統合テスト
+
+```python
+# tests/test_integration_communication.py
+def test_end_to_end_alert_flow():
+    """エンドツーエンドアラートフローのテスト"""
+    # 1. 検出イベント発生
+    # 2. アラート生成
+    # 3. 複数チャネル配信
+    # 4. 配信結果検証
+    pass
+
+def test_websocket_audio_streaming():
+    """音声ストリーミングの統合テスト"""
+    # 1. TTS音声合成
+    # 2. WebSocket配信
+    # 3. クライアント受信確認
+    pass
+```
+
+== 📚 関連ドキュメント・リソース
+
+=== 📖 参照ドキュメント
+
+* **<<websocket-api>>**: WebSocket API詳細仕様
+* **<<rest-api-reference>>**: REST API連携仕様
+* **<<system-design>>**: システム全体設計
+* **<<configuration-guide>>**: 設定詳細ガイド
+
+=== 🔗 外部リソース
+
+* **Flask-SocketIO**: https://flask-socketio.readthedocs.io/
+* **LINE Messaging API**: https://developers.line.biz/ja/docs/messaging-api/
+* **Socket.IO Protocol**: https://socket.io/docs/v4/socket-io-protocol/
+* **Web Audio API**: https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API
+
+=== 🛠️ 開発支援ツール
+
+```bash
+# WebSocketテストクライアント
+npm install -g wscat
+wscat -c ws://localhost:8000/socket.io/?EIO=4&transport=websocket
+
+# LINE API テスト
+curl -X POST https://notify-api.line.me/api/notify \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d "message=Test Message"
+
+# TTS音声合成テスト
+curl -X POST http://localhost:8000/api/tts/synthesis \
+  -H "Content-Type: application/json" \
+  -d '{"text": "テスト音声", "emotion": "neutral"}'
+```
+
+---
+
+**📞 Contact**: team@kanshichan.dev +
+**🔗 Repository**: https://github.com/kanshichan/backend +
+**📅 Last Updated**: 2024-12-27 

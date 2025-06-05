@@ -369,7 +369,7 @@ class DetectionSmoother:
             # 🆕 拡張補間: より強い減衰だが継続
             decay_factor = max(self.min_decay_confidence / latest_history.confidence, 
                               0.3 - (frames_since_detection * 0.02))
-            interpolated_confidence = latest_history.confidence * decay_factor
+        interpolated_confidence = latest_history.confidence * decay_factor
             is_extended_interpolation = True
             
         else:
@@ -386,7 +386,7 @@ class DetectionSmoother:
             self.smoothing_stats['extended_interpolations'] = self.smoothing_stats.get('extended_interpolations', 0) + 1
             logger.debug(f"Extended interpolation for {obj_key}: frames={frames_since_detection}, confidence={interpolated_confidence:.3f}")
         else:
-            self.smoothing_stats['interpolated_detections'] += 1
+        self.smoothing_stats['interpolated_detections'] += 1
         
         return [{
             'bbox': latest_history.bbox,

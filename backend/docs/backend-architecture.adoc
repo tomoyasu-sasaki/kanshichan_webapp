@@ -1,0 +1,979 @@
+= 🏗️ 監視ちゃん(KanshiChan) バックエンドアーキテクチャ
+:toc: left
+:toc-title: 目次
+:toclevels: 4
+:numbered:
+:source-highlighter: highlight.js
+:icons: font
+:doctype: book
+:version: 2.0.0
+:author: KanshiChan Development Team
+:email: team@kanshichan.dev
+:revnumber: 2.0
+:revdate: {docdate}
+:experimental:
+
+== 📖 概要
+
+監視ちゃん（KanshiChan）は、AI技術を活用したリアルタイム作業集中支援システムです。
+このドキュメントでは、バックエンドシステムの包括的なアーキテクチャ設計、設計思想、技術的詳細について説明します。
+
+[NOTE]
+====
+📋 **ドキュメント情報**
+
+* **対象読者**: システムアーキテクト、テクニカルリード、プロジェクトマネージャー
+* **技術スタック**: Python 3.9+ / Flask 2.3+ / PyTorch / OpenCV / MediaPipe
+* **バージョン**: v2.0.0 (AI最適化・国際化対応・TTS統合版)
+* **最終更新**: {docdate}
+====
+
+== 🎯 システム概要
+
+=== 💡 ビジョンと目的
+
+==== ビジョン
+「AIの力で人々の集中力を向上させ、より良い作業環境を提供する」
+
+==== システム目的
+* **リアルタイム監視**: Webカメラを通じた継続的な状況把握
+* **インテリジェント分析**: AI/MLによる行動パターン分析と洞察生成
+* **適応的アラート**: 個人特性に応じた最適なタイミングでの通知
+* **データドリブン**: 蓄積データからの学習と改善提案
+* **多言語対応**: 国際的なユーザーベースへの対応
+
+=== 🏛️ アーキテクチャ原則
+
+==== 設計原則
+[cols="2,5", options="header"]
+|===
+|原則 |詳細
+|**🔍 リアルタイム性** |低遅延でのデータ処理とレスポンス (< 100ms)
+|**🧠 インテリジェンス** |AI/MLによる適応学習と個人化
+|**🔧 拡張性** |水平・垂直スケーリングに対応した設計
+|**🛡️ 堅牢性** |フォルトトレラント設計とグレースフルデグラデーション
+|**📊 観測性** |包括的なログ・メトリクス・トレーシング
+|**🔒 セキュリティ** |プライバシー保護とデータセキュリティ
+|**🌐 国際化** |多言語・多文化対応のグローバル設計
+|===
+
+==== 品質属性
+* **パフォーマンス**: 15 FPS以上での安定した検出処理
+* **可用性**: 99.9%以上のアップタイム
+* **保守性**: モジュラー設計による高い保守性
+* **テスタビリティ**: 包括的なテストカバレッジ (80%+)
+
+== 🏗️ システムアーキテクチャ
+
+=== 📐 全体アーキテクチャ
+
+[mermaid]
+....
+graph TB
+    %% 外部システム
+    subgraph "🌐 External Systems"
+        C[Web Camera]
+        LINE[LINE API]
+        LLM[LLM Services<br/>OpenAI/Ollama]
+        TTS_EXT[External TTS<br/>Zonos API]
+    end
+    
+    %% プレゼンテーション層
+    subgraph "🖥️ Presentation Layer"
+        WEB[Web Frontend<br/>React/TypeScript]
+        API[REST API<br/>Flask Routes]
+        WS[WebSocket API<br/>SocketIO]
+    end
+    
+    %% アプリケーション層
+    subgraph "⚙️ Application Layer"
+        MON[Monitor<br/>統合監視システム]
+        DET[Detector<br/>AI検出エンジン]
+        ALT[AlertManager<br/>通知管理]
+        SCH[ScheduleManager<br/>スケジュール管理]
+        ANA[BehaviorAnalyzer<br/>行動分析]
+    end
+    
+    %% サービス層
+    subgraph "🔧 Service Layer"
+        direction LR
+        subgraph "🤖 AI/ML Services"
+            OBJ[ObjectDetector<br/>物体検出]
+            VIS[Vision Pipeline<br/>映像処理]
+            BEH[Behavior Analysis<br/>行動分析]
+        end
+        
+        subgraph "🔔 Communication"
+            TTS[TTS Service<br/>音声合成]
+            VOICE[Voice Manager<br/>音声管理]
+            NOTIF[Notification<br/>通知配信]
+        end
+        
+        subgraph "📊 Data Services"
+            COLLECT[Data Collector<br/>データ収集]
+            STORE[Storage Service<br/>データ保存]
+            STREAM[Streaming Processor<br/>リアルタイム処理]
+        end
+        
+        subgraph "🎛️ Management"
+            PERF[Performance Monitor<br/>性能監視]
+            CONFIG[Config Manager<br/>設定管理]
+            MEM[Memory Manager<br/>メモリ管理]
+        end
+    end
+    
+    %% インフラストラクチャ層
+    subgraph "🏭 Infrastructure Layer"
+        subgraph "💾 Data Store"
+            DB[(SQLite Database)]
+            FILES[File System<br/>音声/ログファイル]
+        end
+        
+        subgraph "🚀 Runtime"
+            FLASK[Flask Application<br/>Gunicorn/uWSGI]
+            TORCH[PyTorch Runtime<br/>CPU/GPU]
+            CV[OpenCV Pipeline<br/>MediaPipe]
+        end
+    end
+    
+    %% コア層
+    subgraph "🎯 Core Layer"
+        CAM[Camera Manager<br/>カメラ制御]
+        STATE[State Manager<br/>状態管理]
+        FRAME[Frame Processor<br/>フレーム処理]
+        DETECT[Detection Manager<br/>検出管理]
+    end
+    
+    %% 接続関係
+    WEB <--> API
+    WEB <--> WS
+    API --> MON
+    WS --> MON
+    
+    MON --> DET
+    MON --> ALT
+    MON --> SCH
+    MON --> ANA
+    
+    DET --> OBJ
+    DET --> VIS
+    ALT --> TTS
+    ALT --> NOTIF
+    ANA --> BEH
+    
+    OBJ --> CAM
+    VIS --> FRAME
+    BEH --> COLLECT
+    
+    COLLECT --> DB
+    STORE --> FILES
+    STREAM --> WS
+    
+    CAM --> C
+    TTS --> TTS_EXT
+    NOTIF --> LINE
+    BEH --> LLM
+    
+    %% スタイリング
+    classDef external fill:#ffe6e6,stroke:#ff4444
+    classDef presentation fill:#e6f3ff,stroke:#4488ff
+    classDef application fill:#e6ffe6,stroke:#44aa44
+    classDef service fill:#fff3e6,stroke:#ff8844
+    classDef infrastructure fill:#f3e6ff,stroke:#8844ff
+    classDef core fill:#fffce6,stroke:#ccaa44
+    
+    class C,LINE,LLM,TTS_EXT external
+    class WEB,API,WS presentation
+    class MON,DET,ALT,SCH,ANA application
+    class OBJ,VIS,BEH,TTS,VOICE,NOTIF,COLLECT,STORE,STREAM,PERF,CONFIG,MEM service
+    class DB,FILES,FLASK,TORCH,CV infrastructure
+    class CAM,STATE,FRAME,DETECT core
+....
+
+=== 🎨 レイヤードアーキテクチャ
+
+==== レイヤー構成
+[cols="1,2,4", options="header"]
+|===
+|レイヤー |責務 |主要コンポーネント
+|**🖥️ Presentation** |UI・API |React Frontend, REST API, WebSocket API
+|**⚙️ Application** |ビジネスロジック |Monitor, Detector, AlertManager, ScheduleManager
+|**🔧 Service** |ドメインサービス |AI/ML Services, Communication, Data Services
+|**🏭 Infrastructure** |技術基盤 |Database, File System, Runtime Environment
+|**🎯 Core** |中核機能 |Camera, State, Frame Processing, Detection
+|===
+
+==== 依存関係ルール
+* **上位層 → 下位層**: 許可された依存関係
+* **下位層 → 上位層**: 禁止（依存性逆転の原則）
+* **同一層内**: インターフェースを通じた疎結合
+
+== 🎯 コアコンポーネント
+
+=== 📹 カメラ・映像処理アーキテクチャ
+
+[mermaid]
+....
+graph LR
+    subgraph "📹 Camera Layer"
+        CAM[Camera Manager]
+        FRAME[Frame Processor]
+    end
+    
+    subgraph "🤖 AI Detection"
+        YOLO[YOLO v8<br/>物体検出]
+        MP[MediaPipe<br/>姿勢検出]
+        OPT[AI Optimizer<br/>動的最適化]
+    end
+    
+    subgraph "🧠 Intelligence"
+        SMOOTH[Detection Smoother<br/>検出平滑化]
+        RENDER[Detection Renderer<br/>描画処理]
+        THRESH[Threshold Manager<br/>閾値管理]
+    end
+    
+    subgraph "📊 Processing"
+        STATE[State Manager<br/>状態管理]
+        BROAD[Status Broadcaster<br/>状態配信]
+        MEM[Memory Manager<br/>メモリ管理]
+    end
+    
+    %% フロー
+    CAM --> FRAME
+    FRAME --> YOLO
+    FRAME --> MP
+    YOLO --> SMOOTH
+    MP --> SMOOTH
+    SMOOTH --> RENDER
+    SMOOTH --> STATE
+    THRESH --> SMOOTH
+    OPT --> YOLO
+    OPT --> MP
+    STATE --> BROAD
+    MEM --> FRAME
+    MEM --> YOLO
+    
+    %% スタイリング
+    classDef camera fill:#e6f3ff
+    classDef ai fill:#ffe6f3
+    classDef intelligence fill:#f3ffe6
+    classDef processing fill:#fff3e6
+    
+    class CAM,FRAME camera
+    class YOLO,MP,OPT ai
+    class SMOOTH,RENDER,THRESH intelligence
+    class STATE,BROAD,MEM processing
+....
+
+=== ⚙️ 監視システムアーキテクチャ
+
+[mermaid]
+....
+sequenceDiagram
+    participant C as Camera
+    participant F as Frame Processor
+    participant D as Detector
+    participant S as State Manager
+    participant A as Alert Manager
+    participant W as WebSocket
+    participant DB as Database
+    
+    Note over C,DB: リアルタイム監視フロー
+    
+    loop 監視ループ (15 FPS)
+        C->>F: フレーム取得
+        F->>F: 前処理・最適化
+        F->>D: 検出実行
+        D->>D: YOLO + MediaPipe
+        D->>S: 検出結果
+        S->>S: 状態更新・分析
+        
+        alt 状態変化あり
+            S->>A: アラート判定
+            A->>A: 通知生成
+            A->>W: リアルタイム配信
+            S->>DB: データ保存
+        end
+        
+        S->>W: ステータス配信
+    end
+....
+
+== 🔧 サービス層アーキテクチャ
+
+=== 🤖 AI/MLサービス
+
+==== AI最適化戦略
+[mermaid]
+....
+graph TD
+    subgraph "🎛️ Dynamic Optimization"
+        PERF[Performance Monitor]
+        LOAD[Load Balancer]
+        SCALE[Auto Scaler]
+    end
+    
+    subgraph "🧠 Model Management"
+        YOLO[YOLO v8 Model]
+        MP[MediaPipe Model]
+        CACHE[Model Cache]
+    end
+    
+    subgraph "⚡ Processing Pipeline"
+        PREP[Frame Preprocessing]
+        INFER[Inference Engine]
+        POST[Post Processing]
+    end
+    
+    subgraph "📊 Resource Management"
+        GPU[GPU Memory Pool]
+        CPU[CPU Thread Pool]
+        MEM[Memory Manager]
+    end
+    
+    PERF --> LOAD
+    LOAD --> SCALE
+    SCALE --> GPU
+    SCALE --> CPU
+    
+    YOLO --> CACHE
+    MP --> CACHE
+    CACHE --> INFER
+    
+    PREP --> INFER
+    INFER --> POST
+    
+    MEM --> PREP
+    MEM --> INFER
+    GPU --> INFER
+    CPU --> PREP
+....
+
+==== 検出精度最適化
+* **動的閾値調整**: 環境条件に応じた自動閾値調整
+* **複数モデル統合**: YOLO + MediaPipeの結果統合
+* **時系列平滑化**: 検出結果の時系列平滑化
+* **信頼度ベース**: 信頼度スコアによる適応的判定
+
+=== 🔔 通信・通知サービス
+
+[mermaid]
+....
+graph TB
+    subgraph "🔔 Notification Engine"
+        ALERT[Alert Manager]
+        RULE[Alert Rules]
+        SUPPRESS[Suppression Engine]
+    end
+    
+    subgraph "🔊 TTS System"
+        TTS[TTS Service]
+        VOICE[Voice Manager] 
+        ZONOS[Zonos TTS API]
+        CACHE[Audio Cache]
+    end
+    
+    subgraph "📱 External Integration"
+        LINE[LINE Notify]
+        WS[WebSocket Live]
+        API[REST API]
+    end
+    
+    subgraph "🎯 Personalization"
+        PROFILE[User Profile]
+        ADAPT[Adaptive Engine]
+        TIMING[Optimal Timing]
+    end
+    
+    ALERT --> RULE
+    RULE --> SUPPRESS
+    SUPPRESS --> TTS
+    SUPPRESS --> LINE
+    SUPPRESS --> WS
+    
+    TTS --> VOICE
+    VOICE --> ZONOS
+    VOICE --> CACHE
+    
+    PROFILE --> ADAPT
+    ADAPT --> TIMING
+    TIMING --> RULE
+....
+
+==== TTS音声合成
+* **多言語対応**: 日本語・英語の自然な音声合成
+* **感情表現**: 状況に応じた感情を込めた音声
+* **キャッシュ最適化**: 頻用フレーズの事前生成・キャッシュ
+* **品質制御**: 音声品質と生成速度のバランス
+
+=== 📊 データサービス
+
+[mermaid]
+....
+graph LR
+    subgraph "📥 Data Collection"
+        COLLECT[Data Collector]
+        VALID[Data Validator]
+        ENRICH[Data Enricher]
+    end
+    
+    subgraph "💾 Data Storage"
+        STORE[Storage Service]
+        ARCHIVE[Archive Manager]
+        BACKUP[Backup Service]
+    end
+    
+    subgraph "🔄 Data Processing"
+        STREAM[Streaming Processor]
+        BATCH[Batch Processor]
+        REAL[Real-time Analyzer]
+    end
+    
+    subgraph "🧠 Data Intelligence"
+        BEHAVIOR[Behavior Analyzer]
+        INSIGHTS[Insights Generator]
+        PREDICT[Predictive Models]
+    end
+    
+    COLLECT --> VALID
+    VALID --> ENRICH
+    ENRICH --> STORE
+    STORE --> ARCHIVE
+    STORE --> BACKUP
+    
+    ENRICH --> STREAM
+    STREAM --> REAL
+    REAL --> BEHAVIOR
+    BEHAVIOR --> INSIGHTS
+    INSIGHTS --> PREDICT
+....
+
+==== データフロー戦略
+* **リアルタイム収集**: 2秒間隔での継続的データ収集
+* **スマート圧縮**: アーカイブデータの効率的圧縮
+* **プライバシー保護**: 個人情報の適切な匿名化・暗号化
+* **データ品質**: バリデーション・エンリッチメント
+
+== 🚀 技術スタック詳細
+
+=== 📚 コア技術スタック
+
+[cols="2,3,4", options="header"]
+|===
+|カテゴリ |技術 |バージョン・詳細
+|**🐍 Backend Framework** |Flask |v2.3.3 + Flask-SocketIO v5.5.1
+|**🤖 AI/ML Libraries** |PyTorch |v2.5.1 (GPU対応)
+| |OpenCV |v4.11 (映像処理)
+| |MediaPipe |v0.10.21 (姿勢検出)
+| |YOLOv8 |Ultralytics v8.3.87
+|**🔊 Audio/TTS** |Zonos TTS |Zyphra/Zonos-v0.1-transformer
+| |PyAudio |音声再生・録音
+|**💾 Database** |SQLite |軽量・ファイルベース
+|**🌐 Communication** |Socket.IO |リアルタイム通信
+| |LINE Notify |外部通知連携
+|**🔧 Utilities** |psutil |システムリソース監視
+| |NumPy |科学計算・行列演算
+| |Pillow |画像処理
+|===
+
+=== 🏗️ アーキテクチャパターン
+
+==== 採用パターン
+[cols="2,4", options="header"]
+|===
+|パターン |説明・利点
+|**🏭 Dependency Injection** |ConfigManagerを中心とした依存性注入、テスタビリティ向上
+|**📊 Observer Pattern** |状態変化の通知・リアルタイムイベント配信
+|**🔄 Strategy Pattern** |検出アルゴリズム・通知戦略の動的切り替え
+|**🎯 Singleton Pattern** |ConfigManager・StateManagerのグローバル状態管理
+|**🏗️ Builder Pattern** |複雑な設定オブジェクトの段階的構築
+|**🔗 Chain of Responsibility** |アラート処理・エラーハンドリングの連鎖
+|===
+
+==== 並行性アーキテクチャ
+* **メインスレッド**: Flask API・WebSocket処理
+* **監視スレッド**: リアルタイム監視ループ (15 FPS)
+* **分析スレッド**: 定期的行動分析 (1時間間隔)
+* **非同期処理**: I/O集約的処理の非同期実行
+
+== 📊 データアーキテクチャ
+
+=== 🗄️ データモデル
+
+[mermaid]
+....
+erDiagram
+    BehaviorLog ||--o{ AnalysisResult : generates
+    BehaviorLog {
+        id integer PK
+        timestamp datetime
+        person_detected boolean
+        smartphone_detected boolean
+        presence_status string
+        posture_score float
+        attention_level float
+        created_at datetime
+    }
+    
+    AnalysisResult {
+        id integer PK
+        analysis_type string
+        timeframe string
+        metrics json
+        insights json
+        recommendations json
+        created_at datetime
+    }
+    
+    UserProfile ||--o{ PersonalizationData : has
+    UserProfile {
+        id integer PK
+        user_identifier string
+        preferences json
+        behavior_patterns json
+        effectiveness_scores json
+        created_at datetime
+        updated_at datetime
+    }
+    
+    PersonalizationData {
+        id integer PK
+        user_profile_id integer FK
+        data_type string
+        data_value json
+        confidence_score float
+        created_at datetime
+    }
+    
+    ScheduleEvent ||--o{ AlertHistory : triggers
+    ScheduleEvent {
+        id integer PK
+        name string
+        start_time datetime
+        end_time datetime
+        event_type string
+        settings json
+        is_active boolean
+    }
+    
+    AlertHistory {
+        id integer PK
+        alert_type string
+        content string
+        delivery_method string
+        user_response string
+        effectiveness_score float
+        timestamp datetime
+    }
+....
+
+=== 📈 データフロー
+
+[mermaid]
+....
+graph TD
+    subgraph "📥 Data Sources"
+        CAM[Camera Feed]
+        USER[User Interaction]
+        SYS[System Metrics]
+        EXT[External APIs]
+    end
+    
+    subgraph "🔄 Processing Pipeline"
+        COLLECT[Data Collection]
+        VALIDATE[Validation]
+        ENRICH[Enrichment]
+        NORMALIZE[Normalization]
+    end
+    
+    subgraph "💾 Storage Layer"
+        LIVE[Live Data<br/>Memory]
+        TEMP[Temporary Storage<br/>SQLite]
+        ARCHIVE[Archive<br/>Compressed Files]
+    end
+    
+    subgraph "🧠 Analytics Pipeline"
+        REALTIME[Real-time Analysis]
+        BATCH[Batch Processing]
+        ML[ML Training]
+        INSIGHTS[Insights Generation]
+    end
+    
+    subgraph "📊 Consumption"
+        API[REST API]
+        WS[WebSocket]
+        NOTIF[Notifications]
+        EXPORT[Data Export]
+    end
+    
+    CAM --> COLLECT
+    USER --> COLLECT
+    SYS --> COLLECT
+    EXT --> COLLECT
+    
+    COLLECT --> VALIDATE
+    VALIDATE --> ENRICH
+    ENRICH --> NORMALIZE
+    
+    NORMALIZE --> LIVE
+    NORMALIZE --> TEMP
+    TEMP --> ARCHIVE
+    
+    LIVE --> REALTIME
+    TEMP --> BATCH
+    ARCHIVE --> ML
+    REALTIME --> INSIGHTS
+    
+    INSIGHTS --> API
+    LIVE --> WS
+    INSIGHTS --> NOTIF
+    ARCHIVE --> EXPORT
+....
+
+==== データ保持戦略
+* **ライブデータ**: メモリ内、直近1時間
+* **一時保存**: SQLite、直近30日間
+* **アーカイブ**: 圧縮ファイル、90日間保持
+* **統計データ**: 集約データ、無期限保持
+
+== 🔧 設定・構成管理
+
+=== ⚙️ ConfigManager アーキテクチャ
+
+[mermaid]
+....
+graph TB
+    subgraph "📁 Configuration Sources"
+        YAML[config.yaml<br/>メイン設定]
+        ENV[Environment Variables<br/>環境固有設定]
+        CLI[Command Line Args<br/>実行時設定]
+        DEFAULT[Default Values<br/>デフォルト値]
+    end
+    
+    subgraph "🔧 ConfigManager"
+        LOADER[Config Loader]
+        VALIDATOR[Validator]
+        MERGER[Merger]
+        CACHE[Config Cache]
+    end
+    
+    subgraph "🎯 Configuration Categories"
+        SYSTEM[System Config<br/>基本設定]
+        AI[AI/ML Config<br/>モデル設定]
+        ALERT[Alert Config<br/>通知設定]
+        PERF[Performance Config<br/>性能設定]
+    end
+    
+    subgraph "📊 Runtime Management"
+        HOT[Hot Reload<br/>動的更新]
+        MONITOR[Config Monitor<br/>変更監視]
+        BACKUP[Config Backup<br/>設定バックアップ]
+    end
+    
+    YAML --> LOADER
+    ENV --> LOADER
+    CLI --> LOADER
+    DEFAULT --> LOADER
+    
+    LOADER --> VALIDATOR
+    VALIDATOR --> MERGER
+    MERGER --> CACHE
+    
+    CACHE --> SYSTEM
+    CACHE --> AI
+    CACHE --> ALERT
+    CACHE --> PERF
+    
+    CACHE --> HOT
+    HOT --> MONITOR
+    MONITOR --> BACKUP
+....
+
+=== 🎛️ 設定カテゴリ
+
+==== システム設定
+```yaml
+# 基本システム設定
+system:
+  debug: false
+  log_level: "INFO"
+  max_threads: 8
+  
+server:
+  host: "0.0.0.0"
+  port: 8000
+  cors_origins: ["http://localhost:3000"]
+  
+database:
+  url: "sqlite:///data/kanshichan.db"
+  echo: false
+  pool_size: 10
+```
+
+==== AI/ML設定
+```yaml
+# AI最適化設定
+ai_optimization:
+  enabled: true
+  target_fps: 15.0
+  min_fps: 10.0
+  gpu_memory_limit: 0.8
+  cpu_cores: 4
+  
+detection:
+  confidence_threshold: 0.5
+  nms_threshold: 0.4
+  max_detections: 10
+  smoothing_factor: 0.3
+```
+
+== 🛡️ セキュリティアーキテクチャ
+
+=== 🔒 セキュリティレイヤー
+
+[mermaid]
+....
+graph TB
+    subgraph "🌐 Network Security"
+        CORS[CORS Protection]
+        RATE[Rate Limiting]
+        SSL[TLS/SSL]
+        FW[Firewall Rules]
+    end
+    
+    subgraph "🔐 Application Security"
+        AUTH[Authentication]
+        AUTHZ[Authorization]
+        SESSION[Session Management]
+        CSRF[CSRF Protection]
+    end
+    
+    subgraph "💾 Data Security"
+        ENCRYPT[Data Encryption]
+        HASH[Password Hashing]
+        ANON[Data Anonymization]
+        AUDIT[Audit Logging]
+    end
+    
+    subgraph "🎥 Privacy Protection"
+        LOCAL[Local Processing]
+        NO_CLOUD[No Cloud Storage]
+        GDPR[GDPR Compliance]
+        CONSENT[User Consent]
+    end
+    
+    subgraph "🚨 Threat Protection"
+        DETECT[Threat Detection]
+        PREVENT[Attack Prevention]
+        MONITOR[Security Monitoring]
+        RESPONSE[Incident Response]
+    end
+....
+
+==== プライバシー保護戦略
+* **ローカル処理**: 映像データのローカル処理のみ
+* **データ最小化**: 必要最小限のデータ収集
+* **透明性**: データ利用目的の明確化
+* **ユーザー制御**: データ削除・エクスポート機能
+
+== 📈 パフォーマンス・スケーラビリティ
+
+=== ⚡ パフォーマンス最適化
+
+[mermaid]
+....
+graph LR
+    subgraph "🎯 Target Metrics"
+        FPS[Target FPS: 15]
+        LATENCY[Latency: <100ms]
+        MEMORY[Memory: <2GB]
+        CPU[CPU: <80%]
+    end
+    
+    subgraph "⚡ Optimization Strategies"
+        GPU[GPU Acceleration]
+        CACHE[Intelligent Caching]
+        BATCH[Batch Processing]
+        ASYNC[Async Processing]
+    end
+    
+    subgraph "📊 Monitoring"
+        PERF[Performance Monitor]
+        ALERT[Performance Alerts]
+        AUTO[Auto Scaling]
+        TUNE[Auto Tuning]
+    end
+    
+    subgraph "🔄 Adaptive Control"
+        LOAD[Load Balancing]
+        THROTTLE[Dynamic Throttling]
+        DEGRADE[Graceful Degradation]
+        RECOVER[Auto Recovery]
+    end
+    
+    FPS --> GPU
+    LATENCY --> CACHE
+    MEMORY --> BATCH
+    CPU --> ASYNC
+    
+    GPU --> PERF
+    CACHE --> PERF
+    BATCH --> PERF
+    ASYNC --> PERF
+    
+    PERF --> ALERT
+    ALERT --> AUTO
+    AUTO --> TUNE
+    
+    TUNE --> LOAD
+    LOAD --> THROTTLE
+    THROTTLE --> DEGRADE
+    DEGRADE --> RECOVER
+....
+
+=== 📊 監視・観測性
+
+==== メトリクス分類
+[cols="2,3,3", options="header"]
+|===
+|メトリクス種別 |主要指標 |収集間隔
+|**⚡ Performance** |FPS, Latency, Throughput |リアルタイム
+|**💻 System** |CPU, Memory, GPU Usage |30秒
+|**🎯 Business** |Detection Accuracy, User Engagement |1分
+|**🔒 Security** |Failed Attempts, Anomalies |リアルタイム
+|**📊 Application** |Error Rate, Response Time |リアルタイム
+|===
+
+==== アラート戦略
+* **Critical**: システム停止リスク (即座に対応)
+* **Warning**: 性能劣化 (30分以内に対応)
+* **Info**: 傾向変化 (定期レビュー)
+
+== 🔮 将来拡張性
+
+=== 🚀 スケーラビリティ設計
+
+[mermaid]
+....
+graph TB
+    subgraph "📈 Vertical Scaling"
+        MORE_CPU[More CPU Cores]
+        MORE_RAM[More Memory]
+        BETTER_GPU[Better GPU]
+        FASTER_STORAGE[Faster Storage]
+    end
+    
+    subgraph "📊 Horizontal Scaling"
+        MULTI_INSTANCE[Multiple Instances]
+        LOAD_BALANCE[Load Balancing]
+        MICROSERVICE[Microservice Split]
+        CONTAINER[Containerization]
+    end
+    
+    subgraph "🌐 Distributed Architecture"
+        EDGE[Edge Computing]
+        CLOUD[Cloud Hybrid]
+        CDN[Content Delivery]
+        MESH[Service Mesh]
+    end
+    
+    subgraph "🤖 AI Scaling"
+        MODEL_PARALLEL[Model Parallelism]
+        INFERENCE_POOL[Inference Pool]
+        AUTO_ML[AutoML Pipeline]
+        FEDERATED[Federated Learning]
+    end
+....
+
+=== 🔌 拡張ポイント
+
+==== アーキテクチャ拡張ポイント
+[cols="2,3,4", options="header"]
+|===
+|拡張カテゴリ |拡張ポイント |実装方法
+|**🤖 AI/ML** |新しい検出モデル |Strategy Patternでの動的切り替え
+|**🔔 通知** |新しい通知チャネル |Plugin Architectureでの追加
+|**📊 分析** |新しい分析アルゴリズム |Analyzer Interfaceの実装
+|**🌐 UI** |新しいフロントエンド |REST API・WebSocket経由
+|**💾 ストレージ** |新しいデータベース |Repository Patternでの抽象化
+|**🔧 インテグレーション** |外部システム連携 |Adapter Patternでの統合
+|===
+
+== 🎯 アーキテクチャ決定記録 (ADR)
+
+=== 📋 主要なアーキテクチャ決定
+
+==== ADR-001: Flask vs FastAPI
+[cols="1,4", options="header"]
+|===
+|項目 |内容
+|**決定** |Flask + SocketIOを採用
+|**理由** |• 成熟したエコシステム +
+• SocketIOの安定した統合 +
+• チームの習熟度
+|**代替案** |FastAPI + WebSocket
+|**トレードオフ** |性能 vs 安定性・習熟度
+|===
+
+==== ADR-002: SQLite vs PostgreSQL
+[cols="1,4", options="header"]
+|===
+|項目 |内容
+|**決定** |SQLiteを採用
+|**理由** |• 軽量・ゼロ設定 +
+• ローカル処理重視 +
+• 運用コスト削減
+|**代替案** |PostgreSQL, MySQL
+|**トレードオフ** |シンプルさ vs 高機能性
+|===
+
+==== ADR-003: リアルタイム vs バッチ処理
+[cols="1,4", options="header"]
+|===
+|項目 |内容
+|**決定** |リアルタイム処理をメイン、分析はバッチ
+|**理由** |• ユーザー体験重視 +
+• 即座のフィードバック必要 +
+• 分析は遅延許容可能
+|**代替案** |完全バッチ処理
+|**トレードオフ** |複雑性 vs ユーザー体験
+|===
+
+=== 🔍 技術債務とリファクタリング計画
+
+==== 現在の技術債務
+[cols="2,3,2,2", options="header"]
+|===
+|債務項目 |詳細 |影響レベル |対応優先度
+|**テストカバレッジ** |単体テスト不足 |中 |高
+|**エラーハンドリング** |一部不統一 |低 |中
+|**ドキュメント** |実装詳細不足 |中 |高
+|**メトリクス** |包括的監視不足 |中 |中
+|===
+
+==== リファクタリング計画
+1. **Phase 1**: テストカバレッジ向上 (目標: 80%)
+2. **Phase 2**: エラーハンドリング統一
+3. **Phase 3**: 包括的監視実装
+4. **Phase 4**: マイクロサービス分割検討
+
+== 📚 関連ドキュメント
+
+=== 📖 参照ドキュメント
+* **<<system-design>>**: 詳細設計ドキュメント
+* **<<rest-api-reference>>**: REST API仕様
+* **<<detection-system>>**: AI検出システム詳細
+* **<<configuration-guide>>**: 設定ガイド
+
+=== 🔗 外部参考資料
+* [Flask Documentation](https://flask.palletsprojects.com/)
+* [PyTorch Documentation](https://pytorch.org/docs/)
+* [YOLOv8 Documentation](https://docs.ultralytics.com/)
+* [MediaPipe Documentation](https://mediapipe.dev/)
+
+---
+
+**📞 Contact**: team@kanshichan.dev +
+**🔗 Repository**: https://github.com/kanshichan/backend +
+**📅 Last Updated**: {docdate} +
+**📝 Document Version**: {revnumber} 

@@ -1,0 +1,1028 @@
+= 🤖 監視ちゃん(KanshiChan) 物体・姿勢検出システム
+:toc: left
+:toc-title: 目次
+:toclevels: 4
+:numbered:
+:source-highlighter: highlight.js
+:icons: font
+:doctype: book
+:version: 2.0.0
+:author: KanshiChan Development Team
+:email: team@kanshichan.dev
+:revnumber: 2.0
+:revdate: {docdate}
+:experimental:
+
+== 📖 概要
+
+監視ちゃんの中核を担うAI検出システムは、YOLO v8による物体検出とMediaPipeによる姿勢検出を統合し、リアルタイムでの人物・物体監視を実現します。
+このドキュメントでは、検出システムの詳細なアーキテクチャ、実装仕様、最適化手法について説明します。
+
+[NOTE]
+====
+📋 **ドキュメント情報**
+
+* **対象読者**: AI/MLエンジニア、バックエンド開発者、システム設計者
+* **技術スタック**: YOLO v8 / MediaPipe / PyTorch / OpenCV
+* **バージョン**: v2.0.0 (AI最適化・リアルタイム処理対応版)
+* **最終更新**: {docdate}
+====
+
+== 🎯 検出システム概要
+
+=== 💡 システム目的
+
+==== 主要機能
+* **人物検出**: 作業者の在席・離席状況の監視
+* **姿勢分析**: 作業姿勢の品質評価と改善提案
+* **物体検出**: スマートフォンなど注意散漫要因の検出
+* **リアルタイム処理**: 15 FPS以上でのリアルタイム分析
+
+==== 検出対象
+[cols="2,3,3", options="header"]
+|===
+|検出カテゴリ |対象オブジェクト |使用技術
+|**👤 人物検出** |人の存在・不在 |YOLO v8 + MediaPipe
+|**🏃 姿勢検出** |頭・肩・腕の位置 |MediaPipe Pose
+|**📱 物体検出** |スマートフォン |YOLO v8
+|**🖐️ 手指検出** |手の位置・ジェスチャ |MediaPipe Hands
+|**😊 表情検知** |顔の向き・表情 |MediaPipe Face Mesh
+|===
+
+=== 🏗️ アーキテクチャ原則
+
+==== 設計原則
+* **🔄 統合処理**: 複数のAIモデルの結果を統合した総合判定
+* **⚡ リアルタイム**: 低遅延での検出とフィードバック
+* **🧠 適応学習**: 個人差・環境変化への自動適応
+* **🔧 モジュラー設計**: 独立したコンポーネントの組み合わせ
+* **📊 品質保証**: 検出精度の継続的監視と改善
+
+== 🏗️ システムアーキテクチャ
+
+=== 📐 検出システム全体図
+
+[mermaid]
+....
+graph TB
+    subgraph "📹 Input Layer"
+        CAM[Web Camera]
+        FRAME[Frame Stream<br/>15+ FPS]
+    end
+    
+    subgraph "🔧 Preprocessing Layer"
+        PREP[Frame Preprocessor]
+        OPT[AI Optimizer]
+        CACHE[Frame Cache]
+    end
+    
+    subgraph "🤖 AI Detection Layer"
+        direction LR
+        subgraph "YOLO v8 Pipeline"
+            YOLO[YOLO v8 Model]
+            NMS[NMS Processing]
+            OBJ[Object Detection]
+        end
+        
+        subgraph "MediaPipe Pipeline"
+            MP_POSE[MediaPipe Pose]
+            MP_HANDS[MediaPipe Hands]
+            MP_FACE[MediaPipe Face]
+        end
+    end
+    
+    subgraph "🧠 Intelligence Layer"
+        SMOOTH[Detection Smoother<br/>点滅抑制]
+        THRESH[Threshold Manager<br/>適応的閾値]
+        FUSION[Result Fusion<br/>結果統合]
+    end
+    
+    subgraph "📊 Processing Layer"
+        RENDER[Detection Renderer<br/>可視化]
+        STATE[State Manager<br/>状態管理]
+        BROAD[Status Broadcaster<br/>配信]
+    end
+    
+    subgraph "💾 Output Layer"
+        WS[WebSocket<br/>リアルタイム配信]
+        DB[Database<br/>ログ保存]
+        API[REST API<br/>状態取得]
+    end
+    
+    %% データフロー
+    CAM --> FRAME
+    FRAME --> PREP
+    PREP --> OPT
+    OPT --> CACHE
+    
+    CACHE --> YOLO
+    CACHE --> MP_POSE
+    CACHE --> MP_HANDS
+    CACHE --> MP_FACE
+    
+    YOLO --> NMS
+    NMS --> OBJ
+    
+    OBJ --> FUSION
+    MP_POSE --> FUSION
+    MP_HANDS --> FUSION
+    MP_FACE --> FUSION
+    
+    FUSION --> SMOOTH
+    SMOOTH --> THRESH
+    THRESH --> RENDER
+    THRESH --> STATE
+    
+    RENDER --> WS
+    STATE --> BROAD
+    STATE --> DB
+    BROAD --> API
+    
+    %% スタイリング
+    classDef input fill:#e6f3ff,stroke:#4488ff
+    classDef preprocessing fill:#fff3e6,stroke:#ff8844
+    classDef ai fill:#ffe6f3,stroke:#ff44aa
+    classDef intelligence fill:#f3ffe6,stroke:#44aa44
+    classDef processing fill:#f3e6ff,stroke:#8844ff
+    classDef output fill:#fffce6,stroke:#ccaa44
+    
+    class CAM,FRAME input
+    class PREP,OPT,CACHE preprocessing
+    class YOLO,NMS,OBJ,MP_POSE,MP_HANDS,MP_FACE ai
+    class SMOOTH,THRESH,FUSION intelligence
+    class RENDER,STATE,BROAD processing
+    class WS,DB,API output
+....
+
+=== 🔄 処理フロー詳細
+
+[mermaid]
+....
+sequenceDiagram
+    participant C as Camera
+    participant P as Preprocessor
+    participant Y as YOLO v8
+    participant M as MediaPipe
+    participant F as Fusion Engine
+    participant S as Smoother
+    participant R as Renderer
+    participant O as Output
+    
+    Note over C,O: リアルタイム検出フロー (15 FPS)
+    
+    loop 毎フレーム処理
+        C->>P: フレーム取得
+        P->>P: 前処理・最適化
+        
+        par 並列AI推論
+            P->>Y: YOLO推論
+            Y->>Y: 物体検出
+            Y->>F: 検出結果
+        and
+            P->>M: MediaPipe推論
+            M->>M: 姿勢・手・顔検出
+            M->>F: ランドマーク結果
+        end
+        
+        F->>F: 結果統合・信頼度計算
+        F->>S: 統合結果
+        S->>S: 平滑化・点滅抑制
+        S->>R: 安定化結果
+        
+        par 出力処理
+            R->>O: WebSocket配信
+        and
+            R->>O: 状態更新
+        and
+            R->>O: ログ保存
+        end
+    end
+....
+
+== 🤖 YOLO v8 物体検出システム
+
+=== 📊 YOLO v8 アーキテクチャ
+
+[mermaid]
+....
+graph LR
+    subgraph "📥 Input Processing"
+        INPUT[Input Frame<br/>640x640]
+        NORM[Normalization<br/>0-1 Scale]
+        BATCH[Batch Processing]
+    end
+    
+    subgraph "🧠 YOLO v8 Network"
+        BACKBONE[CSPDarknet Backbone<br/>特徴抽出]
+        NECK[FPN + PAN Neck<br/>特徴融合]
+        HEAD[Detection Head<br/>予測層]
+    end
+    
+    subgraph "📊 Post Processing"
+        DECODE[Box Decoding<br/>座標変換]
+        NMS[Non-Max Suppression<br/>重複除去]
+        FILTER[Confidence Filtering<br/>信頼度フィルタ]
+    end
+    
+    subgraph "📋 Output"
+        PERSON[Person Detection<br/>人物検出]
+        PHONE[Phone Detection<br/>スマホ検出]
+        OTHER[Other Objects<br/>その他物体]
+    end
+    
+    %% フロー
+    INPUT --> NORM
+    NORM --> BATCH
+    BATCH --> BACKBONE
+    BACKBONE --> NECK
+    NECK --> HEAD
+    HEAD --> DECODE
+    DECODE --> NMS
+    NMS --> FILTER
+    FILTER --> PERSON
+    FILTER --> PHONE
+    FILTER --> OTHER
+    
+    %% スタイリング
+    classDef input fill:#e6f3ff
+    classDef network fill:#ffe6f3
+    classDef postprocess fill:#f3ffe6
+    classDef output fill:#fff3e6
+    
+    class INPUT,NORM,BATCH input
+    class BACKBONE,NECK,HEAD network
+    class DECODE,NMS,FILTER postprocess
+    class PERSON,PHONE,OTHER output
+....
+
+=== ⚙️ YOLO 設定パラメータ
+
+==== モデル設定
+```python
+# YOLO v8 設定
+model_config = {
+    'model_type': 'yolov8n.pt',      # Nano版（軽量・高速）
+    'confidence': 0.5,               # 信頼度閾値
+    'iou_threshold': 0.7,            # IoU閾値（NMS）
+    'max_detections': 10,            # 最大検出数
+    'agnostic_nms': False,           # クラス別NMS
+    'device': 'auto',                # GPU/CPU自動選択
+    'half_precision': False,         # 半精度計算（CPU無効）
+    'verbose': False,                # ログ抑制
+}
+```
+
+==== 検出対象設定
+[cols="2,2,2,2", options="header"]
+|===
+|オブジェクト |クラス名 |信頼度閾値 |用途
+|**人物** |`person` |0.5 |在席監視
+|**スマートフォン** |`cell phone` |0.6 |注意散漫検出
+|**ノートPC** |`laptop` |0.5 |作業状況分析
+|**マウス** |`mouse` |0.4 |デバイス使用状況
+|===
+
+=== 🔧 YOLO 最適化手法
+
+==== パフォーマンス最適化
+[mermaid]
+....
+graph TD
+    subgraph "🎯 最適化戦略"
+        RESIZE[Dynamic Resizing<br/>動的リサイズ]
+        SKIP[Frame Skipping<br/>フレーム間引き]
+        BATCH[Batch Inference<br/>バッチ推論]
+        CACHE[Result Caching<br/>結果キャッシュ]
+    end
+    
+    subgraph "📊 品質制御"
+        CONF[Confidence Tuning<br/>信頼度調整]
+        NMS_OPT[NMS Optimization<br/>NMS最適化]
+        FILTER[Post-Filter<br/>後処理フィルタ]
+    end
+    
+    subgraph "🔄 適応制御"
+        MONITOR[Performance Monitor<br/>性能監視]
+        AUTO[Auto Scaling<br/>自動スケール]
+        DEGRADE[Graceful Degradation<br/>品質調整]
+    end
+    
+    %% 関係
+    RESIZE --> MONITOR
+    SKIP --> MONITOR
+    BATCH --> MONITOR
+    CACHE --> MONITOR
+    
+    MONITOR --> AUTO
+    AUTO --> DEGRADE
+    DEGRADE --> CONF
+    DEGRADE --> NMS_OPT
+    DEGRADE --> FILTER
+    
+    %% スタイリング
+    classDef optimization fill:#e6f3ff
+    classDef quality fill:#f3ffe6
+    classDef adaptive fill:#ffe6f3
+    
+    class RESIZE,SKIP,BATCH,CACHE optimization
+    class CONF,NMS_OPT,FILTER quality
+    class MONITOR,AUTO,DEGRADE adaptive
+....
+
+==== 動的最適化アルゴリズム
+```python
+def optimize_yolo_inference(self, model, frame):
+    """YOLO推論の動的最適化"""
+    
+    # 1. フレーム前処理最適化
+    optimized_frame = self._optimize_frame_preprocessing(frame)
+    
+    # 2. フレームスキップ判定
+    if self.frame_skipper.should_skip():
+        return self.last_yolo_results  # キャッシュ結果使用
+    
+    # 3. バッチ処理（複数フレーム同時処理）
+    if self.batch_processor.enabled:
+        results = self._batch_inference(model, optimized_frame)
+    else:
+        results = model(optimized_frame, **self.yolo_predict_args)
+    
+    # 4. 結果キャッシュ更新
+    self.last_yolo_results = results
+    self.last_yolo_results_age = 0
+    
+    return results
+```
+
+== 🎭 MediaPipe 姿勢検出システム
+
+=== 🏗️ MediaPipe アーキテクチャ
+
+[mermaid]
+....
+graph TB
+    subgraph "📥 Input Layer"
+        RGB[RGB Frame<br/>色空間変換]
+        PREPROCESS[Preprocessing<br/>正規化・リサイズ]
+    end
+    
+    subgraph "🤖 MediaPipe Models"
+        direction LR
+        subgraph "Pose Detection"
+            POSE_DET[Pose Detector<br/>BlazePose]
+            POSE_LAND[Pose Landmarks<br/>33ポイント]
+        end
+        
+        subgraph "Hand Detection"
+            HAND_DET[Hand Detector<br/>Palm Detection]
+            HAND_LAND[Hand Landmarks<br/>21ポイント×2]
+        end
+        
+        subgraph "Face Detection"
+            FACE_DET[Face Detector<br/>BlazeFace]
+            FACE_MESH[Face Mesh<br/>468ポイント]
+        end
+    end
+    
+    subgraph "📊 Analysis Layer"
+        POSE_ANAL[Posture Analysis<br/>姿勢評価]
+        HAND_ANAL[Hand Gesture<br/>ジェスチャ認識]
+        FACE_ANAL[Face Direction<br/>視線分析]
+    end
+    
+    subgraph "🎯 Output Layer"
+        POSTURE[Posture Score<br/>姿勢スコア]
+        ATTENTION[Attention Level<br/>集中度]
+        PRESENCE[Presence Status<br/>在席状況]
+    end
+    
+    %% フロー
+    RGB --> PREPROCESS
+    PREPROCESS --> POSE_DET
+    PREPROCESS --> HAND_DET
+    PREPROCESS --> FACE_DET
+    
+    POSE_DET --> POSE_LAND
+    HAND_DET --> HAND_LAND
+    FACE_DET --> FACE_MESH
+    
+    POSE_LAND --> POSE_ANAL
+    HAND_LAND --> HAND_ANAL
+    FACE_MESH --> FACE_ANAL
+    
+    POSE_ANAL --> POSTURE
+    HAND_ANAL --> ATTENTION
+    FACE_ANAL --> PRESENCE
+    
+    %% スタイリング
+    classDef input fill:#e6f3ff
+    classDef models fill:#ffe6f3
+    classDef analysis fill:#f3ffe6
+    classDef output fill:#fff3e6
+    
+    class RGB,PREPROCESS input
+    class POSE_DET,POSE_LAND,HAND_DET,HAND_LAND,FACE_DET,FACE_MESH models
+    class POSE_ANAL,HAND_ANAL,FACE_ANAL analysis
+    class POSTURE,ATTENTION,PRESENCE output
+....
+
+=== 📍 ランドマーク検出詳細
+
+==== Pose Landmarks (33点)
+[mermaid]
+....
+graph LR
+    subgraph "👤 人体ランドマーク"
+        HEAD[Head Region<br/>鼻・目・耳]
+        SHOULDER[Shoulder Region<br/>左右肩]
+        ARM[Arm Region<br/>肘・手首]
+        TORSO[Torso Region<br/>胸・腰]
+        LEG[Leg Region<br/>膝・足首]
+    end
+    
+    subgraph "📊 姿勢分析"
+        ANGLE[Joint Angles<br/>関節角度]
+        ALIGN[Body Alignment<br/>体軸整列]
+        LEAN[Forward Lean<br/>前傾度]
+        SYMM[Symmetry<br/>左右対称性]
+    end
+    
+    subgraph "🎯 評価指標"
+        SCORE[Posture Score<br/>0-100点]
+        WARN[Warning Level<br/>警告レベル]
+        ADVICE[Advice<br/>改善提案]
+    end
+    
+    %% 関係
+    HEAD --> ANGLE
+    SHOULDER --> ALIGN
+    ARM --> LEAN
+    TORSO --> SYMM
+    
+    ANGLE --> SCORE
+    ALIGN --> SCORE
+    LEAN --> WARN
+    SYMM --> ADVICE
+....
+
+==== 姿勢評価アルゴリズム
+```python
+def analyze_posture(self, pose_landmarks):
+    """姿勢分析アルゴリズム"""
+    
+    # 1. 肩の水平度チェック
+    shoulder_alignment = self._calculate_shoulder_alignment(pose_landmarks)
+    
+    # 2. 前傾角度計算
+    forward_lean = self._calculate_forward_lean(pose_landmarks)
+    
+    # 3. 頭部位置評価
+    head_position = self._evaluate_head_position(pose_landmarks)
+    
+    # 4. 総合スコア計算
+    posture_score = (
+        shoulder_alignment * 0.3 +
+        (100 - forward_lean * 2) * 0.4 +  # 前傾ペナルティ
+        head_position * 0.3
+    )
+    
+    return {
+        'score': max(0, min(100, posture_score)),
+        'shoulder_alignment': shoulder_alignment,
+        'forward_lean': forward_lean,
+        'head_position': head_position,
+        'warnings': self._generate_posture_warnings(
+            shoulder_alignment, forward_lean, head_position
+        )
+    }
+```
+
+=== 🔧 MediaPipe 最適化
+
+==== パフォーマンス設定
+[cols="2,2,2,3", options="header"]
+|===
+|パラメータ |設定値 |用途 |最適化効果
+|**model_complexity** |0 |軽量モデル使用 |推論速度向上
+|**min_detection_confidence** |0.7 |検出信頼度 |誤検出削減
+|**min_tracking_confidence** |0.7 |追跡信頼度 |安定性向上
+|**smooth_landmarks** |True |ランドマーク平滑化 |ジッター軽減
+|**enable_segmentation** |False |セグメンテーション無効 |処理量削減
+|===
+
+== 🧠 検出結果統合・最適化
+
+=== 🔗 結果統合アーキテクチャ
+
+[mermaid]
+....
+graph TD
+    subgraph "📥 Detection Inputs"
+        YOLO_OUT[YOLO Results<br/>物体検出結果]
+        MP_POSE[MediaPipe Pose<br/>姿勢ランドマーク]
+        MP_HAND[MediaPipe Hands<br/>手ランドマーク]
+        MP_FACE[MediaPipe Face<br/>顔ランドマーク]
+    end
+    
+    subgraph "🔄 Fusion Engine"
+        VALIDATE[Data Validation<br/>データ検証]
+        CORRELATE[Cross-Correlation<br/>相関分析]
+        WEIGHT[Confidence Weighting<br/>信頼度重み付け]
+        RESOLVE[Conflict Resolution<br/>矛盾解決]
+    end
+    
+    subgraph "🎯 Unified Output"
+        PERSON[Person Status<br/>人物状態]
+        POSTURE[Posture Quality<br/>姿勢品質]
+        ATTENTION[Attention State<br/>注意状態]
+        OBJECTS[Object Presence<br/>物体存在]
+    end
+    
+    subgraph "⚡ Optimization"
+        SMOOTH[Temporal Smoothing<br/>時系列平滑化]
+        THRESH[Adaptive Threshold<br/>適応的閾値]
+        CACHE[Result Caching<br/>結果キャッシュ]
+    end
+    
+    %% フロー
+    YOLO_OUT --> VALIDATE
+    MP_POSE --> VALIDATE
+    MP_HAND --> VALIDATE
+    MP_FACE --> VALIDATE
+    
+    VALIDATE --> CORRELATE
+    CORRELATE --> WEIGHT
+    WEIGHT --> RESOLVE
+    
+    RESOLVE --> PERSON
+    RESOLVE --> POSTURE
+    RESOLVE --> ATTENTION
+    RESOLVE --> OBJECTS
+    
+    PERSON --> SMOOTH
+    POSTURE --> THRESH
+    ATTENTION --> CACHE
+    
+    %% スタイリング
+    classDef input fill:#e6f3ff
+    classDef fusion fill:#ffe6f3
+    classDef output fill:#f3ffe6
+    classDef optimization fill:#fff3e6
+    
+    class YOLO_OUT,MP_POSE,MP_HAND,MP_FACE input
+    class VALIDATE,CORRELATE,WEIGHT,RESOLVE fusion
+    class PERSON,POSTURE,ATTENTION,OBJECTS output
+    class SMOOTH,THRESH,CACHE optimization
+....
+
+=== 🔧 Detection Smoother（検出平滑化）
+
+==== 平滑化アルゴリズム
+[mermaid]
+....
+graph LR
+    subgraph "📊 Input Smoothing"
+        RAW[Raw Detection<br/>生検出結果]
+        BUFFER[Temporal Buffer<br/>時系列バッファ]
+        WEIGHT[Weighted Average<br/>重み付き平均]
+    end
+    
+    subgraph "🎯 Threshold Management"
+        HIST[History Analysis<br/>履歴分析]
+        ADAPT[Adaptive Threshold<br/>適応的閾値]
+        HYSTER[Hysteresis Filter<br/>ヒステリシス]
+    end
+    
+    subgraph "✨ Output Enhancement"
+        STABLE[Stable Output<br/>安定化出力]
+        SUPPRESS[Flicker Suppression<br/>点滅抑制]
+        CONF[Confidence Boost<br/>信頼度向上]
+    end
+    
+    %% フロー
+    RAW --> BUFFER
+    BUFFER --> WEIGHT
+    WEIGHT --> HIST
+    HIST --> ADAPT
+    ADAPT --> HYSTER
+    HYSTER --> STABLE
+    STABLE --> SUPPRESS
+    SUPPRESS --> CONF
+....
+
+==== 平滑化設定
+```python
+smoothing_config = {
+    'temporal_window': 10,           # 時系列窓サイズ（フレーム数）
+    'confidence_threshold': 0.6,     # 基本信頼度閾値
+    'hysteresis_margin': 0.1,        # ヒステリシスマージン
+    'max_change_rate': 0.3,          # 最大変化率
+    'stability_factor': 0.8,         # 安定性重み
+    'flicker_suppression': True,     # 点滅抑制有効
+    'adaptive_threshold': True,      # 適応的閾値有効
+}
+```
+
+=== ⚡ AI Optimizer（AI最適化）
+
+==== 最適化戦略マップ
+[mermaid]
+....
+graph TD
+    subgraph "📊 Performance Monitoring"
+        FPS[FPS Monitor<br/>フレームレート監視]
+        CPU[CPU Usage<br/>CPU使用率]
+        MEM[Memory Usage<br/>メモリ使用量]
+        GPU[GPU Utilization<br/>GPU利用率]
+    end
+    
+    subgraph "🎛️ Dynamic Optimization"
+        RESIZE[Dynamic Resize<br/>動的リサイズ]
+        SKIP[Frame Skip<br/>フレーム間引き]
+        BATCH[Batch Process<br/>バッチ処理]
+        CACHE[Smart Cache<br/>インテリジェントキャッシュ]
+    end
+    
+    subgraph "🔄 Feedback Control"
+        MEASURE[Performance Measure<br/>性能測定]
+        ADJUST[Parameter Adjust<br/>パラメータ調整]
+        VALIDATE[Quality Validate<br/>品質検証]
+        OPTIMIZE[Re-optimize<br/>再最適化]
+    end
+    
+    %% 制御フロー
+    FPS --> MEASURE
+    CPU --> MEASURE
+    MEM --> MEASURE
+    GPU --> MEASURE
+    
+    MEASURE --> ADJUST
+    ADJUST --> RESIZE
+    ADJUST --> SKIP
+    ADJUST --> BATCH
+    ADJUST --> CACHE
+    
+    RESIZE --> VALIDATE
+    SKIP --> VALIDATE
+    BATCH --> VALIDATE
+    CACHE --> VALIDATE
+    
+    VALIDATE --> OPTIMIZE
+    OPTIMIZE --> MEASURE
+....
+
+==== 最適化アルゴリズム
+```python
+class AIOptimizer:
+    def __init__(self, config_manager):
+        self.target_fps = 15.0
+        self.performance_monitor = PerformanceMonitor()
+        self.frame_skipper = FrameSkipper()
+        self.batch_processor = BatchProcessor()
+        
+    def optimize_processing(self, frame):
+        """動的処理最適化"""
+        
+        # 1. 現在の性能測定
+        current_fps = self.performance_monitor.get_current_fps()
+        cpu_usage = self.performance_monitor.get_cpu_usage()
+        
+        # 2. 最適化戦略決定
+        if current_fps < self.target_fps * 0.8:
+            # FPS低下時の最適化
+            if cpu_usage > 80:
+                self._enable_frame_skipping()
+                self._reduce_frame_quality()
+            else:
+                self._enable_batch_processing()
+        
+        # 3. フレーム前処理最適化
+        optimized_frame = self._optimize_frame_preprocessing(frame)
+        
+        return optimized_frame
+```
+
+== 📊 パフォーマンス・品質管理
+
+=== ⚡ パフォーマンス指標
+
+==== 主要メトリクス
+[cols="2,2,2,3", options="header"]
+|===
+|メトリクス |目標値 |測定間隔 |最適化手法
+|**FPS** |15+ |リアルタイム |フレーム間引き・リサイズ
+|**推論時間** |<50ms |推論毎 |モデル軽量化・並列処理
+|**メモリ使用量** |<2GB |1分 |キャッシュ管理・GC最適化
+|**CPU使用率** |<80% |30秒 |バッチ処理・非同期化
+|**GPU使用率** |<90% |30秒 |メモリプール・最適化
+|===
+
+==== パフォーマンス監視アーキテクチャ
+[mermaid]
+....
+graph TB
+    subgraph "📊 Metrics Collection"
+        FRAME[Frame Metrics<br/>FPS・遅延・品質]
+        SYSTEM[System Metrics<br/>CPU・メモリ・GPU]
+        MODEL[Model Metrics<br/>推論時間・精度]
+        QUALITY[Quality Metrics<br/>検出率・信頼度]
+    end
+    
+    subgraph "🔍 Analysis Engine"
+        TREND[Trend Analysis<br/>傾向分析]
+        ANOMALY[Anomaly Detection<br/>異常検知]
+        PREDICT[Performance Prediction<br/>性能予測]
+    end
+    
+    subgraph "⚡ Auto Optimization"
+        SCALE[Auto Scaling<br/>自動スケーリング]
+        TUNE[Parameter Tuning<br/>パラメータ調整]
+        ALERT[Performance Alert<br/>性能アラート]
+    end
+    
+    %% フロー
+    FRAME --> TREND
+    SYSTEM --> TREND
+    MODEL --> ANOMALY
+    QUALITY --> PREDICT
+    
+    TREND --> SCALE
+    ANOMALY --> TUNE
+    PREDICT --> ALERT
+....
+
+=== 🎯 品質保証システム
+
+==== 検出精度管理
+[mermaid]
+....
+graph LR
+    subgraph "📈 Accuracy Monitoring"
+        TRUE_POS[True Positive<br/>正検出]
+        FALSE_POS[False Positive<br/>誤検出]
+        FALSE_NEG[False Negative<br/>検出漏れ]
+        CONF[Confidence Score<br/>信頼度スコア]
+    end
+    
+    subgraph "📊 Quality Metrics"
+        PRECISION[Precision<br/>適合率]
+        RECALL[Recall<br/>再現率]
+        F1[F1 Score<br/>総合指標]
+        mAP[mAP<br/>平均精度]
+    end
+    
+    subgraph "🔧 Quality Control"
+        THRESHOLD[Threshold Tuning<br/>閾値調整]
+        MODEL[Model Selection<br/>モデル選択]
+        ENSEMBLE[Ensemble Method<br/>アンサンブル]
+        FEEDBACK[Feedback Loop<br/>フィードバック]
+    end
+    
+    %% 関係
+    TRUE_POS --> PRECISION
+    FALSE_POS --> PRECISION
+    FALSE_NEG --> RECALL
+    CONF --> F1
+    
+    PRECISION --> THRESHOLD
+    RECALL --> MODEL
+    F1 --> ENSEMBLE
+    mAP --> FEEDBACK
+....
+
+==== 品質管理設定
+```python
+quality_config = {
+    'target_precision': 0.85,       # 目標適合率
+    'target_recall': 0.80,          # 目標再現率
+    'min_confidence': 0.5,          # 最小信頼度
+    'quality_check_interval': 300,  # 品質チェック間隔（秒）
+    'auto_threshold_adjustment': True,  # 自動閾値調整
+    'performance_degradation_threshold': 0.1,  # 性能劣化閾値
+}
+```
+
+== 🔧 設定・カスタマイズ
+
+=== ⚙️ 検出システム設定
+
+==== 基本設定
+```yaml
+# 検出システム設定
+detection:
+  # YOLO設定
+  yolo:
+    enabled: true
+    model_path: "yolov8n.pt"
+    confidence_threshold: 0.5
+    iou_threshold: 0.7
+    max_detections: 10
+    device: "auto"  # auto/cpu/cuda/mps
+    
+  # MediaPipe設定
+  mediapipe:
+    enabled: true
+    pose:
+      enabled: true
+      model_complexity: 0
+      min_detection_confidence: 0.7
+      min_tracking_confidence: 0.7
+      smooth_landmarks: true
+    hands:
+      enabled: false
+      max_num_hands: 2
+      min_detection_confidence: 0.5
+    face:
+      enabled: false
+      max_num_faces: 1
+      refine_landmarks: true
+```
+
+==== 最適化設定
+```yaml
+# AI最適化設定
+ai_optimization:
+  enabled: true
+  target_fps: 15.0
+  min_fps: 10.0
+  max_frame_skip: 3
+  
+  # フレーム最適化
+  frame_optimization:
+    auto_resize: true
+    max_width: 640
+    quality_vs_speed: 0.7  # 0:速度重視 1:品質重視
+    
+  # GPU設定
+  gpu:
+    memory_limit: 0.8
+    allow_growth: true
+    mixed_precision: false
+```
+
+=== 🎛️ 物体検出設定
+
+==== 検出対象設定
+```yaml
+detection_objects:
+  smartphone:
+    enabled: true
+    class_name: "cell phone"
+    confidence_threshold: 0.6
+    alert_threshold: 3.0  # 秒
+    
+  laptop:
+    enabled: false
+    class_name: "laptop"
+    confidence_threshold: 0.5
+    
+  mouse:
+    enabled: false
+    class_name: "mouse"
+    confidence_threshold: 0.4
+```
+
+==== ランドマーク設定
+```yaml
+landmark_settings:
+  pose:
+    enabled: true
+    draw_landmarks: true
+    draw_connections: true
+    landmark_color: [0, 255, 0]
+    connection_color: [255, 0, 0]
+    
+  hands:
+    enabled: false
+    draw_landmarks: true
+    landmark_color: [0, 0, 255]
+    
+  face:
+    enabled: false
+    draw_mesh: false
+    mesh_color: [255, 255, 0]
+```
+
+== 🚀 運用・保守
+
+=== 📊 監視・ログ
+
+==== システム監視項目
+[cols="2,3,2,2", options="header"]
+|===
+|監視項目 |詳細 |正常範囲 |アラート条件
+|**検出FPS** |実際の処理フレームレート |15+ FPS |<10 FPS
+|**推論遅延** |AI推論の処理時間 |<50ms |>100ms
+|**検出精度** |人物検出の成功率 |>95% |<85%
+|**メモリ使用量** |システムメモリ消費 |<2GB |>3GB
+|**GPU利用率** |GPU使用率 |60-90% |>95%
+|===
+
+==== ログ出力例
+```python
+# 正常時のログ
+logger.info("Detection performance - FPS: 15.2, Inference: 42ms, Accuracy: 96.3%")
+
+# 警告ログ
+logger.warning("Performance degradation detected - FPS dropped to 8.5")
+
+# エラーログ
+logger.error("YOLO inference failed - GPU memory insufficient, switching to CPU")
+```
+
+=== 🔧 トラブルシューティング
+
+==== よくある問題と対処法
+[cols="2,3,3", options="header"]
+|===
+|問題 |原因 |対処法
+|**FPS低下** |CPU/GPU負荷過多 |フレーム間引き・解像度低下
+|**誤検出増加** |照明・背景変化 |閾値調整・再キャリブレーション
+|**メモリ不足** |長時間実行・リーク |定期再起動・GC最適化
+|**GPU エラー** |VRAM不足 |CPU フォールバック
+|**検出遅延** |処理バックログ |バッチサイズ調整
+|===
+
+==== パフォーマンス調整ガイド
+1. **低性能環境**: フレーム間引き・解像度低下・MediaPipe無効
+2. **高精度要求**: 信頼度閾値上昇・複数モデル統合
+3. **リアルタイム重視**: バッチ処理無効・キャッシュ最大化
+4. **省電力モード**: CPU のみ使用・処理間隔延長
+
+== 🔮 将来拡張計画
+
+=== 🚀 技術ロードマップ
+
+==== Phase 1: 精度向上 (短期)
+* **カスタムモデル**: 作業環境特化モデルの訓練
+* **データ拡張**: 多様な環境・姿勢のデータセット構築
+* **アンサンブル**: 複数モデルの統合による精度向上
+
+==== Phase 2: 機能拡張 (中期)  
+* **行動予測**: 時系列データからの行動パターン予測
+* **感情認識**: 表情・姿勢からの感情状態推定
+* **3D姿勢**: ステレオカメラによる3D姿勢解析
+
+==== Phase 3: 高度化 (長期)
+* **エッジAI**: 専用ハードウェアでの推論最適化
+* **連合学習**: プライバシー保護学習の実装
+* **自己適応**: 個人特性への自動適応学習
+
+=== 🔌 拡張ポイント
+
+[mermaid]
+....
+graph TB
+    subgraph "🤖 Model Extensions"
+        CUSTOM[Custom Models<br/>カスタムモデル]
+        ENSEMBLE[Model Ensemble<br/>モデル統合]
+        QUANTIZED[Quantized Models<br/>量子化モデル]
+    end
+    
+    subgraph "📊 Algorithm Extensions"
+        TRACKING[Multi-Object Tracking<br/>多物体追跡]
+        PREDICTION[Behavior Prediction<br/>行動予測]
+        ADAPTATION[Domain Adaptation<br/>ドメイン適応]
+    end
+    
+    subgraph "🔧 Platform Extensions"
+        EDGE[Edge Computing<br/>エッジコンピューティング]
+        CLOUD[Cloud Integration<br/>クラウド統合]
+        MOBILE[Mobile Deployment<br/>モバイル展開]
+    end
+    
+    %% 関係
+    CUSTOM --> TRACKING
+    ENSEMBLE --> PREDICTION
+    QUANTIZED --> EDGE
+    
+    TRACKING --> CLOUD
+    PREDICTION --> MOBILE
+    ADAPTATION --> EDGE
+....
+
+== 📚 関連ドキュメント
+
+=== 📖 参照ドキュメント
+* **<<backend-architecture>>**: システム全体アーキテクチャ
+* **<<ai-ml-specifications>>**: AI/ML技術仕様詳細
+* **<<performance-optimization>>**: パフォーマンス最適化
+* **<<configuration-guide>>**: 設定・カスタマイズガイド
+
+=== 🔗 外部技術資料
+* [YOLO v8 Documentation](https://docs.ultralytics.com/)
+* [MediaPipe Documentation](https://mediapipe.dev/)
+* [PyTorch Documentation](https://pytorch.org/docs/)
+* [OpenCV Documentation](https://docs.opencv.org/)
+
+=== 📊 研究・論文
+* YOLOv8 論文: "Real-Time Object Detection with YOLO"
+* MediaPipe 論文: "MediaPipe: A Framework for Building Perception Pipelines"
+* 姿勢推定: "BlazePose: On-device Real-time Body Pose tracking"
+
+---
+
+**📞 Contact**: team@kanshichan.dev +
+**🔗 Repository**: https://github.com/kanshichan/backend +
+**📅 Last Updated**: {docdate} +
+**📝 Document Version**: {revnumber} 

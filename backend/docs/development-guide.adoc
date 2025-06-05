@@ -1,0 +1,1231 @@
+= 🛠️ 監視ちゃん(KanshiChan) バックエンド開発者ガイド
+:toc: left
+:toc-title: 目次
+:toclevels: 4
+:numbered:
+:source-highlighter: highlight.js
+:icons: font
+:doctype: book
+:version: 2.0.0
+:author: KanshiChan Development Team
+:email: team@kanshichan.dev
+:revnumber: 2.0
+:revdate: {docdate}
+:experimental:
+
+== 📖 概要
+
+KanshiChan（監視ちゃん）バックエンドシステムの開発者向け包括的ガイドです。
+このドキュメントでは、開発環境のセットアップから品質保証まで、効率的で一貫性のある開発を実現するためのベストプラクティスを提供します。
+
+[NOTE]
+====
+📋 **ドキュメント情報**
+
+* **対象読者**: バックエンド開発者、新規参加開発者、技術リード
+* **技術スタック**: Python 3.9+ / Flask 2.3+ / AI/ML (YOLOv8, MediaPipe)
+* **開発手法**: アジャイル開発、継続的インテグレーション、テスト駆動開発
+* **バージョン**: v2.0.0 (AI最適化・国際化対応・TTS統合版)
+* **最終更新**: {docdate}
+
+**関連ドキュメント**: <<backend-architecture>>, <<testing-strategy>>, <<configuration-guide>>
+====
+
+== 🎯 開発フロー概要
+
+=== 💡 開発原則
+
+==== KanshiChan開発哲学
+* **品質優先**: 動作する美しいコードの追求
+* **パフォーマンス**: リアルタイムAI処理への最適化
+* **保守性**: 明確で一貫性のあるコード構造
+* **拡張性**: 新機能追加の容易さ
+* **国際化対応**: 多言語環境での運用
+
+==== 開発ワークフロー
+[mermaid]
+....
+graph TB
+    START[開発開始] --> ISSUE[Issue確認・作成]
+    ISSUE --> BRANCH[機能ブランチ作成]
+    BRANCH --> ENV[開発環境セットアップ]
+    ENV --> CODE[コーディング]
+    CODE --> TEST[テスト実行]
+    TEST --> LINT[コード品質チェック]
+    LINT --> COMMIT[コミット]
+    COMMIT --> PUSH[プッシュ]
+    PUSH --> PR[プルリクエスト作成]
+    PR --> REVIEW[コードレビュー]
+    REVIEW --> CI[CI/CDパイプライン]
+    CI --> MERGE[マージ]
+    MERGE --> DEPLOY[デプロイ]
+    DEPLOY --> END[完了]
+    
+    TEST -->|失敗| CODE
+    LINT -->|エラー| CODE
+    REVIEW -->|修正要求| CODE
+    CI -->|失敗| CODE
+    
+    classDef normal fill:#e6f3ff
+    classDef decision fill:#fff3e6
+    classDef success fill:#e6ffe6
+    classDef error fill:#ffe6e6
+    
+    class START,ISSUE,BRANCH,ENV,CODE,COMMIT,PUSH,PR,MERGE,DEPLOY,END normal
+    class TEST,LINT,REVIEW,CI decision
+....
+
+== 🚀 開発環境セットアップ
+
+=== 💻 必要な環境・ツール
+
+==== システム要件
+[cols="2,3,2", options="header"]
+|===
+|項目 |要求事項 |推奨
+|**OS** |macOS 12+ / Ubuntu 20.04+ / Windows 10+ |macOS 13+ / Ubuntu 22.04+
+|**Python** |3.9+ |3.11+
+|**メモリ** |8GB+ |16GB+
+|**GPU** |CUDA対応（推奨） |RTX 3060+
+|**ストレージ** |SSD 10GB+ |SSD 20GB+
+|===
+
+==== 必須ツール
+```bash
+# 開発ツールチェーン
+✅ Python 3.9+ (pyenv推奨)
+✅ Git 2.30+
+✅ Visual Studio Code / PyCharm
+✅ Docker (コンテナ環境用)
+✅ Node.js 18+ (フロントエンド連携)
+
+# AI/ML環境
+✅ CUDA 11.8+ (GPU使用時)
+✅ FFmpeg (音声処理)
+✅ OpenCV依存関係
+```
+
+=== 🔧 初期セットアップ手順
+
+==== 1. リポジトリクローンと仮想環境
+
+```bash
+# プロジェクトクローン
+git clone https://github.com/kanshichan/backend.git
+cd backend
+
+# Python仮想環境作成（venv使用）
+python3 -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# 依存関係インストール
+pip install -r requirements.txt
+
+# 開発用追加パッケージ
+pip install -e .  # エディタブルインストール
+```
+
+==== 2. 設定ファイル準備
+
+```bash
+# 設定ディレクトリ作成
+mkdir -p backend/config
+
+# 開発環境設定ファイル作成
+cp config/config.yaml.example config/config.yaml
+
+# 環境変数設定
+cat > .env << 'EOF'
+KANSHICHAN_ENV=development
+KANSHICHAN_DEBUG=true
+KANSHICHAN_LOG_LEVEL=DEBUG
+KANSHICHAN_GPU_ENABLED=auto
+EOF
+```
+
+==== 3. AIモデルセットアップ
+
+```bash
+# YOLOモデルダウンロード（自動ダウンロード対応）
+python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
+
+# MediaPipeは自動インストール済み
+# TTSモデル（Zonos）は初回実行時に自動ダウンロード
+```
+
+==== 4. 開発環境動作確認
+
+```bash
+# 単体テスト実行
+python -m pytest tests/ -v
+
+# 開発サーバー起動
+cd backend
+python -m src.web.app
+
+# 別ターミナルでヘルスチェック
+curl http://localhost:8000/api/status
+```
+
+=== 🔨 IDE・エディタ設定
+
+==== Visual Studio Code推奨設定
+
+```json
+// .vscode/settings.json
+{
+    "python.defaultInterpreter": "./venv/bin/python",
+    "python.linting.enabled": true,
+    "python.linting.flake8Enabled": true,
+    "python.linting.mypyEnabled": true,
+    "python.formatting.provider": "black",
+    "python.formatting.blackArgs": ["--line-length", "88"],
+    "python.sortImports.args": ["--profile", "black"],
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": true
+    },
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/.pytest_cache": true,
+        "**/*.pyc": true
+    }
+}
+```
+
+==== 推奨拡張機能
+
+```bash
+# VS Code拡張機能
+✅ Python (Microsoft)
+✅ Pylance (Microsoft)
+✅ Black Formatter
+✅ isort
+✅ GitLens
+✅ YAML
+✅ AsciiDoc
+✅ Better Comments
+```
+
+== 📝 コーディング規約（詳細版）
+
+=== 🎨 Python コーディングスタイル
+
+==== 基本規約（PEP 8 + Black）
+
+```python
+# ファイルヘッダー例
+"""
+物体検出器 - 統合物体検出システム
+
+YOLOv8とMediaPipeを統合した高性能物体検出機能を提供します。
+AI最適化とメモリ管理を組み込んだリアルタイム処理に対応。
+
+Author: KanshiChan Development Team
+Version: 2.0.0
+"""
+
+import logging
+from typing import Dict, List, Optional, Union, Any
+from dataclasses import dataclass
+import asyncio
+
+import cv2
+import numpy as np
+from ultralytics import YOLO
+
+from utils.logger import setup_logger
+from utils.exceptions import wrap_exception, ModelError
+
+logger = setup_logger(__name__)
+
+# 定数定義
+DEFAULT_CONFIDENCE_THRESHOLD = 0.5
+MAX_DETECTION_COUNT = 10
+YOLO_MODEL_PATH = "yolov8n.pt"
+```
+
+==== 命名規則
+
+[cols="2,3,3", options="header"]
+|===
+|対象 |規則 |例
+|**変数** |snake_case |`detection_results`, `frame_count`
+|**関数** |snake_case |`detect_objects()`, `process_frame()`
+|**クラス** |PascalCase |`ObjectDetector`, `AIOptimizer`
+|**定数** |UPPER_SNAKE_CASE |`DEFAULT_FPS`, `MAX_MEMORY_MB`
+|**プライベート** |_leading_underscore |`_internal_method()`, `_config`
+|**ファイル** |snake_case |`object_detector.py`, `ai_optimizer.py`
+|===
+
+==== 型ヒント（必須）
+
+```python
+from typing import Dict, List, Optional, Union, Any, Tuple, Callable
+
+# 基本的な型ヒント
+def detect_objects(self, frame: np.ndarray) -> Dict[str, Any]:
+    """型ヒント付き関数定義"""
+    pass
+
+# 複合型の使用
+class DetectionResult:
+    def __init__(self, 
+                 confidence: float,
+                 bbox: Tuple[int, int, int, int],
+                 class_name: str,
+                 metadata: Optional[Dict[str, Any]] = None) -> None:
+        self.confidence = confidence
+        self.bbox = bbox
+        self.class_name = class_name
+        self.metadata = metadata or {}
+
+# コールバック関数型
+OnDetectionCallback = Callable[[Dict[str, Any]], None]
+
+def register_callback(self, callback: OnDetectionCallback) -> None:
+    """コールバック登録"""
+    pass
+```
+
+=== 🏗️ アーキテクチャパターン
+
+==== サービスクラスパターン
+
+```python
+class ObjectDetectorService:
+    """物体検出サービス
+    
+    統合物体検出機能を提供するサービスクラス。
+    依存関係注入とエラーハンドリングを統合。
+    """
+    
+    def __init__(self, 
+                 config_manager: Optional[ConfigManager] = None,
+                 ai_optimizer: Optional[AIOptimizer] = None,
+                 memory_manager: Optional[MemoryManager] = None) -> None:
+        """依存関係注入による初期化"""
+        try:
+            self.config_manager = config_manager
+            self.ai_optimizer = ai_optimizer or AIOptimizer(config_manager)
+            self.memory_manager = memory_manager or MemoryManager(config_manager)
+            
+            self._model = None
+            self._last_detection_time = 0
+            self._performance_stats = {}
+            
+            logger.info("ObjectDetectorService initialized successfully")
+            
+        except Exception as e:
+            error = wrap_exception(
+                e, ModelError,
+                "Failed to initialize ObjectDetectorService",
+                error_code="DETECTOR_INIT_001",
+                details={'config_available': config_manager is not None}
+            )
+            logger.error(f"Initialization error: {error.to_dict()}")
+            raise error
+    
+    async def detect_objects_async(self, frame: np.ndarray) -> Dict[str, Any]:
+        """非同期物体検出処理"""
+        try:
+            # AI最適化統合
+            if self.ai_optimizer:
+                optimized_result = await self.ai_optimizer.optimize_yolo_inference_async(
+                    self._model, frame
+                )
+                if optimized_result is None:  # フレームスキップ
+                    return self._create_empty_detection_result()
+                
+            # 通常の検出処理
+            result = await self._perform_detection(frame)
+            
+            # メモリ管理
+            if self.memory_manager:
+                self.memory_manager.update_frame_cache(frame, result)
+            
+            return result
+            
+        except Exception as e:
+            error = wrap_exception(
+                e, DetectionError,
+                "Object detection failed",
+                error_code="DETECT_001",
+                details={
+                    'frame_shape': frame.shape if frame is not None else None,
+                    'model_loaded': self._model is not None
+                }
+            )
+            logger.error(f"Detection error: {error.to_dict()}")
+            raise error
+```
+
+==== エラーハンドリングパターン
+
+```python
+from utils.exceptions import wrap_exception, ModelError, DetectionError
+
+def robust_model_operation(self, operation_data: Any) -> Any:
+    """堅牢なモデル操作パターン"""
+    try:
+        # 前処理バリデーション
+        if not self._validate_input(operation_data):
+            raise ValidationError("Invalid input data")
+        
+        # メイン処理
+        result = self._perform_operation(operation_data)
+        
+        # 後処理検証
+        if not self._validate_result(result):
+            raise DetectionError("Invalid detection result")
+            
+        return result
+        
+    except ValidationError as e:
+        # バリデーションエラーは再発生
+        logger.warning(f"Input validation failed: {e}")
+        raise
+        
+    except ModelError as e:
+        # モデルエラーは詳細化して再発生
+        enhanced_error = wrap_exception(
+            e, ModelError,
+            f"Model operation failed: {e.message}",
+            error_code="MODEL_OP_001",
+            details={
+                'operation_type': 'detection',
+                'input_type': type(operation_data).__name__,
+                'fallback_available': True
+            }
+        )
+        logger.error(f"Model operation error: {enhanced_error.to_dict()}")
+        
+        # フォールバック処理
+        return self._fallback_operation(operation_data)
+        
+    except Exception as e:
+        # 予期しないエラーは包装
+        error = wrap_exception(
+            e, DetectionError,
+            "Unexpected error in model operation",
+            error_code="UNKNOWN_001",
+            details={
+                'operation_data_type': type(operation_data).__name__,
+                'stack_trace': True
+            }
+        )
+        logger.error(f"Unexpected error: {error.to_dict()}", exc_info=True)
+        raise error
+```
+
+=== 📚 ドキュメンテーション
+
+==== Docstring規約（Google Style）
+
+```python
+def optimize_yolo_inference(self, 
+                          model: YOLO, 
+                          frame: np.ndarray,
+                          confidence_threshold: float = 0.5) -> Optional[Dict[str, Any]]:
+    """YOLO推論の最適化処理
+    
+    フレームスキップ判定、GPU最適化、パフォーマンス監視を統合した
+    YOLO推論処理を実行します。システムリソースに応じて自動的に
+    処理レベルを調整し、リアルタイム性を維持します。
+    
+    Args:
+        model: 初期化済みYOLOモデル
+        frame: 入力画像フレーム（BGR形式、uint8）
+        confidence_threshold: 検出信頼度閾値（0.0-1.0）
+        
+    Returns:
+        検出結果辞書。フレームスキップ時はNone。
+        形式: {
+            'detections': List[Dict],
+            'inference_time': float,
+            'frame_id': int,
+            'performance_stats': Dict
+        }
+        
+    Raises:
+        ModelError: YOLO推論に失敗した場合
+        OptimizationError: 最適化処理に失敗した場合
+        ValidationError: 入力パラメータが無効な場合
+        
+    Example:
+        >>> detector = ObjectDetector()
+        >>> frame = cv2.imread('test.jpg')
+        >>> result = detector.optimize_yolo_inference(model, frame)
+        >>> if result:
+        ...     print(f"Detected {len(result['detections'])} objects")
+        
+    Note:
+        - フレームスキップはAIOptimizerの設定に従います
+        - GPU使用不可時は自動的にCPUにフォールバック
+        - パフォーマンス統計は自動的に記録されます
+        
+    Since:
+        v2.0.0 - AI最適化統合版
+    """
+    pass
+```
+
+== 🧪 テスト戦略・手法
+
+=== 🎯 テストピラミッド
+
+[mermaid]
+....
+graph TB
+    subgraph "テストピラミッド"
+        E2E[E2Eテスト<br/>🔍 統合シナリオ<br/>少数・重要機能のみ]
+        INTEGRATION[統合テスト<br/>🔗 コンポーネント間連携<br/>API・データベース・外部サービス]
+        UNIT[単体テスト<br/>⚡ 個別関数・クラス<br/>高速・大量・詳細]
+    end
+    
+    E2E --> INTEGRATION
+    INTEGRATION --> UNIT
+    
+    classDef e2e fill:#ffebee
+    classDef integration fill:#f3e5f5
+    classDef unit fill:#e8f5e8
+    
+    class E2E e2e
+    class INTEGRATION integration
+    class UNIT unit
+....
+
+=== 🔬 単体テスト
+
+==== pytest基本設定
+
+```python
+# conftest.py
+import pytest
+import numpy as np
+from unittest.mock import Mock, patch
+from src.utils.config_manager import ConfigManager
+from src.core.ai_optimizer import AIOptimizer
+
+@pytest.fixture
+def sample_frame():
+    """テスト用サンプルフレーム"""
+    return np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+
+@pytest.fixture
+def mock_config():
+    """モック設定オブジェクト"""
+    config = Mock(spec=ConfigManager)
+    config.get.side_effect = lambda key, default=None: {
+        'ai_optimization.enabled': True,
+        'ai_optimization.target_fps': 15.0,
+        'yolo.confidence_threshold': 0.5
+    }.get(key, default)
+    return config
+
+@pytest.fixture
+def ai_optimizer(mock_config):
+    """AIOptimizer インスタンス"""
+    return AIOptimizer(mock_config)
+
+# テストクラス例
+class TestObjectDetector:
+    """物体検出器のテストクラス"""
+    
+    def test_initialization_success(self, mock_config):
+        """正常初期化のテスト"""
+        detector = ObjectDetector(mock_config)
+        assert detector.config_manager is mock_config
+        assert detector.ai_optimizer is not None
+        
+    def test_initialization_without_config(self):
+        """設定なし初期化のテスト"""
+        detector = ObjectDetector()
+        assert detector.config_manager is None
+        assert detector.ai_optimizer is not None  # デフォルト初期化
+        
+    @patch('src.core.object_detector.YOLO')
+    def test_detect_objects_success(self, mock_yolo, sample_frame, mock_config):
+        """物体検出成功のテスト"""
+        # モック設定
+        mock_model = Mock()
+        mock_yolo.return_value = mock_model
+        mock_model.predict.return_value = [Mock(boxes=Mock(data=[]))]
+        
+        detector = ObjectDetector(mock_config)
+        result = detector.detect_objects(sample_frame)
+        
+        assert 'detections' in result
+        assert 'inference_time' in result
+        assert isinstance(result['detections'], list)
+        
+    def test_detect_objects_with_invalid_frame(self, mock_config):
+        """無効フレームでの検出テスト"""
+        detector = ObjectDetector(mock_config)
+        
+        with pytest.raises(ValidationError) as exc_info:
+            detector.detect_objects(None)
+            
+        assert "Invalid frame" in str(exc_info.value)
+        
+    @patch('src.core.object_detector.logger')
+    def test_error_logging(self, mock_logger, mock_config):
+        """エラーログ出力のテスト"""
+        detector = ObjectDetector(mock_config)
+        
+        with patch.object(detector, '_perform_detection', side_effect=Exception("Test error")):
+            with pytest.raises(DetectionError):
+                detector.detect_objects(np.zeros((100, 100, 3), dtype=np.uint8))
+                
+        mock_logger.error.assert_called()
+```
+
+==== AI/ML特化テスト
+
+```python
+class TestAIComponents:
+    """AI/ML コンポーネント専用テスト"""
+    
+    def test_yolo_model_loading(self):
+        """YOLOモデル読み込みテスト"""
+        with patch('ultralytics.YOLO') as mock_yolo:
+            detector = ObjectDetector()
+            detector._load_yolo_model('yolov8n.pt')
+            mock_yolo.assert_called_once_with('yolov8n.pt')
+            
+    def test_mediapipe_initialization(self):
+        """MediaPipe初期化テスト"""
+        with patch('mediapipe.solutions.pose.Pose') as mock_pose:
+            detector = ObjectDetector()
+            detector._initialize_mediapipe()
+            mock_pose.assert_called_once()
+            
+    def test_ai_optimization_frame_skip(self, ai_optimizer, sample_frame):
+        """フレームスキップ最適化テスト"""
+        with patch.object(ai_optimizer, '_should_skip_frame', return_value=True):
+            result = ai_optimizer.optimize_yolo_inference(Mock(), sample_frame)
+            assert result is None  # フレームスキップ時
+            
+    def test_performance_monitoring(self, ai_optimizer, sample_frame):
+        """パフォーマンス監視テスト"""
+        with patch.object(ai_optimizer, 'performance_monitor') as mock_monitor:
+            ai_optimizer.optimize_yolo_inference(Mock(), sample_frame)
+            mock_monitor.record_inference_time.assert_called()
+```
+
+=== 🔗 統合テスト
+
+```python
+# test_integration.py
+import requests
+import pytest
+from src.web.app import create_app
+
+class TestAPIIntegration:
+    """API統合テスト"""
+    
+    @pytest.fixture
+    def client(self):
+        """テスト用Flaskクライアント"""
+        app = create_app(testing=True)
+        with app.test_client() as client:
+            yield client
+            
+    def test_health_check_endpoint(self, client):
+        """ヘルスチェックエンドポイント"""
+        response = client.get('/api/status')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert 'status' in data
+        assert data['status'] == 'running'
+        
+    def test_detection_endpoint(self, client):
+        """検出エンドポイントテスト"""
+        # テスト画像データ
+        test_image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
+        
+        with patch('src.core.object_detector.ObjectDetector.detect_objects') as mock_detect:
+            mock_detect.return_value = {
+                'detections': [],
+                'inference_time': 0.1,
+                'frame_id': 1
+            }
+            
+            response = client.post('/api/detect', 
+                                 data={'frame': test_image.tobytes()})
+            assert response.status_code == 200
+```
+
+== 🐛 デバッグ手法
+
+=== 📊 ログベースデバッグ
+
+==== 構造化ログ活用
+
+```python
+from utils.logger import setup_logger, log_performance_metric
+
+logger = setup_logger(__name__)
+
+def debug_detection_process(self, frame: np.ndarray) -> Dict[str, Any]:
+    """デバッグ用検出処理"""
+    import time
+    start_time = time.time()
+    
+    # デバッグ情報付きログ
+    logger.debug("Starting detection process", extra={
+        'frame_shape': frame.shape,
+        'frame_dtype': str(frame.dtype),
+        'memory_usage_mb': self._get_memory_usage(),
+        'gpu_available': torch.cuda.is_available()
+    })
+    
+    try:
+        result = self._perform_detection(frame)
+        
+        # パフォーマンスメトリクス
+        inference_time = time.time() - start_time
+        log_performance_metric(
+            logger, 
+            'detection_inference_time', 
+            inference_time,
+            extra_data={
+                'frame_id': self._frame_counter,
+                'detection_count': len(result.get('detections', [])),
+                'model_type': 'yolo_v8'
+            }
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error("Detection failed", extra={
+            'error_type': type(e).__name__,
+            'frame_shape': frame.shape,
+            'processing_time': time.time() - start_time
+        }, exc_info=True)
+        raise
+```
+
+==== デバッグ用設定
+
+```yaml
+# config/debug.yaml
+app:
+  debug: true
+  logging:
+    level: "DEBUG"
+    enable_console_output: true
+    enable_file_output: true
+    file_level: "DEBUG"
+    suppress_frequent_logs: false  # デバッグ時は抑制無効
+
+# デバッグ用AI設定
+yolo:
+  device:
+    preferred: "cpu"  # デバッグ時はCPU使用
+    
+ai_optimization:
+  enabled: false  # 最適化無効でデバッグ
+  
+performance:
+  system:
+    enabled: true
+    detailed_metrics: true  # 詳細メトリクス有効
+```
+
+=== 🔍 対話的デバッグ
+
+==== VS Code Debugger設定
+
+```json
+// .vscode/launch.json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "KanshiChan Backend Debug",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/backend/src/web/app.py",
+            "console": "integratedTerminal",
+            "env": {
+                "KANSHICHAN_ENV": "development",
+                "KANSHICHAN_DEBUG": "true",
+                "PYTHONPATH": "${workspaceFolder}/backend/src"
+            },
+            "args": [],
+            "justMyCode": false
+        },
+        {
+            "name": "Test Single File",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": ["${file}", "-v", "-s"],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/backend"
+            }
+        }
+    ]
+}
+```
+
+==== IPython/Jupyter活用
+
+```python
+# debug_notebook.py - Jupyter用デバッグセル
+%load_ext autoreload
+%autoreload 2
+
+import sys
+sys.path.append('../backend/src')
+
+from core.object_detector import ObjectDetector
+from utils.config_manager import ConfigManager
+import cv2
+import numpy as np
+
+# デバッグ用インスタンス作成
+config = ConfigManager('config/debug.yaml')
+detector = ObjectDetector(config)
+
+# テストフレーム作成
+test_frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+
+# ステップバイステップデバッグ
+result = detector.detect_objects(test_frame)
+print(f"Detection result: {result}")
+
+# パフォーマンス分析
+%timeit detector.detect_objects(test_frame)
+```
+
+=== 🔧 プロファイリング
+
+==== cProfile使用
+
+```python
+import cProfile
+import pstats
+from src.core.object_detector import ObjectDetector
+
+def profile_detection():
+    """検出処理のプロファイリング"""
+    detector = ObjectDetector()
+    frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+    
+    # プロファイル実行
+    profiler = cProfile.Profile()
+    profiler.enable()
+    
+    for _ in range(100):  # 100回実行
+        detector.detect_objects(frame)
+    
+    profiler.disable()
+    
+    # 結果保存・表示
+    stats = pstats.Stats(profiler)
+    stats.sort_stats('cumulative')
+    stats.print_stats(20)  # 上位20関数
+    stats.dump_stats('detection_profile.prof')
+
+if __name__ == "__main__":
+    profile_detection()
+```
+
+== 👥 コードレビュープロセス
+
+=== 🔄 レビューワークフロー
+
+[mermaid]
+....
+graph LR
+    PR[プルリクエスト作成] --> AUTO[自動チェック]
+    AUTO --> ASSIGN[レビュアー割り当て]
+    ASSIGN --> REVIEW1[初回レビュー]
+    REVIEW1 --> FEEDBACK{フィードバック}
+    FEEDBACK -->|修正必要| FIX[修正作業]
+    FIX --> REVIEW2[再レビュー]
+    REVIEW2 --> FEEDBACK
+    FEEDBACK -->|承認| APPROVE[承認]
+    APPROVE --> MERGE[マージ]
+    
+    classDef normal fill:#e6f3ff
+    classDef decision fill:#fff3e6
+    classDef success fill:#e6ffe6
+    
+    class PR,AUTO,ASSIGN,REVIEW1,FIX,REVIEW2,MERGE normal
+    class FEEDBACK decision
+    class APPROVE success
+....
+
+=== 📋 レビューチェックリスト
+
+==== コード品質チェック
+
+```yaml
+# レビューチェックリスト
+code_quality:
+  style:
+    - [ ] Black フォーマット適用済み
+    - [ ] isort によるインポート整理済み
+    - [ ] flake8 エラー解消済み
+    - [ ] mypy 型チェック通過
+    
+  naming:
+    - [ ] 変数・関数名が意図を明確に表現
+    - [ ] クラス名がPascalCase
+    - [ ] 定数がUPPER_SNAKE_CASE
+    - [ ] プライベートメンバーに適切なアンダースコア
+    
+  documentation:
+    - [ ] 公開API全てにdocstring
+    - [ ] 複雑なロジックにコメント
+    - [ ] 型ヒント適切に記述
+    - [ ] 例外処理の説明明確
+    
+architecture:
+  design:
+    - [ ] 単一責任原則の遵守
+    - [ ] 適切な依存関係注入
+    - [ ] エラーハンドリング実装
+    - [ ] ログ出力適切に配置
+    
+  performance:
+    - [ ] AI最適化パターン使用
+    - [ ] メモリリーク対策実装
+    - [ ] 不要な計算処理排除
+    - [ ] キャッシュ戦略適用
+
+testing:
+  coverage:
+    - [ ] 単体テストカバレッジ80%以上
+    - [ ] エッジケーステスト実装
+    - [ ] エラーパステスト実装
+    - [ ] モック適切に使用
+    
+  integration:
+    - [ ] API統合テスト実装
+    - [ ] 主要フロー動作確認
+    - [ ] パフォーマンステスト実行
+```
+
+==== AI/ML特化レビュー
+
+```yaml
+ai_ml_review:
+  model_usage:
+    - [ ] モデル初期化エラーハンドリング
+    - [ ] GPU/CPU自動切り替え実装
+    - [ ] メモリ使用量監視
+    - [ ] 推論時間測定
+    
+  optimization:
+    - [ ] フレームスキップ適用
+    - [ ] バッチ処理検討
+    - [ ] 前処理最適化
+    - [ ] 後処理効率化
+    
+  accuracy:
+    - [ ] 閾値設定の妥当性
+    - [ ] フィルタリング処理適切性
+    - [ ] 検出結果検証
+    - [ ] 誤検出対策実装
+```
+
+=== 💬 レビューコメント例
+
+```python
+# ❌ 悪い例
+def detect(frame):  # 型ヒントなし、docstringなし
+    result = model(frame)  # エラーハンドリングなし
+    return result
+
+# ✅ 良い例
+def detect_objects(self, frame: np.ndarray) -> Dict[str, Any]:
+    """フレーム内の物体を検出
+    
+    Args:
+        frame: BGR形式の入力画像
+        
+    Returns:
+        検出結果辞書
+        
+    Raises:
+        ValidationError: フレームが無効な場合
+        ModelError: 推論に失敗した場合
+    """
+    try:
+        # 入力検証
+        if frame is None or frame.size == 0:
+            raise ValidationError("Invalid frame")
+            
+        # AI最適化統合
+        result = self.ai_optimizer.optimize_yolo_inference(self.model, frame)
+        if result is None:  # フレームスキップ
+            return self._create_empty_result()
+            
+        return result
+        
+    except Exception as e:
+        error = wrap_exception(e, DetectionError, "Detection failed")
+        logger.error(f"Detection error: {error.to_dict()}")
+        raise error
+```
+
+== 🌿 Git運用ルール
+
+=== 🔀 ブランチ戦略
+
+[mermaid]
+....
+gitgraph
+    commit id: "Initial"
+    branch develop
+    checkout develop
+    commit id: "Dev Setup"
+    
+    branch feature/detection-optimization
+    checkout feature/detection-optimization
+    commit id: "Add AI optimizer"
+    commit id: "Add tests"
+    commit id: "Fix performance"
+    
+    checkout develop
+    merge feature/detection-optimization
+    commit id: "Merge optimization"
+    
+    branch feature/tts-integration
+    checkout feature/tts-integration
+    commit id: "Add TTS service"
+    commit id: "Add emotions"
+    
+    checkout develop
+    merge feature/tts-integration
+    commit id: "Merge TTS"
+    
+    checkout main
+    merge develop
+    commit id: "Release v2.0.0"
+    tag: "v2.0.0"
+....
+
+=== 📝 コミット規約
+
+==== Conventional Commits形式
+
+```bash
+# コミットメッセージフォーマット
+<type>(<scope>): <description>
+
+[optional body]
+
+[optional footer(s)]
+
+# 例
+feat(detection): add AI optimization for YOLO inference
+fix(tts): resolve audio playback issue on macOS
+docs(api): update REST API documentation
+test(core): add unit tests for object detector
+perf(memory): optimize frame caching strategy
+refactor(utils): simplify exception handling
+style(format): apply black formatting
+ci(github): update workflow for Python 3.11
+```
+
+==== Type定義
+
+[cols="2,3,2", options="header"]
+|===
+|Type |説明 |例
+|**feat** |新機能追加 |`feat(ai): add pose detection`
+|**fix** |バグ修正 |`fix(camera): resolve frame capture issue`
+|**docs** |ドキュメント |`docs(api): update endpoint spec`
+|**test** |テスト |`test(unit): add detector tests`
+|**refactor** |リファクタリング |`refactor(core): simplify detection flow`
+|**perf** |パフォーマンス |`perf(gpu): optimize CUDA memory usage`
+|**style** |フォーマット |`style: apply black formatting`
+|**ci** |CI/CD |`ci: add automated testing`
+|**chore** |雑務 |`chore: update dependencies`
+|===
+
+=== 🔧 ブランチ運用
+
+```bash
+# 機能開発ブランチ作成
+git checkout -b feature/ai-optimization-v2
+git checkout -b bugfix/camera-initialization-error
+git checkout -b docs/development-guide
+
+# 作業とコミット
+git add .
+git commit -m "feat(optimization): implement frame skipping logic"
+
+# プッシュとプルリクエスト
+git push origin feature/ai-optimization-v2
+# GitHub でプルリクエスト作成
+
+# マージ後のクリーンアップ
+git checkout develop
+git pull origin develop
+git branch -d feature/ai-optimization-v2
+```
+
+== ✅ 品質チェックリスト
+
+=== 🎯 開発品質保証
+
+==== 事前チェック（開発者）
+
+```bash
+# コード品質チェック
+make lint          # flake8, mypy, black
+make test          # pytest実行
+make coverage      # カバレッジレポート
+make security      # セキュリティチェック
+
+# または統合コマンド
+make check-all     # 全チェック実行
+```
+
+==== Makefile設定例
+
+```makefile
+# Makefile
+.PHONY: lint test coverage security check-all
+
+# 仮想環境有効化
+VENV = venv/bin/activate
+
+lint:
+	source $(VENV) && black --check src/ tests/
+
+test:
+	source $(VENV) && pytest tests/ -v --tb=short
+
+coverage:
+	source $(VENV) && pytest tests/ --cov=src --cov-report=html --cov-report=term
+
+security:
+	source $(VENV) && bandit -r src/
+	source $(VENV) && safety check
+
+check-all: lint test coverage security
+	@echo "✅ All quality checks passed!"
+
+# 開発用
+dev-setup:
+	python -m venv venv
+	source $(VENV) && pip install -r requirements.txt
+	source $(VENV) && pip install -e .
+
+run-dev:
+	source $(VENV) && cd backend && python -m src.web.app
+
+clean:
+	find . -type d -name "__pycache__" -exec rm -rf {} +
+	find . -type f -name "*.pyc" -delete
+	rm -rf .coverage htmlcov/ .pytest_cache/
+```
+
+=== 📊 品質メトリクス
+
+==== 目標品質指標
+
+[cols="2,2,2,2", options="header"]
+|===
+|指標 |最低基準 |目標 |方法
+|**テストカバレッジ** |70% |80%+ |pytest-cov
+|**型ヒント適用** |90% |95%+ |mypy
+|**コード複雑度** |<10 |<7 |flake8-complexity
+|**重複率** |<5% |<3% |flake8-duplicate
+|**セキュリティ** |High/Critical 0 |0 |bandit
+|**依存関係** |脆弱性 0 |0 |safety
+|===
+
+==== 継続的監視
+
+```python
+# quality_metrics.py - 品質指標監視
+import subprocess
+import json
+from typing import Dict, Any
+
+def collect_quality_metrics() -> Dict[str, Any]:
+    """品質指標を収集"""
+    metrics = {}
+    
+    # テストカバレッジ
+    coverage_result = subprocess.run(
+        ['pytest', '--cov=src', '--cov-report=json'],
+        capture_output=True, text=True
+    )
+    if coverage_result.returncode == 0:
+        with open('coverage.json') as f:
+            coverage_data = json.load(f)
+            metrics['test_coverage'] = coverage_data['totals']['percent_covered']
+    
+    # 型チェック結果
+    mypy_result = subprocess.run(
+        ['mypy', 'src/', '--json-report', 'mypy_report.json'],
+        capture_output=True, text=True
+    )
+    metrics['type_check_pass'] = mypy_result.returncode == 0
+    
+    # セキュリティチェック
+    bandit_result = subprocess.run(
+        ['bandit', '-r', 'src/', '-f', 'json'],
+        capture_output=True, text=True
+    )
+    if bandit_result.returncode in [0, 1]:  # 0=clean, 1=issues found
+        bandit_data = json.loads(bandit_result.stdout)
+        high_severity = len([r for r in bandit_data['results'] 
+                           if r['issue_severity'] == 'HIGH'])
+        metrics['security_high_issues'] = high_severity
+    
+    return metrics
+
+if __name__ == "__main__":
+    metrics = collect_quality_metrics()
+    print(json.dumps(metrics, indent=2))
+```
+
+== 📚 関連ドキュメント・リソース
+
+=== 📖 参照ドキュメント
+
+* **<<backend-architecture>>**: システム全体アーキテクチャ
+* **<<testing-strategy>>**: 詳細テスト戦略
+* **<<configuration-guide>>**: 設定ガイド
+* **<<performance-optimization>>**: パフォーマンス最適化
+
+=== 🔗 外部リソース
+
+* **PEP 8**: https://pep8.org/
+* **Black**: https://black.readthedocs.io/
+* **pytest**: https://docs.pytest.org/
+* **mypy**: https://mypy.readthedocs.io/
+* **Flask**: https://flask.palletsprojects.com/
+
+=== 🛠️ 開発ツール
+
+```bash
+# 推奨開発ツールインストール
+pip install black isort flake8 mypy pytest pytest-cov bandit safety
+
+# プリコミットフック設定
+pip install pre-commit
+pre-commit install
+
+# デバッグツール
+pip install ipython jupyter pdbpp
+```
+
+---
+
+**📞 Contact**: team@kanshichan.dev +
+**🔗 Repository**: https://github.com/kanshichan/backend +
+**📅 Last Updated**: {docdate} +
+**📝 Document Version**: {revnumber} 

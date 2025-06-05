@@ -255,7 +255,7 @@ class AIOptimizer:
                 else:
                     # キャッシュが古すぎる場合はNoneを返す
                     logger.debug(f"Cache too old or empty, returning None (age: {self.last_yolo_results_age})")
-                    return None
+                return None
                 
             # フレーム前処理の最適化
             optimized_frame = self._optimize_frame_preprocessing(frame)
@@ -267,7 +267,7 @@ class AIOptimizer:
             # 🆕 成功した推論結果をキャッシュ
             self.last_yolo_results = results
             self.last_yolo_results_age = 0  # キャッシュをリフレッシュ
-            
+                
             inference_time = time.time() - inference_start
             self.performance_monitor.record_inference_time(inference_time)
             
