@@ -1,0 +1,1108 @@
+=  📊 監視ちゃん(KanshiChan) データベーススキーマ設計
+:toc: left
+:toc-title: 目次
+:toclevels: 4
+:numbered:
+:source-highlighter: highlight.js
+:icons: font
+:doctype: book
+:version: 1.0.0
+:author: KanshiChan Development Team
+:email: team@kanshichan.dev
+:revnumber: 1.0
+:revdate: {docdate}
+:experimental:
+
+== 📖 概要
+
+監視ちゃん（KanshiChan）バックエンドシステムのデータベース設計詳細ドキュメントです。
+Redis中心のデータ管理戦略、スキーマ設計、データモデリング、パフォーマンス最適化について包括的に説明します。
+
+[NOTE]
+====
+📋 **ドキュメント情報**
+
+* **対象読者**: データベース設計者、バックエンド開発者、データエンジニア
+* **前提知識**: Redis、NoSQL、データモデリング、システム設計基礎
+* **データ保存戦略**: Redis中心のキャッシュファースト戦略
+* **パフォーマンス目標**: 検出結果保存 < 1ms、分析クエリ < 10ms
+* **最終更新**: {docdate}
+
+**関連ドキュメント**: <<system-design>>, <<data-management>>, <<performance-optimization>>
+====
+
+== 🎯 データ管理戦略
+
+=== 📊 全体データアーキテクチャ
+
+[mermaid]
+....
+graph TB
+    subgraph "🌐 Application Layer"
+        APP1[KanshiChan App Instance 1]
+        APP2[KanshiChan App Instance 2]
+        APP3[KanshiChan App Instance N]
+        WORKER[Background Workers]
+    end
+    
+    subgraph "💾 Primary Data Storage"
+        REDIS_PRIMARY[Redis Primary<br/>Main Data Store]
+        REDIS_REPLICA[Redis Replica<br/>Read Scaling]
+    end
+    
+    subgraph "📁 Persistent Storage"
+        FILE_SYSTEM[File System<br/>Model Files/Logs]
+        BACKUP_STORAGE[Backup Storage<br/>S3/GCS Compatible]
+    end
+    
+    subgraph "📊 Data Types"
+        REALTIME[Real-time Data<br/>Session, Cache, Metrics]
+        ANALYTICAL[Analytical Data<br/>Detection Logs, Behavior]
+        CONFIG[Configuration Data<br/>Settings, Schedules]
+        STATIC[Static Data<br/>Sound Files, Models]
+    end
+    
+    subgraph "🔄 Data Flow"
+        INGESTION[Data Ingestion]
+        PROCESSING[Real-time Processing]
+        STORAGE[Storage Distribution]
+        RETRIEVAL[Data Retrieval]
+        ANALYTICS[Analytics Processing]
+    end
+    
+    %% Application to Storage
+    APP1 --> REDIS_PRIMARY
+    APP2 --> REDIS_PRIMARY
+    APP3 --> REDIS_PRIMARY
+    WORKER --> REDIS_PRIMARY
+    
+    APP1 --> REDIS_REPLICA
+    APP2 --> REDIS_REPLICA
+    APP3 --> REDIS_REPLICA
+    
+    %% Storage relationships
+    REDIS_PRIMARY --> REDIS_REPLICA
+    REDIS_PRIMARY --> BACKUP_STORAGE
+    FILE_SYSTEM --> BACKUP_STORAGE
+    
+    %% Data type mapping
+    REALTIME --> REDIS_PRIMARY
+    ANALYTICAL --> REDIS_PRIMARY
+    CONFIG --> REDIS_PRIMARY
+    STATIC --> FILE_SYSTEM
+    
+    %% Data flow
+    INGESTION --> PROCESSING
+    PROCESSING --> STORAGE
+    STORAGE --> RETRIEVAL
+    STORAGE --> ANALYTICS
+    
+    classDef app fill:#e3f2fd
+    classDef storage fill:#e8f5e8
+    classDef persistent fill:#fff3e0
+    classDef datatype fill:#f3e5f5
+    classDef flow fill:#fce4ec
+    
+    class APP1,APP2,APP3,WORKER app
+    class REDIS_PRIMARY,REDIS_REPLICA storage
+    class FILE_SYSTEM,BACKUP_STORAGE persistent
+    class REALTIME,ANALYTICAL,CONFIG,STATIC datatype
+    class INGESTION,PROCESSING,STORAGE,RETRIEVAL,ANALYTICS flow
+....
+
+=== 🗃️ データ分類と保存戦略
+
+[cols="2,2,2,2,2", options="header"]
+|===
+|データタイプ |特性 |保存先 |TTL |レプリケーション
+|**セッションデータ** |高頻度読み書き |Redis Primary |24時間 |Redis Replica
+|**検出結果** |大量データ |Redis Primary |7日間 |Redis Replica + Backup
+|**行動ログ** |時系列データ |Redis Primary |30日間 |Redis Replica + Backup
+|**設定データ** |低頻度更新 |Redis Primary |永続 |Redis Replica + Backup
+|**パフォーマンス** |リアルタイム |Redis Primary |1時間 |Redis Replica
+|**音声ファイル** |静的データ |File System |永続 |Backup Storage
+|**AIモデル** |静的データ |File System |永続 |Backup Storage
+|===
+
+== 🏗️ Redis データスキーマ設計
+
+=== 📋 キー命名規則
+
+```yaml
+# Key Naming Convention
+PREFIX_PATTERNS:
+  # Session Management
+  session: "session:{session_id}"
+  user: "user:{user_id}"
+  
+  # Detection Data
+  detection: "detection:{timestamp}:{frame_id}"
+  detection_summary: "detection:summary:{date}"
+  detection_stats: "detection:stats:{hour}"
+  
+  # Behavior Analysis
+  behavior: "behavior:{session_id}:{behavior_type}"
+  behavior_timeline: "behavior:timeline:{date}"
+  behavior_stats: "behavior:stats:{user_id}:{period}"
+  
+  # Configuration
+  config: "config:{component}"
+  schedule: "schedule:{schedule_id}"
+  alert_rule: "alert:rule:{rule_id}"
+  
+  # Performance Monitoring
+  performance: "perf:{instance_id}:{metric_type}"
+  metrics: "metrics:{timestamp}"
+  health: "health:{component}"
+  
+  # Cache Management
+  cache: "cache:{cache_type}:{key}"
+  temp: "temp:{process_id}:{temp_id}"
+  
+  # TTS and Audio
+  tts: "tts:{voice_id}:{text_hash}"
+  audio: "audio:{audio_id}"
+  
+  # AI/ML Model Data
+  model: "model:{model_type}:{version}"
+  inference: "inference:{model_id}:{frame_id}"
+```
+
+=== 📊 主要データ構造の詳細定義
+
+==== 🔍 検出データスキーマ
+
+[mermaid]
+....
+erDiagram
+    DETECTION_LOG {
+        string detection_id PK
+        datetime timestamp
+        string session_id FK
+        string frame_id
+        boolean person_detected
+        boolean smartphone_detected
+        float person_confidence
+        float smartphone_confidence
+        json person_bbox
+        json smartphone_bbox
+        float processing_time
+        string device_used
+        json model_metadata
+        json detection_metadata
+    }
+    
+    DETECTION_SUMMARY {
+        string summary_id PK
+        date summary_date
+        string session_id FK
+        int total_detections
+        int person_detections
+        int smartphone_detections
+        float avg_confidence
+        float total_processing_time
+        json hourly_breakdown
+        json performance_stats
+    }
+    
+    DETECTION_STATS {
+        string stats_id PK
+        datetime hour_timestamp
+        int detection_count
+        float avg_fps
+        float avg_processing_time
+        float cpu_usage_avg
+        float memory_usage_avg
+        float gpu_usage_avg
+        json model_performance
+    }
+    
+    DETECTION_LOG ||--o{ DETECTION_SUMMARY : aggregates
+    DETECTION_LOG ||--o{ DETECTION_STATS : contributes_to
+....
+
+```python
+# Detection Log Data Structure
+DETECTION_LOG_SCHEMA = {
+    "detection_id": str,  # UUID
+    "timestamp": datetime,  # ISO 8601 format
+    "session_id": str,  # Session identifier
+    "frame_id": str,  # Frame identifier
+    "person_detected": bool,
+    "smartphone_detected": bool,
+    "person_confidence": float,  # 0.0 - 1.0
+    "smartphone_confidence": float,  # 0.0 - 1.0
+    "person_bbox": {
+        "x": float,
+        "y": float, 
+        "width": float,
+        "height": float
+    },
+    "smartphone_bbox": {
+        "x": float,
+        "y": float,
+        "width": float, 
+        "height": float
+    },
+    "processing_time": float,  # milliseconds
+    "device_used": str,  # "cpu", "cuda:0", etc.
+    "model_metadata": {
+        "yolo_version": str,
+        "mediapipe_version": str,
+        "input_resolution": tuple,
+        "confidence_threshold": float
+    },
+    "detection_metadata": {
+        "frame_size": tuple,
+        "preprocessing_time": float,
+        "inference_time": float,
+        "postprocessing_time": float
+    }
+}
+```
+
+==== 👤 行動分析データスキーマ
+
+[mermaid]
+....
+erDiagram
+    BEHAVIOR_LOG {
+        string behavior_id PK
+        datetime timestamp
+        string session_id FK
+        string behavior_type
+        string current_state
+        string previous_state
+        int duration_seconds
+        float confidence_score
+        string trigger_event
+        json context_data
+        json analysis_result
+    }
+    
+    BEHAVIOR_TIMELINE {
+        string timeline_id PK
+        date timeline_date
+        string session_id FK
+        json timeline_events
+        json state_transitions
+        json duration_summary
+        json pattern_analysis
+    }
+    
+    BEHAVIOR_STATS {
+        string stats_id PK
+        string user_id FK
+        string period_type
+        datetime period_start
+        datetime period_end
+        json absence_stats
+        json smartphone_stats
+        json productivity_metrics
+        json trend_analysis
+    }
+    
+    BEHAVIOR_LOG ||--o{ BEHAVIOR_TIMELINE : builds
+    BEHAVIOR_LOG ||--o{ BEHAVIOR_STATS : aggregates
+....
+
+```python
+# Behavior Analysis Data Structure
+BEHAVIOR_LOG_SCHEMA = {
+    "behavior_id": str,  # UUID
+    "timestamp": datetime,
+    "session_id": str,
+    "behavior_type": str,  # "presence", "absence", "smartphone_usage"
+    "current_state": str,  # "PRESENT", "ABSENT", "SMARTPHONE_DETECTED" 
+    "previous_state": str,
+    "duration_seconds": int,
+    "confidence_score": float,  # 0.0 - 1.0
+    "trigger_event": str,  # "detection_result", "timer_expiry", "manual"
+    "context_data": {
+        "recent_detections": list,
+        "environmental_factors": dict,
+        "system_state": dict
+    },
+    "analysis_result": {
+        "pattern_match": bool,
+        "anomaly_score": float,
+        "prediction_confidence": float,
+        "recommendations": list
+    }
+}
+
+BEHAVIOR_TIMELINE_SCHEMA = {
+    "timeline_id": str,
+    "timeline_date": date,
+    "session_id": str,
+    "timeline_events": [
+        {
+            "timestamp": datetime,
+            "event_type": str,
+            "duration": int,
+            "details": dict
+        }
+    ],
+    "state_transitions": [
+        {
+            "from_state": str,
+            "to_state": str,
+            "timestamp": datetime,
+            "confidence": float
+        }
+    ],
+    "duration_summary": {
+        "total_present_time": int,
+        "total_absent_time": int,
+        "smartphone_usage_time": int,
+        "productive_time": int
+    },
+    "pattern_analysis": {
+        "frequent_patterns": list,
+        "anomalies": list,
+        "productivity_score": float
+    }
+}
+```
+
+==== ⚙️ システム設定データスキーマ
+
+[mermaid]
+....
+erDiagram
+    CONFIGURATION {
+        string config_id PK
+        string component_name
+        string config_key
+        json config_value
+        string data_type
+        datetime created_at
+        datetime updated_at
+        string updated_by
+        json validation_rules
+        boolean is_sensitive
+    }
+    
+    SCHEDULE {
+        string schedule_id PK
+        string name
+        time start_time
+        time end_time
+        json days_of_week
+        boolean alert_enabled
+        boolean monitoring_enabled
+        datetime created_at
+        datetime updated_at
+        json metadata
+    }
+    
+    ALERT_RULE {
+        string rule_id PK
+        string rule_name
+        string condition_type
+        json condition_params
+        string action_type
+        json action_params
+        int priority_level
+        boolean is_active
+        datetime created_at
+        datetime last_triggered
+        json statistics
+    }
+    
+    CONFIGURATION ||--o{ SCHEDULE : configures
+    CONFIGURATION ||--o{ ALERT_RULE : defines
+....
+
+```python
+# Configuration Data Structure
+CONFIGURATION_SCHEMA = {
+    "config_id": str,
+    "component_name": str,  # "ai_detector", "alert_manager", "tts_service"
+    "config_key": str,
+    "config_value": Any,  # JSON-serializable value
+    "data_type": str,  # "string", "integer", "float", "boolean", "json"
+    "created_at": datetime,
+    "updated_at": datetime,
+    "updated_by": str,
+    "validation_rules": {
+        "type": str,
+        "min_value": float,
+        "max_value": float,
+        "allowed_values": list,
+        "regex_pattern": str
+    },
+    "is_sensitive": bool  # Encryption flag
+}
+
+SCHEDULE_SCHEMA = {
+    "schedule_id": str,
+    "name": str,
+    "start_time": time,
+    "end_time": time,
+    "days_of_week": list,  # [0-6], 0=Monday
+    "alert_enabled": bool,
+    "monitoring_enabled": bool,
+    "created_at": datetime,
+    "updated_at": datetime,
+    "metadata": {
+        "description": str,
+        "tags": list,
+        "created_by": str
+    }
+}
+```
+
+==== 📊 パフォーマンス監視データスキーマ
+
+```python
+# Performance Monitoring Data Structure
+PERFORMANCE_METRICS_SCHEMA = {
+    "metric_id": str,
+    "timestamp": datetime,
+    "instance_id": str,
+    "metric_type": str,  # "system", "application", "ai_model"
+    "metrics": {
+        # System metrics
+        "cpu_usage_percent": float,
+        "memory_usage_percent": float,
+        "gpu_usage_percent": float,
+        "disk_usage_percent": float,
+        
+        # Application metrics
+        "fps": float,
+        "detection_latency_ms": float,
+        "frame_processing_time_ms": float,
+        "queue_length": int,
+        
+        # AI Model metrics
+        "model_inference_time_ms": float,
+        "model_memory_usage_mb": float,
+        "batch_size": int,
+        "throughput_fps": float
+    },
+    "health_status": str,  # "healthy", "warning", "critical"
+    "alerts_triggered": list
+}
+
+HEALTH_CHECK_SCHEMA = {
+    "health_id": str,
+    "timestamp": datetime,
+    "component": str,
+    "status": str,  # "up", "down", "degraded"
+    "response_time_ms": float,
+    "details": {
+        "checks": dict,
+        "errors": list,
+        "warnings": list
+    }
+}
+```
+
+=== 🔗 データ関連性と整合性
+
+[mermaid]
+....
+graph LR
+    subgraph "🎯 Core Data Flow"
+        DETECTION[Detection Data]
+        BEHAVIOR[Behavior Analysis]
+        SESSION[Session Management]
+        PERFORMANCE[Performance Data]
+    end
+    
+    subgraph "⚙️ Configuration Data"
+        CONFIG[System Config]
+        SCHEDULE[Schedules]
+        ALERTS[Alert Rules]
+    end
+    
+    subgraph "🎵 Media Data"
+        TTS[TTS Cache]
+        AUDIO[Audio Files]
+        MODELS[AI Models]
+    end
+    
+    subgraph "📊 Analytics Data"
+        STATS[Statistics]
+        TRENDS[Trend Analysis]
+        REPORTS[Reports]
+    end
+    
+    %% Core relationships
+    DETECTION --> BEHAVIOR
+    DETECTION --> SESSION
+    BEHAVIOR --> SESSION
+    PERFORMANCE --> SESSION
+    
+    %% Configuration relationships
+    CONFIG --> DETECTION
+    SCHEDULE --> BEHAVIOR
+    ALERTS --> BEHAVIOR
+    
+    %% Media relationships
+    TTS --> AUDIO
+    MODELS --> DETECTION
+    
+    %% Analytics relationships
+    DETECTION --> STATS
+    BEHAVIOR --> TRENDS
+    STATS --> REPORTS
+    TRENDS --> REPORTS
+    
+    classDef core fill:#e3f2fd
+    classDef config fill:#e8f5e8
+    classDef media fill:#fff3e0
+    classDef analytics fill:#f3e5f5
+    
+    class DETECTION,BEHAVIOR,SESSION,PERFORMANCE core
+    class CONFIG,SCHEDULE,ALERTS config
+    class TTS,AUDIO,MODELS media
+    class STATS,TRENDS,REPORTS analytics
+....
+
+== 🚀 パフォーマンス最適化
+
+=== 📈 インデックス戦略
+
+```python
+# Redis Index Strategy
+REDIS_INDEXES = {
+    # Time-based indexes for time-series queries
+    "detection_by_time": {
+        "key_pattern": "detection:index:time:{YYYYMMDD}",
+        "sorted_set": True,
+        "score": "timestamp",
+        "member": "detection_id"
+    },
+    
+    # Session-based indexes
+    "detection_by_session": {
+        "key_pattern": "detection:index:session:{session_id}",
+        "sorted_set": True,
+        "score": "timestamp", 
+        "member": "detection_id"
+    },
+    
+    # Behavior pattern indexes
+    "behavior_by_type": {
+        "key_pattern": "behavior:index:type:{behavior_type}",
+        "sorted_set": True,
+        "score": "timestamp",
+        "member": "behavior_id"
+    },
+    
+    # Performance metrics indexes
+    "metrics_by_instance": {
+        "key_pattern": "metrics:index:instance:{instance_id}",
+        "sorted_set": True,
+        "score": "timestamp",
+        "member": "metric_id"
+    }
+}
+```
+
+=== ⚡ クエリ最適化パターン
+
+```python
+# Optimized Query Patterns
+class OptimizedQueries:
+    
+    def get_recent_detections(self, session_id: str, limit: int = 100):
+        """最新の検出結果を効率的に取得"""
+        # Use sorted set index for O(log(N)) retrieval
+        detection_ids = redis.zrevrange(
+            f"detection:index:session:{session_id}",
+            0, limit-1
+        )
+        
+        # Batch fetch detection data using pipeline
+        pipe = redis.pipeline()
+        for detection_id in detection_ids:
+            pipe.hgetall(f"detection:{detection_id}")
+        
+        return pipe.execute()
+    
+    def get_behavior_timeline(self, date: str, session_id: str):
+        """指定日の行動タイムラインを取得"""
+        timeline_key = f"behavior:timeline:{date}:{session_id}"
+        
+        # Check cache first
+        cached_timeline = redis.get(timeline_key)
+        if cached_timeline:
+            return json.loads(cached_timeline)
+        
+        # Build timeline from behavior logs
+        behavior_ids = redis.zrangebyscore(
+            f"behavior:index:session:{session_id}",
+            start_timestamp, end_timestamp
+        )
+        
+        # Cache result for future queries
+        timeline_data = self._build_timeline(behavior_ids)
+        redis.setex(timeline_key, 3600, json.dumps(timeline_data))
+        
+        return timeline_data
+    
+    def get_performance_stats(self, instance_id: str, hours: int = 24):
+        """パフォーマンス統計を取得"""
+        end_time = time.time()
+        start_time = end_time - (hours * 3600)
+        
+        metric_ids = redis.zrangebyscore(
+            f"metrics:index:instance:{instance_id}",
+            start_time, end_time
+        )
+        
+        # Use Lua script for server-side aggregation
+        lua_script = """
+        local stats = {}
+        for i, metric_id in ipairs(ARGV) do
+            local data = redis.call('HGETALL', 'metrics:' .. metric_id)
+            -- Aggregate statistics server-side
+        end
+        return stats
+        """
+        
+        return redis.eval(lua_script, 0, *metric_ids)
+```
+
+=== 💾 メモリ最適化戦略
+
+[mermaid]
+....
+graph TB
+    subgraph "📊 Data Lifecycle Management"
+        HOT[Hot Data<br/>< 1 hour<br/>Memory: High Priority]
+        WARM[Warm Data<br/>1-24 hours<br/>Memory: Medium Priority]
+        COLD[Cold Data<br/>1-7 days<br/>Memory: Low Priority]
+        ARCHIVE[Archive Data<br/>> 7 days<br/>Compressed/Backup]
+    end
+    
+    subgraph "💾 Memory Optimization"
+        COMPRESS[Data Compression<br/>JSON → MessagePack]
+        EXPIRE[TTL Management<br/>Automatic Expiry]
+        PIPELINE[Pipeline Operations<br/>Batch Processing]
+        LUA[Lua Scripts<br/>Server-side Logic]
+    end
+    
+    subgraph "🔄 Cache Strategy"
+        L1[L1 Cache<br/>Application Memory]
+        L2[L2 Cache<br/>Redis Primary]
+        L3[L3 Cache<br/>Redis Replica]
+        PERSIST[Persistent Storage<br/>Backup Systems]
+    end
+    
+    HOT --> WARM
+    WARM --> COLD
+    COLD --> ARCHIVE
+    
+    HOT --> COMPRESS
+    WARM --> EXPIRE
+    COLD --> PIPELINE
+    ARCHIVE --> LUA
+    
+    L1 --> L2
+    L2 --> L3
+    L3 --> PERSIST
+    
+    classDef hot fill:#ffebee
+    classDef warm fill:#fff3e0
+    classDef cold fill:#e8f5e8
+    classDef archive fill:#f3e5f5
+    
+    class HOT hot
+    class WARM warm
+    class COLD cold
+    class ARCHIVE archive
+....
+
+```python
+# Memory Optimization Configuration
+MEMORY_OPTIMIZATION = {
+    # Data compression settings
+    "compression": {
+        "enable": True,
+        "algorithm": "lz4",  # Fast compression for real-time data
+        "threshold_bytes": 1024,  # Compress data > 1KB
+        "compression_level": 1  # Fast compression
+    },
+    
+    # TTL management
+    "ttl_policy": {
+        "detection_data": 604800,  # 7 days
+        "behavior_logs": 2592000,  # 30 days
+        "performance_metrics": 3600,  # 1 hour
+        "session_data": 86400,  # 24 hours
+        "cache_data": 300,  # 5 minutes
+        "temp_data": 60  # 1 minute
+    },
+    
+    # Memory limits
+    "memory_limits": {
+        "max_memory_usage": "4gb",
+        "eviction_policy": "allkeys-lru",
+        "max_clients": 10000
+    },
+    
+    # Batch processing
+    "batch_settings": {
+        "pipeline_size": 100,
+        "batch_timeout_ms": 10,
+        "max_batch_size": 1000
+    }
+}
+```
+
+== 🔒 データセキュリティとプライバシー
+
+=== 🛡️ データ暗号化戦略
+
+[mermaid]
+....
+graph TB
+    subgraph "🔐 Encryption Layers"
+        APP_ENCRYPT[Application Layer<br/>Field-level Encryption]
+        REDIS_ENCRYPT[Redis Layer<br/>TLS + AUTH]
+        STORAGE_ENCRYPT[Storage Layer<br/>Disk Encryption]
+        NETWORK_ENCRYPT[Network Layer<br/>End-to-End TLS]
+    end
+    
+    subgraph "🗝️ Key Management"
+        KEY_ROTATION[Key Rotation<br/>Automatic]
+        KEY_VAULT[Key Vault<br/>Secure Storage]
+        ACCESS_CONTROL[Access Control<br/>RBAC]
+        AUDIT_LOG[Audit Logging<br/>Key Usage]
+    end
+    
+    subgraph "📊 Data Classification"
+        PII[PII Data<br/>Personal Information]
+        SENSITIVE[Sensitive Data<br/>Detection Details]
+        INTERNAL[Internal Data<br/>System Metrics]
+        PUBLIC[Public Data<br/>Configuration]
+    end
+    
+    subgraph "🔒 Privacy Protection"
+        ANONYMIZATION[Data Anonymization]
+        PSEUDONYMIZATION[Pseudonymization]
+        DATA_MASKING[Data Masking]
+        RETENTION[Retention Policy]
+    end
+    
+    APP_ENCRYPT --> REDIS_ENCRYPT
+    REDIS_ENCRYPT --> STORAGE_ENCRYPT
+    STORAGE_ENCRYPT --> NETWORK_ENCRYPT
+    
+    KEY_ROTATION --> KEY_VAULT
+    KEY_VAULT --> ACCESS_CONTROL
+    ACCESS_CONTROL --> AUDIT_LOG
+    
+    PII --> ANONYMIZATION
+    SENSITIVE --> PSEUDONYMIZATION
+    INTERNAL --> DATA_MASKING
+    PUBLIC --> RETENTION
+    
+    classDef encryption fill:#ffebee
+    classDef keymanagement fill:#e8f5e8
+    classDef classification fill:#fff3e0
+    classDef privacy fill:#f3e5f5
+    
+    class APP_ENCRYPT,REDIS_ENCRYPT,STORAGE_ENCRYPT,NETWORK_ENCRYPT encryption
+    class KEY_ROTATION,KEY_VAULT,ACCESS_CONTROL,AUDIT_LOG keymanagement
+    class PII,SENSITIVE,INTERNAL,PUBLIC classification
+    class ANONYMIZATION,PSEUDONYMIZATION,DATA_MASKING,RETENTION privacy
+....
+
+```python
+# Data Security Configuration
+DATA_SECURITY = {
+    # Field-level encryption for sensitive data
+    "encrypted_fields": [
+        "user_identity",
+        "location_data", 
+        "personal_metadata",
+        "biometric_data"
+    ],
+    
+    # Data classification levels
+    "classification": {
+        "public": {
+            "encryption": False,
+            "access_level": "all"
+        },
+        "internal": {
+            "encryption": True,
+            "access_level": "internal"
+        },
+        "sensitive": {
+            "encryption": True,
+            "access_level": "authorized"
+        },
+        "restricted": {
+            "encryption": True,
+            "access_level": "admin_only"
+        }
+    },
+    
+    # Privacy protection
+    "privacy": {
+        "anonymization_delay": 3600,  # 1 hour
+        "data_retention_days": 90,
+        "audit_retention_days": 365,
+        "gdpr_compliance": True
+    }
+}
+```
+
+== 🔧 データ移行とバックアップ
+
+=== 📋 バックアップ戦略
+
+[mermaid]
+....
+graph TB
+    subgraph "🔄 Backup Types"
+        FULL[Full Backup<br/>Complete Data Snapshot]
+        INCREMENTAL[Incremental Backup<br/>Changed Data Only]
+        DIFFERENTIAL[Differential Backup<br/>Since Last Full]
+        CONTINUOUS[Continuous Backup<br/>Real-time Replication]
+    end
+    
+    subgraph "📅 Backup Schedule"
+        DAILY[Daily Backup<br/>2:00 AM]
+        WEEKLY[Weekly Backup<br/>Sunday 1:00 AM]
+        MONTHLY[Monthly Backup<br/>1st Day 12:00 AM]
+        REALTIME[Real-time Backup<br/>Continuous]
+    end
+    
+    subgraph "📍 Backup Locations"
+        LOCAL[Local Storage<br/>Same Region]
+        REMOTE[Remote Storage<br/>Different Region]
+        CLOUD[Cloud Storage<br/>Multi-Cloud]
+        OFFLINE[Offline Storage<br/>Cold Storage]
+    end
+    
+    subgraph "✅ Backup Verification"
+        INTEGRITY[Data Integrity<br/>Checksum Validation]
+        RESTORE_TEST[Restore Testing<br/>Monthly Validation]
+        MONITORING[Backup Monitoring<br/>Success/Failure Alerts]
+        REPORTING[Backup Reporting<br/>Status Dashboard]
+    end
+    
+    FULL --> DAILY
+    INCREMENTAL --> DAILY
+    DIFFERENTIAL --> WEEKLY
+    CONTINUOUS --> REALTIME
+    
+    DAILY --> LOCAL
+    WEEKLY --> REMOTE
+    MONTHLY --> CLOUD
+    REALTIME --> OFFLINE
+    
+    LOCAL --> INTEGRITY
+    REMOTE --> RESTORE_TEST
+    CLOUD --> MONITORING
+    OFFLINE --> REPORTING
+    
+    classDef backuptype fill:#e3f2fd
+    classDef schedule fill:#e8f5e8
+    classDef location fill:#fff3e0
+    classDef verification fill:#f3e5f5
+    
+    class FULL,INCREMENTAL,DIFFERENTIAL,CONTINUOUS backuptype
+    class DAILY,WEEKLY,MONTHLY,REALTIME schedule
+    class LOCAL,REMOTE,CLOUD,OFFLINE location
+    class INTEGRITY,RESTORE_TEST,MONITORING,REPORTING verification
+....
+
+```python
+# Backup Configuration
+BACKUP_CONFIG = {
+    "schedule": {
+        "full_backup": {
+            "frequency": "weekly",
+            "time": "01:00",
+            "day": "sunday",
+            "retention_weeks": 12
+        },
+        "incremental_backup": {
+            "frequency": "daily", 
+            "time": "02:00",
+            "retention_days": 30
+        },
+        "continuous_replication": {
+            "enabled": True,
+            "lag_threshold_seconds": 1,
+            "replica_locations": ["us-west-2", "eu-west-1"]
+        }
+    },
+    
+    "storage": {
+        "local": {
+            "path": "/backup/local",
+            "retention_days": 7,
+            "compression": True
+        },
+        "remote": {
+            "type": "s3",
+            "bucket": "kanshichan-backups",
+            "encryption": "AES-256",
+            "retention_months": 12
+        }
+    },
+    
+    "verification": {
+        "integrity_check": True,
+        "restore_test_frequency": "monthly",
+        "monitoring_enabled": True,
+        "alert_on_failure": True
+    }
+}
+```
+
+=== 🔄 データ移行戦略
+
+```python
+# Data Migration Strategy
+class DataMigration:
+    
+    def migrate_schema_version(self, from_version: str, to_version: str):
+        """スキーマバージョン移行"""
+        migration_plan = self._get_migration_plan(from_version, to_version)
+        
+        for step in migration_plan:
+            # Pre-migration validation
+            self._validate_pre_migration(step)
+            
+            # Execute migration step
+            self._execute_migration_step(step)
+            
+            # Post-migration validation
+            self._validate_post_migration(step)
+            
+            # Update version metadata
+            self._update_version_metadata(step.target_version)
+    
+    def migrate_data_format(self, data_type: str, new_format: dict):
+        """データフォーマット移行"""
+        # Gradual migration pattern
+        keys = redis.scan_iter(match=f"{data_type}:*")
+        
+        for key in keys:
+            old_data = redis.get(key)
+            
+            # Transform data to new format
+            new_data = self._transform_data(old_data, new_format)
+            
+            # Atomic replacement with backup
+            pipe = redis.pipeline()
+            pipe.set(f"{key}:backup", old_data, ex=86400)  # 24h backup
+            pipe.set(key, new_data)
+            pipe.execute()
+    
+    def _validate_migration(self, validation_rules: dict) -> bool:
+        """移行検証"""
+        for rule in validation_rules:
+            if not self._check_rule(rule):
+                raise MigrationValidationError(f"Validation failed: {rule}")
+        return True
+```
+
+== 📊 運用監視とアラート
+
+=== 📈 データベース監視メトリクス
+
+[cols="2,2,2,2", options="header"]
+|===
+|メトリクス分類 |監視項目 |閾値 |アラート条件
+|**パフォーマンス** |レスポンス時間 |< 5ms |> 10ms で Warning
+|**パフォーマンス** |スループット |> 1000 QPS |< 500 QPS で Warning
+|**容量** |メモリ使用率 |< 80% |> 90% で Critical
+|**容量** |ディスク使用率 |< 85% |> 95% で Critical
+|**可用性** |接続成功率 |> 99.9% |< 99% で Critical
+|**可用性** |レプリケーション遅延 |< 1秒 |> 5秒 で Warning
+|**データ品質** |データ整合性 |100% |エラー検出で Critical
+|**セキュリティ** |認証失敗率 |< 1% |> 5% で Warning
+|===
+
+```python
+# Monitoring Configuration
+MONITORING_CONFIG = {
+    "metrics": {
+        "collection_interval": 15,  # seconds
+        "retention_hours": 168,  # 7 days
+        "aggregation_intervals": [60, 300, 3600]  # 1min, 5min, 1hour
+    },
+    
+    "alerts": {
+        "performance": {
+            "response_time_ms": {
+                "warning": 10,
+                "critical": 50
+            },
+            "throughput_qps": {
+                "warning": 500,
+                "critical": 100
+            }
+        },
+        "resource": {
+            "memory_usage_percent": {
+                "warning": 80,
+                "critical": 90
+            },
+            "connection_count": {
+                "warning": 800,
+                "critical": 950
+            }
+        }
+    },
+    
+    "notifications": {
+        "channels": ["slack", "email", "webhook"],
+        "escalation_time": 300,  # 5 minutes
+        "max_alerts_per_hour": 10
+    }
+}
+```
+
+== 🔗 関連ドキュメント
+
+=== 📖 必須参照ドキュメント
+* **<<system-design>>**: システム設計詳細
+* **<<data-management>>**: データ管理システム
+* **<<performance-optimization>>**: パフォーマンス最適化
+* **<<security-specifications>>**: セキュリティ仕様
+
+=== 🛠️ 開発者向けリソース
+* **<<backend-architecture>>**: システムアーキテクチャ
+* **<<rest-api-reference>>**: REST API仕様
+* **<<development-guide>>**: 開発ガイド
+* **<<testing-strategy>>**: テスト戦略
+
+=== 📊 運用・保守関連
+* **<<configuration-guide>>**: 設定管理
+* **<<operations-monitoring>>**: 運用監視
+* **<<maintenance-procedures>>**: 保守手順
+* **<<troubleshooting-guide>>**: トラブルシューティング
+
+[NOTE]
+====
+🔄 **継続的改善**
+
+データベーススキーマは運用実績とパフォーマンスデータに基づいて
+継続的に最適化されます。
+
+**変更管理**: スキーマ変更は必ずマイグレーション計画と共に実施 +
+**パフォーマンス**: 定期的なパフォーマンステストと最適化 +
+**セキュリティ**: 四半期ごとのセキュリティレビュー実施
+
+**データ品質**: 自動化されたデータ整合性チェック +
+**バックアップ**: 月次のリストアテスト実施
+====
+
+---
+
+**📞 Contact**: team@kanshichan.dev +
+**🔗 Repository**: https://github.com/kanshichan/backend +
+**📅 Last Updated**: {docdate} +
+**📝 Document Version**: {revnumber} 

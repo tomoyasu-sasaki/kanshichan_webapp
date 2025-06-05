@@ -1,0 +1,1107 @@
+= 💾 データ管理システム - Data Management System
+:author: KanshiChan Development Team
+:version: 1.0
+:date: 2024-12-27
+:target_audience: データエンジニア、バックエンド開発者
+:document_type: システム詳細仕様書
+:toc: left
+:toclevels: 4
+:sectnums:
+:source-highlighter: highlight.js
+
+== 📋 概要
+
+=== 📖 このドキュメントについて
+
+本ドキュメントは、KanshiChanシステムのデータ管理機能における詳細な技術仕様とアーキテクチャを定義します。
+
+**対象読者**: データエンジニア、バックエンド開発者 +
+**前提知識**: Python/Flask、Redis、データベース設計 +
+**関連ドキュメント**: <<database-schema>>, <<behavior-analysis>>, <<performance-optimization>>
+
+=== 🎯 システム目的
+
+* **リアルタイムデータ収集**: 高性能な監視データ収集
+* **効率的データストレージ**: 最適化されたデータ保存戦略
+* **データライフサイクル管理**: 自動化されたアーカイブ・削除
+* **データ品質保証**: 検証・クリーニング・整合性チェック
+
+=== 🏗️ データ管理アーキテクチャ
+
+[mermaid]
+....
+graph TB
+    subgraph "📊 データソース"
+        CAMERA[Camera Feed]
+        DETECTOR[Object Detector]
+        STATE[State Manager]
+        MONITOR[Monitor Engine]
+    end
+    
+    subgraph "🔄 データ収集層"
+        COLLECTOR[Data Collector]
+        VALIDATOR[Data Validator]
+        TRANSFORMER[Data Transformer]
+        QUEUE[Processing Queue]
+    end
+    
+    subgraph "💾 ストレージ層"
+        REDIS[Redis Cache]
+        DATABASE[Primary Database]
+        FILE_STORAGE[File Storage]
+        ARCHIVE[Archive Storage]
+    end
+    
+    subgraph "🗃️ データ管理"
+        STORAGE_SVC[Storage Service]
+        BACKUP_MGR[Backup Manager]
+        ARCHIVE_MGR[Archive Manager]
+        CLEANUP[Data Cleanup]
+    end
+    
+    subgraph "📈 データアクセス"
+        API[Data Access API]
+        QUERY[Query Engine]
+        EXPORT[Export Service]
+        ANALYTICS[Analytics Interface]
+    end
+    
+    %% データフロー
+    CAMERA --> COLLECTOR
+    DETECTOR --> COLLECTOR
+    STATE --> COLLECTOR
+    MONITOR --> COLLECTOR
+    
+    COLLECTOR --> VALIDATOR
+    VALIDATOR --> TRANSFORMER
+    TRANSFORMER --> QUEUE
+    
+    QUEUE --> REDIS
+    QUEUE --> DATABASE
+    QUEUE --> FILE_STORAGE
+    
+    DATABASE --> STORAGE_SVC
+    STORAGE_SVC --> BACKUP_MGR
+    STORAGE_SVC --> ARCHIVE_MGR
+    STORAGE_SVC --> CLEANUP
+    
+    REDIS --> API
+    DATABASE --> API
+    FILE_STORAGE --> API
+    
+    API --> QUERY
+    API --> EXPORT
+    API --> ANALYTICS
+    
+    BACKUP_MGR --> ARCHIVE
+    ARCHIVE_MGR --> ARCHIVE
+    
+    classDef source fill:#e3f2fd
+    classDef collection fill:#e8f5e8
+    classDef storage fill:#fff3e0
+    classDef management fill:#f3e5f5
+    classDef access fill:#fce4ec
+    
+    class CAMERA,DETECTOR,STATE,MONITOR source
+    class COLLECTOR,VALIDATOR,TRANSFORMER,QUEUE collection
+    class REDIS,DATABASE,FILE_STORAGE,ARCHIVE storage
+    class STORAGE_SVC,BACKUP_MGR,ARCHIVE_MGR,CLEANUP management
+    class API,QUERY,EXPORT,ANALYTICS access
+....
+
+== 📥 データ収集システム
+
+=== 🔍 データ収集アーキテクチャ
+
+[mermaid]
+....
+classDiagram
+    class DataCollector {
+        -camera: Camera
+        -detector: Detector
+        -state_manager: StateManager
+        -collection_interval: float
+        -pending_data: List[Dict]
+        -current_session_id: str
+        
+        +start_collection(session_id?: str): bool
+        +stop_collection(): bool
+        +collect_frame_data(): Dict[str, Any]
+        +_flush_pending_data(): void
+        +_save_batch_to_database(batch: List): void
+        +get_session_summary(): Dict[str, Any]
+    }
+    
+    class DataValidator {
+        -validation_rules: Dict
+        -schema_definitions: Dict
+        
+        +validate_detection_result(data: Dict): bool
+        +validate_behavior_log(log: Dict): bool
+        +sanitize_data(data: Dict): Dict
+        +check_data_integrity(data: Dict): ValidationResult
+    }
+    
+    class DataTransformer {
+        -transformation_rules: Dict
+        
+        +transform_detection_data(data: Dict): Dict
+        +normalize_timestamps(data: Dict): Dict
+        +enrich_context_data(data: Dict): Dict
+        +standardize_format(data: Dict): Dict
+    }
+    
+    class ProcessingQueue {
+        -queue: Queue
+        -batch_size: int
+        -flush_interval: int
+        
+        +add_data(data: Dict): void
+        +get_batch(): List[Dict]
+        +flush_queue(): void
+        +get_queue_stats(): Dict
+    }
+    
+    DataCollector --> DataValidator
+    DataCollector --> DataTransformer
+    DataCollector --> ProcessingQueue
+....
+
+=== 📊 リアルタイムデータ収集
+
+**データ収集実装**
+
+```python
+# backend/src/services/data/data_collector.py
+class DataCollector:
+    def __init__(self, 
+                 camera: Camera,
+                 detector: Detector,
+                 state_manager: StateManager,
+                 collection_interval: float = 2.0,
+                 flask_app=None):
+        """データ収集サービス初期化"""
+        self.camera = camera
+        self.detector = detector
+        self.state_manager = state_manager
+        self.collection_interval = collection_interval
+        self.flask_app = flask_app
+        
+        # データ収集制御
+        self._collecting = False
+        self._collection_thread = None
+        self._stop_event = threading.Event()
+        self._data_lock = threading.Lock()
+        
+        # セッション管理
+        self.current_session_id = None
+        self.session_start_time = None
+        
+        # データ処理キューイング
+        self._pending_data = []
+        self._batch_size = 5
+        self._data_callbacks = []
+
+    def start_collection(self, session_id: Optional[str] = None) -> bool:
+        """データ収集開始"""
+        if self._collecting:
+            logger.warning("Data collection already running")
+            return False
+        
+        self.current_session_id = session_id or self._generate_session_id()
+        self.session_start_time = datetime.utcnow()
+        
+        self._collecting = True
+        self._stop_event.clear()
+        
+        # 収集スレッド開始
+        self._collection_thread = threading.Thread(
+            target=self._collection_loop,
+            name=f"DataCollector-{self.current_session_id}"
+        )
+        self._collection_thread.start()
+        
+        logger.info(f"Data collection started - Session: {self.current_session_id}")
+        return True
+```
+
+**データ構造定義**
+
+```python
+# 収集データの標準構造
+BEHAVIOR_LOG_SCHEMA = {
+    "behavior_id": str,  # UUID
+    "timestamp": datetime,
+    "session_id": str,
+    "behavior_type": str,  # "presence", "absence", "smartphone_usage"
+    "current_state": str,  # "PRESENT", "ABSENT", "SMARTPHONE_DETECTED" 
+    "previous_state": str,
+    "duration_seconds": int,
+    "confidence_score": float,  # 0.0 - 1.0
+    "trigger_event": str,  # "detection_result", "timer_expiry", "manual"
+    "context_data": {
+        "recent_detections": list,
+        "environmental_factors": dict,
+        "system_state": dict
+    },
+    "analysis_result": {
+        "pattern_match": bool,
+        "anomaly_score": float,
+        "prediction_confidence": float,
+        "recommendations": list
+    }
+}
+```
+
+=== 🔄 データ変換・正規化
+
+```python
+# backend/src/services/data/data_transformer.py
+class DataTransformer:
+    def transform_detection_data(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
+        """検出データの変換・標準化"""
+        try:
+            # タイムスタンプ正規化
+            normalized_timestamp = self._normalize_timestamp(
+                raw_data.get('timestamp')
+            )
+            
+            # 検出結果の構造化
+            structured_detections = self._structure_detections(
+                raw_data.get('detections', [])
+            )
+            
+            # 信頼度スコアの正規化
+            normalized_confidence = self._normalize_confidence_scores(
+                raw_data.get('confidence_scores', {})
+            )
+            
+            # コンテキストデータの拡張
+            enriched_context = self._enrich_context_data(
+                raw_data.get('context', {}),
+                raw_data.get('environment', {})
+            )
+            
+            transformed_data = {
+                'timestamp': normalized_timestamp,
+                'detections': structured_detections,
+                'confidence_scores': normalized_confidence,
+                'context_data': enriched_context,
+                'processing_metadata': {
+                    'transformation_version': '1.0',
+                    'processing_time': datetime.utcnow(),
+                    'data_quality_score': self._calculate_quality_score(raw_data)
+                }
+            }
+            
+            return transformed_data
+            
+        except Exception as e:
+            logger.error(f"Data transformation error: {e}")
+            return raw_data  # フォールバック
+```
+
+== 💾 ストレージ管理
+
+=== 🗃️ ストレージアーキテクチャ
+
+[mermaid]
+....
+classDiagram
+    class StorageService {
+        -backup_dir: Path
+        -archive_dir: Path
+        -retention_days: int
+        
+        +save_behavior_logs_batch(logs: List): bool
+        +save_analysis_result(data: Dict): bool
+        +compress_old_data(days_threshold: int): bool
+        +delete_old_data(force: bool): Dict[str, int]
+        +backup_database(): bool
+        +restore_from_backup(file_path: str): bool
+        +get_storage_stats(): Dict[str, Any]
+    }
+    
+    class BackupManager {
+        -backup_schedule: Dict
+        -retention_policy: Dict
+        -compression_settings: Dict
+        
+        +create_backup(backup_type: str): bool
+        +restore_backup(backup_id: str): bool
+        +list_backups(): List[BackupInfo]
+        +cleanup_old_backups(): int
+        +verify_backup_integrity(backup_id: str): bool
+    }
+    
+    class ArchiveManager {
+        -archive_strategy: ArchiveStrategy
+        -compression_ratio: float
+        
+        +archive_data(date_range: DateRange): bool
+        +retrieve_archived_data(query: ArchiveQuery): List
+        +compress_archives(): bool
+        +manage_archive_lifecycle(): Dict
+    }
+    
+    class DataRetentionPolicy {
+        -hot_data_retention: int
+        -warm_data_retention: int
+        -cold_data_retention: int
+        
+        +apply_retention_policy(): Dict
+        +calculate_data_age(data: DataObject): int
+        +determine_storage_tier(age: int): StorageTier
+        +schedule_data_migration(): List[MigrationTask]
+    }
+    
+    StorageService --> BackupManager
+    StorageService --> ArchiveManager
+    StorageService --> DataRetentionPolicy
+....
+
+=== 📚 階層化ストレージ戦略
+
+[mermaid]
+....
+graph TB
+    subgraph "🔥 ホットデータ (< 1日)"
+        REDIS_HOT[Redis Cache<br/>リアルタイムアクセス]
+        DB_HOT[Primary DB<br/>アクティブデータ]
+    end
+    
+    subgraph "🌡️ ウォームデータ (1-30日)"
+        DB_WARM[Primary DB<br/>インデックス付き]
+        CACHE_WARM[Read-Only Cache<br/>クエリ最適化]
+    end
+    
+    subgraph "❄️ コールドデータ (30-90日)"
+        DB_COLD[Archive DB<br/>圧縮ストレージ]
+        FILE_COLD[Compressed Files<br/>JSON.gz形式]
+    end
+    
+    subgraph "🧊 フローズンデータ (> 90日)"
+        ARCHIVE[Deep Archive<br/>長期保存]
+        BACKUP[Backup Storage<br/>災害復旧用]
+    end
+    
+    %% データフロー
+    REDIS_HOT --> DB_HOT
+    DB_HOT --> DB_WARM
+    DB_WARM --> CACHE_WARM
+    
+    DB_WARM --> DB_COLD
+    CACHE_WARM --> FILE_COLD
+    
+    DB_COLD --> ARCHIVE
+    FILE_COLD --> BACKUP
+    
+    %% アクセスパターン
+    REDIS_HOT -.->|高頻度読み取り| CLIENT[Client Apps]
+    DB_HOT -.->|リアルタイム更新| CLIENT
+    CACHE_WARM -.->|分析クエリ| ANALYTICS[Analytics Engine]
+    FILE_COLD -.->|レポート生成| REPORTS[Report Generator]
+    
+    classDef hot fill:#ffebee
+    classDef warm fill:#fff3e0
+    classDef cold fill:#e8f5e8
+    classDef frozen fill:#f3e5f5
+    
+    class REDIS_HOT,DB_HOT hot
+    class DB_WARM,CACHE_WARM warm
+    class DB_COLD,FILE_COLD cold
+    class ARCHIVE,BACKUP frozen
+....
+
+=== 💽 効率的データ保存
+
+**バッチ保存実装**
+
+```python
+# backend/src/services/data/storage_service.py
+class StorageService:
+    def save_behavior_logs_batch(self, logs_data: List[Dict[str, Any]]) -> bool:
+        """行動ログのバッチ保存"""
+        if not logs_data:
+            return True
+        
+        try:
+            db.session.begin()
+            
+            logs_to_save = []
+            for log_data in logs_data:
+                behavior_log = BehaviorLog.create_log(**log_data)
+                logs_to_save.append(behavior_log)
+            
+            # バッチ保存で性能向上
+            db.session.add_all(logs_to_save)
+            db.session.commit()
+            
+            logger.debug(f"Batch saved {len(logs_to_save)} behavior logs")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error in batch save behavior logs: {e}")
+            db.session.rollback()
+            return False
+    
+    def compress_old_data(self, days_threshold: int = 30) -> bool:
+        """古いデータの圧縮アーカイブ"""
+        try:
+            cutoff_date = datetime.utcnow() - timedelta(days=days_threshold)
+            
+            # 古い行動ログを取得
+            old_logs = BehaviorLog.query.filter(
+                BehaviorLog.created_at < cutoff_date
+            ).all()
+            
+            if not old_logs:
+                logger.info("No old logs to compress")
+                return True
+            
+            # 日付別にグループ化
+            logs_by_date = {}
+            for log in old_logs:
+                date_key = log.created_at.date().isoformat()
+                if date_key not in logs_by_date:
+                    logs_by_date[date_key] = []
+                logs_by_date[date_key].append(log.to_dict())
+            
+            # 日付別に圧縮保存
+            compressed_count = 0
+            for date_key, logs in logs_by_date.items():
+                if self._compress_logs_for_date(date_key, logs):
+                    compressed_count += len(logs)
+            
+            logger.info(f"Compressed {compressed_count} old logs")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error compressing old data: {e}")
+            return False
+```
+
+=== 🔄 バックアップ・復旧システム
+
+```python
+# backend/src/services/data/backup_manager.py
+class BackupManager:
+    def create_incremental_backup(self) -> bool:
+        """増分バックアップの作成"""
+        try:
+            # 最後のバックアップ以降の変更データを特定
+            last_backup_time = self._get_last_backup_timestamp()
+            
+            # 変更されたデータを取得
+            changed_logs = BehaviorLog.query.filter(
+                BehaviorLog.updated_at > last_backup_time
+            ).all()
+            
+            changed_analyses = AnalysisResult.query.filter(
+                AnalysisResult.updated_at > last_backup_time
+            ).all()
+            
+            # 増分バックアップデータの作成
+            backup_data = {
+                'backup_type': 'incremental',
+                'base_backup_id': self._get_latest_full_backup_id(),
+                'timestamp': datetime.utcnow().isoformat(),
+                'changed_logs': [log.to_dict() for log in changed_logs],
+                'changed_analyses': [analysis.to_dict() for analysis in changed_analyses],
+                'checksum': self._calculate_checksum(changed_logs + changed_analyses)
+            }
+            
+            # 圧縮保存
+            backup_file = self._save_compressed_backup(backup_data, 'incremental')
+            
+            # バックアップメタデータの更新
+            self._update_backup_metadata(backup_file, backup_data)
+            
+            logger.info(f"Incremental backup created: {backup_file}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error creating incremental backup: {e}")
+            return False
+```
+
+== 📊 データ品質管理
+
+=== 🔍 データ検証システム
+
+[mermaid]
+....
+flowchart TD
+    INPUT[入力データ] --> SCHEMA[スキーマ検証]
+    
+    SCHEMA --> VALID{検証結果}
+    VALID -->|Pass| INTEGRITY[整合性チェック]
+    VALID -->|Fail| REJECT[データ拒否]
+    
+    INTEGRITY --> CONSISTENT{整合性OK?}
+    CONSISTENT -->|Yes| QUALITY[品質評価]
+    CONSISTENT -->|No| REPAIR[データ修復]
+    
+    REPAIR --> REPAIRABLE{修復可能?}
+    REPAIRABLE -->|Yes| QUALITY
+    REPAIRABLE -->|No| FLAG[品質フラグ付与]
+    
+    QUALITY --> SCORE[品質スコア算出]
+    SCORE --> THRESHOLD{閾値チェック}
+    
+    THRESHOLD -->|Pass| ACCEPT[データ受容]
+    THRESHOLD -->|Fail| FLAG
+    
+    REJECT --> LOG[エラーログ]
+    FLAG --> ACCEPT
+    ACCEPT --> STORE[ストレージ保存]
+    
+    LOG --> MONITOR[監視アラート]
+    
+    classDef process fill:#e3f2fd
+    classDef decision fill:#fff3e0
+    classDef terminal fill:#e8f5e8
+    classDef error fill:#ffebee
+    
+    class SCHEMA,INTEGRITY,REPAIR,QUALITY,SCORE process
+    class VALID,CONSISTENT,REPAIRABLE,THRESHOLD decision
+    class ACCEPT,STORE terminal
+    class REJECT,LOG,MONITOR error
+....
+
+**データ品質評価実装**
+
+```python
+# backend/src/services/data/data_quality.py
+class DataQualityManager:
+    def __init__(self):
+        self.quality_rules = self._load_quality_rules()
+        self.quality_metrics = QualityMetrics()
+        
+    def evaluate_data_quality(self, data: Dict[str, Any]) -> QualityReport:
+        """データ品質の包括的評価"""
+        try:
+            report = QualityReport()
+            
+            # 1. 完全性チェック
+            completeness_score = self._check_completeness(data)
+            report.add_metric('completeness', completeness_score)
+            
+            # 2. 正確性チェック
+            accuracy_score = self._check_accuracy(data)
+            report.add_metric('accuracy', accuracy_score)
+            
+            # 3. 一貫性チェック
+            consistency_score = self._check_consistency(data)
+            report.add_metric('consistency', consistency_score)
+            
+            # 4. 適時性チェック
+            timeliness_score = self._check_timeliness(data)
+            report.add_metric('timeliness', timeliness_score)
+            
+            # 5. 妥当性チェック
+            validity_score = self._check_validity(data)
+            report.add_metric('validity', validity_score)
+            
+            # 総合品質スコア算出
+            overall_score = self._calculate_overall_score(report.metrics)
+            report.set_overall_score(overall_score)
+            
+            # 品質レベル判定
+            quality_level = self._determine_quality_level(overall_score)
+            report.set_quality_level(quality_level)
+            
+            return report
+            
+        except Exception as e:
+            logger.error(f"Error evaluating data quality: {e}")
+            return QualityReport(error=str(e))
+    
+    def _check_completeness(self, data: Dict[str, Any]) -> float:
+        """データ完全性チェック"""
+        required_fields = self.quality_rules.get('required_fields', [])
+        present_fields = [field for field in required_fields if field in data and data[field] is not None]
+        
+        if not required_fields:
+            return 1.0
+        
+        completeness = len(present_fields) / len(required_fields)
+        
+        # 重要フィールドの重み付け
+        weighted_score = 0.0
+        total_weight = 0.0
+        
+        for field in required_fields:
+            weight = self.quality_rules.get('field_weights', {}).get(field, 1.0)
+            total_weight += weight
+            
+            if field in data and data[field] is not None:
+                weighted_score += weight
+        
+        return weighted_score / total_weight if total_weight > 0 else 0.0
+```
+
+=== 📈 データ品質監視
+
+```python
+# backend/src/services/data/quality_monitor.py
+class QualityMonitor:
+    def __init__(self):
+        self.quality_thresholds = {
+            'critical': 0.95,  # 95%以上
+            'warning': 0.85,   # 85%以上
+            'acceptable': 0.70  # 70%以上
+        }
+        self.alert_manager = AlertManager()
+        
+    def monitor_continuous_quality(self, data_stream: Iterator[Dict]) -> None:
+        """継続的データ品質監視"""
+        quality_window = deque(maxlen=100)  # 直近100件の品質スコア
+        
+        for data in data_stream:
+            try:
+                # データ品質評価
+                quality_report = self.quality_manager.evaluate_data_quality(data)
+                quality_score = quality_report.overall_score
+                
+                quality_window.append(quality_score)
+                
+                # 閾値チェック
+                self._check_quality_thresholds(quality_score, data)
+                
+                # トレンド分析
+                if len(quality_window) >= 10:
+                    trend = self._analyze_quality_trend(quality_window)
+                    self._handle_quality_trend(trend)
+                
+                # 異常検知
+                if len(quality_window) >= 20:
+                    anomaly_score = self._detect_quality_anomaly(quality_window)
+                    if anomaly_score > 0.8:
+                        self._trigger_quality_alert('anomaly', {
+                            'anomaly_score': anomaly_score,
+                            'current_quality': quality_score,
+                            'data_sample': data
+                        })
+                
+            except Exception as e:
+                logger.error(f"Error in quality monitoring: {e}")
+                self._trigger_quality_alert('monitoring_error', {'error': str(e)})
+```
+
+== 🔄 データライフサイクル管理
+
+=== ⏰ 自動データライフサイクル
+
+[mermaid]
+....
+gantt
+    title データライフサイクル管理スケジュール
+    dateFormat X
+    axisFormat %d
+    
+    section リアルタイムデータ
+    データ収集     :active, collect, 0, 1
+    リアルタイム処理 :active, process, 0, 1
+    ホットストレージ :hot, 0, 1
+    
+    section データ移行
+    ウォーム移行   :warm, 1, 7
+    コールド移行   :cold, 7, 30
+    アーカイブ移行 :archive, 30, 90
+    
+    section データ保持
+    ホット保持    :crit, hot-retain, 0, 1
+    ウォーム保持  :warm-retain, 1, 30
+    コールド保持  :cold-retain, 30, 90
+    アーカイブ保持 :archive-retain, 90, 365
+    
+    section クリーンアップ
+    一時ファイル削除 :cleanup-temp, 0, 1
+    ログローテーション :cleanup-logs, 1, 7
+    古データ削除   :crit, cleanup-old, 365, 400
+....
+
+**ライフサイクル管理実装**
+
+```python
+# backend/src/services/data/lifecycle_manager.py
+class DataLifecycleManager:
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        self.retention_policy = self._load_retention_policy()
+        self.migration_scheduler = MigrationScheduler()
+        
+    async def apply_lifecycle_policies(self) -> Dict[str, Any]:
+        """データライフサイクルポリシーの適用"""
+        results = {
+            'migrations_completed': 0,
+            'data_deleted': 0,
+            'archives_created': 0,
+            'errors': []
+        }
+        
+        try:
+            # 1. データ移行の実行
+            migration_results = await self._execute_data_migrations()
+            results['migrations_completed'] = migration_results['completed']
+            
+            # 2. アーカイブ作成
+            archive_results = await self._create_scheduled_archives()
+            results['archives_created'] = archive_results['created']
+            
+            # 3. 期限切れデータの削除
+            deletion_results = await self._delete_expired_data()
+            results['data_deleted'] = deletion_results['deleted']
+            
+            # 4. ストレージ最適化
+            optimization_results = await self._optimize_storage()
+            results['storage_optimized'] = optimization_results['optimized_size']
+            
+            logger.info(f"Lifecycle policies applied: {results}")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error applying lifecycle policies: {e}")
+            results['errors'].append(str(e))
+            return results
+    
+    async def _execute_data_migrations(self) -> Dict[str, int]:
+        """データ階層間の移行実行"""
+        migrations = {
+            'hot_to_warm': 0,
+            'warm_to_cold': 0,
+            'cold_to_archive': 0,
+            'completed': 0
+        }
+        
+        try:
+            # ホット → ウォーム移行
+            hot_cutoff = datetime.utcnow() - timedelta(hours=24)
+            hot_data = await self._get_data_by_age('hot', hot_cutoff)
+            
+            for data_batch in self._batch_data(hot_data, 1000):
+                await self._migrate_data_batch(data_batch, 'hot', 'warm')
+                migrations['hot_to_warm'] += len(data_batch)
+            
+            # ウォーム → コールド移行
+            warm_cutoff = datetime.utcnow() - timedelta(days=30)
+            warm_data = await self._get_data_by_age('warm', warm_cutoff)
+            
+            for data_batch in self._batch_data(warm_data, 500):
+                await self._migrate_data_batch(data_batch, 'warm', 'cold')
+                migrations['warm_to_cold'] += len(data_batch)
+            
+            # コールド → アーカイブ移行
+            cold_cutoff = datetime.utcnow() - timedelta(days=90)
+            cold_data = await self._get_data_by_age('cold', cold_cutoff)
+            
+            for data_batch in self._batch_data(cold_data, 100):
+                await self._migrate_data_batch(data_batch, 'cold', 'archive')
+                migrations['cold_to_archive'] += len(data_batch)
+            
+            migrations['completed'] = (
+                migrations['hot_to_warm'] + 
+                migrations['warm_to_cold'] + 
+                migrations['cold_to_archive']
+            )
+            
+            return migrations
+            
+        except Exception as e:
+            logger.error(f"Error in data migrations: {e}")
+            return migrations
+```
+
+=== 🧹 自動クリーンアップ
+
+```python
+# backend/src/services/data/cleanup_service.py
+class CleanupService:
+    def __init__(self):
+        self.cleanup_rules = self._load_cleanup_rules()
+        self.safety_checks = SafetyChecks()
+        
+    async def execute_cleanup_cycle(self) -> CleanupReport:
+        """クリーンアップサイクルの実行"""
+        report = CleanupReport()
+        
+        try:
+            # 安全性チェック
+            if not await self.safety_checks.verify_system_state():
+                raise CleanupError("System not in safe state for cleanup")
+            
+            # 1. 一時ファイルの削除
+            temp_cleanup = await self._cleanup_temporary_files()
+            report.add_cleanup_result('temporary_files', temp_cleanup)
+            
+            # 2. 期限切れキャッシュの削除
+            cache_cleanup = await self._cleanup_expired_cache()
+            report.add_cleanup_result('expired_cache', cache_cleanup)
+            
+            # 3. 古いログファイルの削除
+            log_cleanup = await self._cleanup_old_logs()
+            report.add_cleanup_result('old_logs', log_cleanup)
+            
+            # 4. 孤立データの削除
+            orphan_cleanup = await self._cleanup_orphaned_data()
+            report.add_cleanup_result('orphaned_data', orphan_cleanup)
+            
+            # 5. 重複データの除去
+            duplicate_cleanup = await self._cleanup_duplicate_data()
+            report.add_cleanup_result('duplicate_data', duplicate_cleanup)
+            
+            # クリーンアップ統計の更新
+            await self._update_cleanup_statistics(report)
+            
+            logger.info(f"Cleanup cycle completed: {report.summary}")
+            return report
+            
+        except Exception as e:
+            logger.error(f"Error in cleanup cycle: {e}")
+            report.add_error(str(e))
+            return report
+```
+
+== 📈 パフォーマンス最適化
+
+=== ⚡ データアクセス最適化
+
+[mermaid]
+....
+graph LR
+    subgraph "📊 クエリ最適化"
+        INDEX[インデックス戦略]
+        PARTITION[パーティショニング]
+        CACHE[クエリキャッシュ]
+    end
+    
+    subgraph "💾 ストレージ最適化"
+        COMPRESS[データ圧縮]
+        BATCH[バッチ処理]
+        ASYNC[非同期処理]
+    end
+    
+    subgraph "🔄 キャッシュ戦略"
+        L1[L1: アプリケーション]
+        L2[L2: Redis]
+        L3[L3: データベース]
+    end
+    
+    INDEX --> PARTITION
+    PARTITION --> CACHE
+    
+    COMPRESS --> BATCH
+    BATCH --> ASYNC
+    
+    L1 --> L2
+    L2 --> L3
+    
+    CACHE -.-> L1
+    ASYNC -.-> L2
+    
+    classDef query fill:#e3f2fd
+    classDef storage fill:#e8f5e8
+    classDef cache fill:#fff3e0
+    
+    class INDEX,PARTITION,CACHE query
+    class COMPRESS,BATCH,ASYNC storage
+    class L1,L2,L3 cache
+....
+
+**パフォーマンス監視実装**
+
+```python
+# backend/src/services/data/performance_monitor.py
+class DataPerformanceMonitor:
+    def __init__(self):
+        self.metrics_collector = MetricsCollector()
+        self.performance_analyzer = PerformanceAnalyzer()
+        
+    async def monitor_data_operations(self) -> PerformanceReport:
+        """データ操作のパフォーマンス監視"""
+        report = PerformanceReport()
+        
+        try:
+            # 1. データベースパフォーマンス
+            db_metrics = await self._collect_database_metrics()
+            report.add_section('database', db_metrics)
+            
+            # 2. キャッシュパフォーマンス
+            cache_metrics = await self._collect_cache_metrics()
+            report.add_section('cache', cache_metrics)
+            
+            # 3. ストレージI/O パフォーマンス
+            io_metrics = await self._collect_io_metrics()
+            report.add_section('storage_io', io_metrics)
+            
+            # 4. クエリパフォーマンス
+            query_metrics = await self._collect_query_metrics()
+            report.add_section('queries', query_metrics)
+            
+            # 5. 全体的なスループット
+            throughput_metrics = await self._collect_throughput_metrics()
+            report.add_section('throughput', throughput_metrics)
+            
+            # パフォーマンス分析
+            analysis = await self.performance_analyzer.analyze_report(report)
+            report.set_analysis(analysis)
+            
+            # 最適化推奨事項
+            recommendations = await self._generate_optimization_recommendations(report)
+            report.set_recommendations(recommendations)
+            
+            return report
+            
+        except Exception as e:
+            logger.error(f"Error monitoring data performance: {e}")
+            return PerformanceReport(error=str(e))
+```
+
+== 🔒 データセキュリティ
+
+=== 🛡️ セキュリティ実装
+
+```python
+# backend/src/services/data/security_manager.py
+class DataSecurityManager:
+    def __init__(self):
+        self.encryption_service = EncryptionService()
+        self.access_control = AccessControlManager()
+        self.audit_logger = AuditLogger()
+        
+    async def secure_data_operation(self, 
+                                  operation: str, 
+                                  data: Dict[str, Any],
+                                  user_context: UserContext) -> SecureOperationResult:
+        """安全なデータ操作の実行"""
+        try:
+            # 1. アクセス権限の確認
+            if not await self.access_control.check_permission(user_context, operation):
+                raise UnauthorizedError(f"User not authorized for operation: {operation}")
+            
+            # 2. データの機密性チェック
+            sensitivity_level = self._classify_data_sensitivity(data)
+            
+            # 3. 暗号化の適用
+            if sensitivity_level >= SensitivityLevel.CONFIDENTIAL:
+                encrypted_data = await self.encryption_service.encrypt_data(data)
+            else:
+                encrypted_data = data
+            
+            # 4. 操作の実行
+            result = await self._execute_secure_operation(operation, encrypted_data)
+            
+            # 5. 監査ログの記録
+            await self.audit_logger.log_data_operation({
+                'operation': operation,
+                'user': user_context.user_id,
+                'timestamp': datetime.utcnow(),
+                'data_size': len(str(data)),
+                'sensitivity_level': sensitivity_level.value,
+                'success': True
+            })
+            
+            return SecureOperationResult(success=True, result=result)
+            
+        except Exception as e:
+            # エラーログの記録
+            await self.audit_logger.log_security_event({
+                'event_type': 'data_operation_failed',
+                'operation': operation,
+                'user': user_context.user_id,
+                'error': str(e),
+                'timestamp': datetime.utcnow()
+            })
+            
+            raise SecurityError(f"Secure data operation failed: {e}")
+```
+
+== 📊 監視とアラート
+
+=== 📈 データ健全性監視
+
+```python
+# backend/src/services/data/health_monitor.py
+class DataHealthMonitor:
+    def __init__(self):
+        self.health_checks = self._initialize_health_checks()
+        self.alert_thresholds = self._load_alert_thresholds()
+        
+    async def perform_comprehensive_health_check(self) -> HealthReport:
+        """包括的なデータ健全性チェック"""
+        health_report = HealthReport()
+        
+        try:
+            # 1. データベース健全性
+            db_health = await self._check_database_health()
+            health_report.add_check('database', db_health)
+            
+            # 2. ストレージ健全性
+            storage_health = await self._check_storage_health()
+            health_report.add_check('storage', storage_health)
+            
+            # 3. データ品質健全性
+            quality_health = await self._check_data_quality_health()
+            health_report.add_check('data_quality', quality_health)
+            
+            # 4. バックアップ健全性
+            backup_health = await self._check_backup_health()
+            health_report.add_check('backup', backup_health)
+            
+            # 5. パフォーマンス健全性
+            performance_health = await self._check_performance_health()
+            health_report.add_check('performance', performance_health)
+            
+            # 全体的な健全性スコアの算出
+            overall_score = health_report.calculate_overall_score()
+            health_report.set_overall_score(overall_score)
+            
+            # アラートの生成
+            alerts = await self._generate_health_alerts(health_report)
+            health_report.set_alerts(alerts)
+            
+            return health_report
+            
+        except Exception as e:
+            logger.error(f"Error in comprehensive health check: {e}")
+            return HealthReport(error=str(e))
+```
+
+== 📚 関連ドキュメント・リソース
+
+=== 📖 参照ドキュメント
+
+* **<<database-schema>>**: データベース設計詳細
+* **<<behavior-analysis>>**: 行動分析データ仕様
+* **<<performance-optimization>>**: パフォーマンス最適化
+* **<<configuration-guide>>**: データ管理設定
+
+=== 🔗 外部リソース
+
+* **Redis Documentation**: https://redis.io/documentation
+* **SQLAlchemy ORM**: https://docs.sqlalchemy.org/
+* **Data Quality Framework**: https://github.com/great-expectations/great_expectations
+* **Backup Best Practices**: https://www.postgresql.org/docs/current/backup.html
+
+=== 🛠️ 開発支援ツール
+
+```bash
+# データ品質チェック
+python scripts/check_data_quality.py --days 7
+
+# バックアップ作成
+python scripts/create_backup.py --type full
+
+# ストレージ統計
+python scripts/storage_stats.py --format json
+
+# データクリーンアップ
+python scripts/cleanup_data.py --dry-run
+```
+
+---
+
+**📞 Contact**: team@kanshichan.dev +
+**🔗 Repository**: https://github.com/kanshichan/backend +
+**📅 Last Updated**: 2024-12-27

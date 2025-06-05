@@ -1,0 +1,1120 @@
+= 📊 監視ちゃん(KanshiChan) 運用・監視
+:toc: left
+:toc-title: 目次
+:toclevels: 3
+:numbered:
+:source-highlighter: highlight.js
+:icons: font
+:doctype: book
+:author: KanshiChan Development Team
+:email: team@kanshichan.dev
+:revnumber: 1.0
+:revdate: {docdate}
+:experimental:
+
+[NOTE]
+====
+📋 **ドキュメント情報**
+
+* **作成者**: KanshiChan Development Team
+* **最終更新日**: {docdate}
+* **対象読者**: 運用エンジニア、システムエンジニア、インフラエンジニア
+* **前提知識**: システム監視、ログ分析、パフォーマンス管理
+* **関連ドキュメント**: <<performance-optimization.adoc>>, <<scalability-design.adoc>>, <<troubleshooting-guide.adoc>>
+====
+
+== 📖 概要
+
+監視ちゃん（KanshiChan）の本番運用における監視・保守ガイドです。
+システム安定性、パフォーマンス最適化、障害対応のための包括的な運用手順を提供します。
+
+=== 🎯 運用目標
+
+* **可用性**: 99.9%のサービス稼働率維持
+* **パフォーマンス**: レスポンス時間2秒以内（95%ile）
+* **セキュリティ**: セキュリティインシデント零件数
+* **効率性**: 障害対応時間30分以内平均
+
+== 🏗️ 監視アーキテクチャ
+
+=== システム監視全体構成
+
+[mermaid]
+....
+graph TB
+    subgraph "アプリケーション層"
+        APP[KanshiChan Application<br/>Flask + WebSocket]
+        AI[AI Processing<br/>YOLO + MediaPipe]
+        TTS[TTS Service<br/>Zonos + Audio]
+    end
+    
+    subgraph "メトリクス収集"
+        PROM[Prometheus<br/>メトリクス収集]
+        NODE[Node Exporter<br/>システムメトリクス]
+        CUSTOM[Custom Metrics<br/>アプリケーション固有]
+    end
+    
+    subgraph "ログ管理"
+        FLUENT[Fluentd<br/>ログ収集]
+        ELASTIC[Elasticsearch<br/>ログ保存・検索]
+        KIBANA[Kibana<br/>ログ可視化]
+    end
+    
+    subgraph "監視・アラート"
+        GRAFANA[Grafana<br/>ダッシュボード]
+        ALERT[AlertManager<br/>アラート管理]
+        SLACK[Slack/Email<br/>通知]
+    end
+    
+    subgraph "ヘルスチェック"
+        HEALTH[Health Checks<br/>エンドポイント監視]
+        UPTIME[Uptime Monitoring<br/>外部監視]
+    end
+    
+    APP --> PROM
+    AI --> PROM
+    TTS --> PROM
+    
+    APP --> FLUENT
+    AI --> FLUENT
+    TTS --> FLUENT
+    
+    NODE --> PROM
+    CUSTOM --> PROM
+    
+    FLUENT --> ELASTIC
+    ELASTIC --> KIBANA
+    
+    PROM --> GRAFANA
+    PROM --> ALERT
+    ALERT --> SLACK
+    
+    APP --> HEALTH
+    HEALTH --> UPTIME
+....
+
+== 📊 システム監視項目
+
+=== 主要監視メトリクス
+
+**アプリケーション監視**
+```yaml
+# monitoring/app_metrics.yml
+application_metrics:
+  performance:
+    - name: "request_duration_seconds"
+      description: "HTTPリクエスト処理時間"
+      type: "histogram"
+      labels: ["method", "endpoint", "status"]
+      targets:
+        p95: "< 2.0s"
+        p99: "< 5.0s"
+        
+    - name: "active_connections"
+      description: "アクティブWebSocket接続数"
+      type: "gauge"
+      targets:
+        normal: "< 1000"
+        warning: "< 1500"
+        critical: "< 2000"
+        
+  ai_processing:
+    - name: "ai_inference_duration_seconds"
+      description: "AI推論処理時間"
+      type: "histogram"
+      labels: ["model_type", "gpu_used"]
+      targets:
+        yolo_inference: "< 0.1s"
+        mediapipe_inference: "< 0.05s"
+        
+    - name: "detection_accuracy"
+      description: "検出精度"
+      type: "gauge"
+      labels: ["detection_type"]
+      targets:
+        person_detection: "> 0.95"
+        smartphone_detection: "> 0.90"
+        
+  memory_usage:
+    - name: "memory_usage_bytes"
+      description: "メモリ使用量"
+      type: "gauge"
+      targets:
+        warning: "< 8GB"
+        critical: "< 12GB"
+        
+    - name: "gpu_memory_usage_bytes"
+      description: "GPU メモリ使用量"
+      type: "gauge"
+      targets:
+        warning: "< 6GB"
+        critical: "< 8GB"
+```
+
+**システムレベル監視**
+```python
+# src/monitoring/system_metrics.py
+import psutil
+import prometheus_client
+from typing import Dict, List
+import GPUtil
+import time
+
+class SystemMetricsCollector:
+    """システムメトリクス収集"""
+    
+    def __init__(self):
+        # Prometheus メトリクス定義
+        self.cpu_usage = prometheus_client.Gauge(
+            'system_cpu_usage_percent', 'CPU使用率'
+        )
+        self.memory_usage = prometheus_client.Gauge(
+            'system_memory_usage_bytes', 'メモリ使用量'
+        )
+        self.disk_usage = prometheus_client.Gauge(
+            'system_disk_usage_percent', 'ディスク使用率', ['device']
+        )
+        self.gpu_usage = prometheus_client.Gauge(
+            'system_gpu_usage_percent', 'GPU使用率', ['gpu_id']
+        )
+        self.network_io = prometheus_client.Counter(
+            'system_network_io_bytes_total', 'ネットワークI/O', ['direction']
+        )
+        
+    def collect_metrics(self) -> Dict[str, float]:
+        """メトリクス収集メイン処理"""
+        metrics = {}
+        
+        # CPU使用率
+        cpu_percent = psutil.cpu_percent(interval=1)
+        self.cpu_usage.set(cpu_percent)
+        metrics['cpu_usage'] = cpu_percent
+        
+        # メモリ使用量
+        memory = psutil.virtual_memory()
+        self.memory_usage.set(memory.used)
+        metrics['memory_usage_percent'] = memory.percent
+        metrics['memory_available_gb'] = memory.available / (1024**3)
+        
+        # ディスク使用率
+        for partition in psutil.disk_partitions():
+            try:
+                disk_usage = psutil.disk_usage(partition.mountpoint)
+                usage_percent = (disk_usage.used / disk_usage.total) * 100
+                self.disk_usage.labels(device=partition.device).set(usage_percent)
+                metrics[f'disk_usage_{partition.device}'] = usage_percent
+            except PermissionError:
+                continue
+                
+        # GPU使用率
+        try:
+            gpus = GPUtil.getGPUs()
+            for gpu in gpus:
+                self.gpu_usage.labels(gpu_id=gpu.id).set(gpu.load * 100)
+                metrics[f'gpu_{gpu.id}_usage'] = gpu.load * 100
+                metrics[f'gpu_{gpu.id}_memory'] = gpu.memoryUsed
+        except Exception as e:
+            logger.warning(f"GPU metrics collection failed: {e}")
+            
+        # ネットワークI/O
+        network_io = psutil.net_io_counters()
+        self.network_io.labels(direction='sent').inc(network_io.bytes_sent)
+        self.network_io.labels(direction='recv').inc(network_io.bytes_recv)
+        
+        return metrics
+
+class ApplicationMetricsCollector:
+    """アプリケーションメトリクス収集"""
+    
+    def __init__(self, config_manager):
+        self.config_manager = config_manager
+        
+        # カスタムメトリクス
+        self.detection_count = prometheus_client.Counter(
+            'kanshichan_detections_total', 
+            '検出回数', 
+            ['detection_type', 'confidence_level']
+        )
+        
+        self.processing_time = prometheus_client.Histogram(
+            'kanshichan_processing_seconds',
+            '処理時間',
+            ['operation_type']
+        )
+        
+        self.error_count = prometheus_client.Counter(
+            'kanshichan_errors_total',
+            'エラー発生回数',
+            ['error_type', 'severity']
+        )
+        
+    def record_detection(self, detection_type: str, confidence: float):
+        """検出イベント記録"""
+        confidence_level = 'high' if confidence > 0.8 else 'medium' if confidence > 0.5 else 'low'
+        self.detection_count.labels(
+            detection_type=detection_type,
+            confidence_level=confidence_level
+        ).inc()
+        
+    def record_processing_time(self, operation: str, duration: float):
+        """処理時間記録"""
+        self.processing_time.labels(operation_type=operation).observe(duration)
+        
+    def record_error(self, error_type: str, severity: str):
+        """エラー記録"""
+        self.error_count.labels(error_type=error_type, severity=severity).inc()
+```
+
+=== パフォーマンス監視
+
+**リアルタイムパフォーマンス分析**
+```python
+# src/monitoring/performance_analyzer.py
+import asyncio
+import time
+from typing import Dict, List, Any
+from dataclasses import dataclass
+from collections import deque
+import numpy as np
+
+@dataclass
+class PerformanceSnapshot:
+    """パフォーマンススナップショット"""
+    timestamp: float
+    cpu_usage: float
+    memory_usage: float
+    gpu_usage: float
+    active_connections: int
+    avg_response_time: float
+    detection_fps: float
+    error_rate: float
+
+class PerformanceAnalyzer:
+    """パフォーマンス分析器"""
+    
+    def __init__(self):
+        self.snapshots = deque(maxlen=1440)  # 24時間分（1分間隔）
+        self.thresholds = {
+            'cpu_warning': 80.0,
+            'cpu_critical': 95.0,
+            'memory_warning': 85.0,
+            'memory_critical': 95.0,
+            'response_time_warning': 2.0,
+            'response_time_critical': 5.0,
+            'error_rate_warning': 0.01,
+            'error_rate_critical': 0.05
+        }
+        
+    async def analyze_performance(self) -> Dict[str, Any]:
+        """パフォーマンス分析"""
+        current_snapshot = await self._collect_current_snapshot()
+        self.snapshots.append(current_snapshot)
+        
+        analysis = {
+            'current': self._analyze_current_performance(current_snapshot),
+            'trends': self._analyze_trends(),
+            'alerts': self._generate_alerts(current_snapshot),
+            'recommendations': self._generate_recommendations()
+        }
+        
+        return analysis
+        
+    def _analyze_current_performance(self, snapshot: PerformanceSnapshot) -> Dict:
+        """現在のパフォーマンス分析"""
+        
+        # パフォーマンススコア計算
+        cpu_score = max(0, 100 - snapshot.cpu_usage)
+        memory_score = max(0, 100 - snapshot.memory_usage)
+        response_score = max(0, 100 - (snapshot.avg_response_time * 50))
+        error_score = max(0, 100 - (snapshot.error_rate * 10000))
+        
+        overall_score = np.mean([cpu_score, memory_score, response_score, error_score])
+        
+        return {
+            'overall_score': round(overall_score, 2),
+            'cpu_score': round(cpu_score, 2),
+            'memory_score': round(memory_score, 2),
+            'response_score': round(response_score, 2),
+            'error_score': round(error_score, 2),
+            'performance_level': self._classify_performance(overall_score)
+        }
+        
+    def _analyze_trends(self) -> Dict:
+        """トレンド分析"""
+        if len(self.snapshots) < 10:
+            return {'status': 'insufficient_data'}
+            
+        recent_snapshots = list(self.snapshots)[-60:]  # 直近1時間
+        
+        # CPU使用率トレンド
+        cpu_values = [s.cpu_usage for s in recent_snapshots]
+        cpu_trend = np.polyfit(range(len(cpu_values)), cpu_values, 1)[0]
+        
+        # メモリ使用率トレンド
+        memory_values = [s.memory_usage for s in recent_snapshots]
+        memory_trend = np.polyfit(range(len(memory_values)), memory_values, 1)[0]
+        
+        # レスポンス時間トレンド
+        response_values = [s.avg_response_time for s in recent_snapshots]
+        response_trend = np.polyfit(range(len(response_values)), response_values, 1)[0]
+        
+        return {
+            'cpu_trend': 'increasing' if cpu_trend > 1 else 'decreasing' if cpu_trend < -1 else 'stable',
+            'memory_trend': 'increasing' if memory_trend > 1 else 'decreasing' if memory_trend < -1 else 'stable',
+            'response_trend': 'degrading' if response_trend > 0.01 else 'improving' if response_trend < -0.01 else 'stable',
+            'prediction': self._predict_performance_issues(cpu_trend, memory_trend, response_trend)
+        }
+        
+    def _generate_alerts(self, snapshot: PerformanceSnapshot) -> List[Dict]:
+        """アラート生成"""
+        alerts = []
+        
+        # CPU アラート
+        if snapshot.cpu_usage > self.thresholds['cpu_critical']:
+            alerts.append({
+                'type': 'cpu_usage',
+                'severity': 'critical',
+                'message': f'CPU usage critical: {snapshot.cpu_usage:.1f}%',
+                'action': 'immediate_scaling_required'
+            })
+        elif snapshot.cpu_usage > self.thresholds['cpu_warning']:
+            alerts.append({
+                'type': 'cpu_usage',
+                'severity': 'warning',
+                'message': f'CPU usage high: {snapshot.cpu_usage:.1f}%',
+                'action': 'consider_scaling'
+            })
+            
+        # メモリアラート
+        if snapshot.memory_usage > self.thresholds['memory_critical']:
+            alerts.append({
+                'type': 'memory_usage',
+                'severity': 'critical',
+                'message': f'Memory usage critical: {snapshot.memory_usage:.1f}%',
+                'action': 'restart_required'
+            })
+            
+        # レスポンス時間アラート
+        if snapshot.avg_response_time > self.thresholds['response_time_critical']:
+            alerts.append({
+                'type': 'response_time',
+                'severity': 'critical',
+                'message': f'Response time critical: {snapshot.avg_response_time:.2f}s',
+                'action': 'performance_investigation_required'
+            })
+            
+        return alerts
+```
+
+== 📝 ログ分析手法
+
+=== ログ構造化と集中管理
+
+**ログ設定**
+```yaml
+# config/logging.yml
+logging:
+  version: 1
+  formatters:
+    structured:
+      format: '{"timestamp": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": "%(message)s", "module": "%(module)s", "function": "%(funcName)s", "line": %(lineno)d}'
+      
+  handlers:
+    console:
+      class: logging.StreamHandler
+      level: INFO
+      formatter: structured
+      stream: ext://sys.stdout
+      
+    file:
+      class: logging.handlers.RotatingFileHandler
+      level: DEBUG
+      formatter: structured
+      filename: /var/log/kanshichan/app.log
+      maxBytes: 100MB
+      backupCount: 10
+      
+    fluentd:
+      class: fluent.handler.FluentHandler
+      level: INFO
+      tag: kanshichan.application
+      host: localhost
+      port: 24224
+      
+  loggers:
+    kanshichan:
+      level: DEBUG
+      handlers: [console, file, fluentd]
+      propagate: false
+      
+  root:
+    level: WARNING
+    handlers: [console]
+```
+
+**ログ分析クエリ例**
+```json
+# Elasticsearch/Kibana クエリ例
+
+# エラー率分析
+{
+  "query": {
+    "bool": {
+      "filter": [
+        {"range": {"@timestamp": {"gte": "now-1h"}}},
+        {"term": {"level": "ERROR"}}
+      ]
+    }
+  },
+  "aggs": {
+    "error_count_per_minute": {
+      "date_histogram": {
+        "field": "@timestamp",
+        "interval": "1m"
+      }
+    },
+    "error_types": {
+      "terms": {
+        "field": "error_type.keyword",
+        "size": 10
+      }
+    }
+  }
+}
+
+# パフォーマンス分析
+{
+  "query": {
+    "bool": {
+      "filter": [
+        {"range": {"@timestamp": {"gte": "now-24h"}}},
+        {"exists": {"field": "response_time"}}
+      ]
+    }
+  },
+  "aggs": {
+    "avg_response_time": {
+      "avg": {"field": "response_time"}
+    },
+    "percentiles_response_time": {
+      "percentiles": {
+        "field": "response_time",
+        "percents": [50, 90, 95, 99]
+      }
+    }
+  }
+}
+```
+
+=== ログ分析自動化
+
+**異常検知システム**
+```python
+# src/monitoring/log_analyzer.py
+import re
+from typing import Dict, List, Any
+from datetime import datetime, timedelta
+import json
+from collections import defaultdict, Counter
+
+class LogAnalyzer:
+    """ログ分析システム"""
+    
+    def __init__(self, elasticsearch_client):
+        self.es = elasticsearch_client
+        self.error_patterns = self._load_error_patterns()
+        self.performance_thresholds = {
+            'slow_query': 1.0,  # 1秒以上
+            'high_cpu': 80.0,   # CPU 80%以上
+            'memory_leak': 0.1  # 10%/時間 増加
+        }
+        
+    async def analyze_recent_logs(self, hours: int = 1) -> Dict[str, Any]:
+        """直近ログ分析"""
+        
+        # ログ取得
+        logs = await self._fetch_logs(hours)
+        
+        # 各種分析実行
+        analysis = {
+            'error_analysis': self._analyze_errors(logs),
+            'performance_analysis': self._analyze_performance(logs),
+            'security_analysis': self._analyze_security_events(logs),
+            'anomaly_detection': self._detect_anomalies(logs),
+            'summary': self._generate_summary(logs)
+        }
+        
+        return analysis
+        
+    def _analyze_errors(self, logs: List[Dict]) -> Dict:
+        """エラー分析"""
+        error_logs = [log for log in logs if log.get('level') == 'ERROR']
+        
+        if not error_logs:
+            return {'status': 'no_errors', 'count': 0}
+            
+        # エラー分類
+        error_categories = defaultdict(list)
+        for log in error_logs:
+            category = self._categorize_error(log)
+            error_categories[category].append(log)
+            
+        # 頻発エラー特定
+        frequent_errors = self._identify_frequent_errors(error_logs)
+        
+        # 新規エラー検出
+        new_errors = self._detect_new_errors(error_logs)
+        
+        return {
+            'total_errors': len(error_logs),
+            'error_rate': len(error_logs) / len(logs) if logs else 0,
+            'categories': dict(error_categories),
+            'frequent_errors': frequent_errors,
+            'new_errors': new_errors,
+            'critical_errors': [log for log in error_logs if 'critical' in log.get('message', '').lower()]
+        }
+        
+    def _analyze_performance(self, logs: List[Dict]) -> Dict:
+        """パフォーマンス分析"""
+        perf_logs = [log for log in logs if 'response_time' in log or 'processing_time' in log]
+        
+        if not perf_logs:
+            return {'status': 'no_performance_data'}
+            
+        # レスポンス時間分析
+        response_times = [log.get('response_time', 0) for log in perf_logs if 'response_time' in log]
+        slow_requests = [log for log in perf_logs if log.get('response_time', 0) > self.performance_thresholds['slow_query']]
+        
+        # AI処理時間分析
+        ai_times = [log.get('ai_processing_time', 0) for log in perf_logs if 'ai_processing_time' in log]
+        
+        return {
+            'avg_response_time': np.mean(response_times) if response_times else 0,
+            'p95_response_time': np.percentile(response_times, 95) if response_times else 0,
+            'slow_requests_count': len(slow_requests),
+            'slow_requests_ratio': len(slow_requests) / len(perf_logs) if perf_logs else 0,
+            'avg_ai_processing_time': np.mean(ai_times) if ai_times else 0,
+            'performance_issues': self._identify_performance_issues(perf_logs)
+        }
+        
+    def _detect_anomalies(self, logs: List[Dict]) -> List[Dict]:
+        """異常検知"""
+        anomalies = []
+        
+        # 異常なエラー率
+        error_rate = len([log for log in logs if log.get('level') == 'ERROR']) / len(logs) if logs else 0
+        if error_rate > 0.05:  # 5%以上のエラー率
+            anomalies.append({
+                'type': 'high_error_rate',
+                'severity': 'warning',
+                'value': error_rate,
+                'description': f'Error rate is {error_rate:.2%}, above normal threshold'
+            })
+            
+        # 異常なレスポンス時間
+        response_times = [log.get('response_time', 0) for log in logs if 'response_time' in log]
+        if response_times:
+            avg_response = np.mean(response_times)
+            if avg_response > 2.0:  # 平均2秒以上
+                anomalies.append({
+                    'type': 'slow_response',
+                    'severity': 'warning',
+                    'value': avg_response,
+                    'description': f'Average response time is {avg_response:.2f}s, above normal threshold'
+                })
+                
+        # 異常なAI処理失敗
+        ai_failures = [log for log in logs if 'ai_error' in log.get('message', '').lower()]
+        if len(ai_failures) > 10:  # 10回以上のAI処理失敗
+            anomalies.append({
+                'type': 'ai_processing_failures',
+                'severity': 'critical',
+                'value': len(ai_failures),
+                'description': f'{len(ai_failures)} AI processing failures detected'
+            })
+            
+        return anomalies
+```
+
+== 🚨 アラート設定
+
+=== Prometheus AlertManager設定
+
+**アラートルール**
+```yaml
+# monitoring/alerting_rules.yml
+groups:
+- name: kanshichan_alerts
+  rules:
+  
+  # システムリソースアラート
+  - alert: HighCPUUsage
+    expr: system_cpu_usage_percent > 80
+    for: 5m
+    labels:
+      severity: warning
+      component: system
+    annotations:
+      summary: "High CPU usage detected"
+      description: "CPU usage is {{ $value }}% for more than 5 minutes"
+      
+  - alert: CriticalCPUUsage
+    expr: system_cpu_usage_percent > 95
+    for: 2m
+    labels:
+      severity: critical
+      component: system
+    annotations:
+      summary: "Critical CPU usage detected"
+      description: "CPU usage is {{ $value }}% for more than 2 minutes"
+      
+  - alert: HighMemoryUsage
+    expr: (system_memory_usage_bytes / system_memory_total_bytes) * 100 > 85
+    for: 5m
+    labels:
+      severity: warning
+      component: system
+    annotations:
+      summary: "High memory usage detected"
+      description: "Memory usage is {{ $value }}% for more than 5 minutes"
+      
+  # アプリケーションアラート
+  - alert: HighErrorRate
+    expr: rate(kanshichan_errors_total[5m]) > 0.1
+    for: 2m
+    labels:
+      severity: critical
+      component: application
+    annotations:
+      summary: "High error rate detected"
+      description: "Error rate is {{ $value }} errors/second"
+      
+  - alert: SlowResponse
+    expr: histogram_quantile(0.95, rate(kanshichan_request_duration_seconds_bucket[5m])) > 2
+    for: 3m
+    labels:
+      severity: warning
+      component: application
+    annotations:
+      summary: "Slow response time detected"
+      description: "95th percentile response time is {{ $value }}s"
+      
+  # AI処理アラート
+  - alert: AIProcessingFailure
+    expr: rate(kanshichan_ai_errors_total[5m]) > 0.05
+    for: 3m
+    labels:
+      severity: warning
+      component: ai
+    annotations:
+      summary: "AI processing failures detected"
+      description: "AI processing error rate is {{ $value }} errors/second"
+      
+  - alert: LowDetectionAccuracy
+    expr: kanshichan_detection_accuracy < 0.8
+    for: 10m
+    labels:
+      severity: warning
+      component: ai
+    annotations:
+      summary: "Detection accuracy degraded"
+      description: "Detection accuracy is {{ $value }}, below normal threshold"
+```
+
+=== 通知設定
+
+**AlertManager設定**
+```yaml
+# monitoring/alertmanager.yml
+global:
+  slack_api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+  
+route:
+  group_by: ['alertname', 'severity']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: 'kanshichan-alerts'
+  
+  routes:
+  - match:
+      severity: critical
+    receiver: 'critical-alerts'
+    repeat_interval: 15m
+    
+  - match:
+      component: ai
+    receiver: 'ai-team-alerts'
+    
+receivers:
+- name: 'kanshichan-alerts'
+  slack_configs:
+  - channel: '#kanshichan-monitoring'
+    username: 'AlertManager'
+    icon_emoji: ':warning:'
+    title: 'KanshiChan Alert'
+    text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}{{ end }}'
+    
+- name: 'critical-alerts'
+  slack_configs:
+  - channel: '#kanshichan-critical'
+    username: 'AlertManager'
+    icon_emoji: ':rotating_light:'
+    title: 'CRITICAL: KanshiChan Alert'
+    text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}{{ end }}'
+  email_configs:
+  - to: 'team@kanshichan.dev'
+    subject: 'CRITICAL: KanshiChan Alert'
+    body: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}{{ end }}'
+    
+- name: 'ai-team-alerts'
+  slack_configs:
+  - channel: '#kanshichan-ai'
+    username: 'AlertManager'
+    icon_emoji: ':robot_face:'
+    title: 'AI System Alert'
+    text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}{{ end }}'
+```
+
+== 📈 容量計画
+
+=== リソース使用量予測
+
+**容量計画モデル**
+```python
+# src/monitoring/capacity_planner.py
+import numpy as np
+import pandas as pd
+from typing import Dict, List, Tuple
+from datetime import datetime, timedelta
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
+
+class CapacityPlanner:
+    """容量計画システム"""
+    
+    def __init__(self, metrics_store):
+        self.metrics_store = metrics_store
+        self.growth_models = {}
+        
+    async def analyze_growth_trends(self, days: int = 30) -> Dict[str, Any]:
+        """成長トレンド分析"""
+        
+        # 過去のメトリクス取得
+        historical_data = await self._fetch_historical_metrics(days)
+        
+        # 各メトリクスの成長予測
+        predictions = {}
+        for metric_name in ['cpu_usage', 'memory_usage', 'storage_usage', 'user_count']:
+            trend = self._analyze_metric_trend(historical_data, metric_name)
+            prediction = self._predict_future_usage(trend, forecast_days=90)
+            predictions[metric_name] = prediction
+            
+        # 容量不足予警告
+        capacity_warnings = self._generate_capacity_warnings(predictions)
+        
+        return {
+            'current_usage': self._get_current_usage(),
+            'growth_predictions': predictions,
+            'capacity_warnings': capacity_warnings,
+            'recommended_actions': self._recommend_capacity_actions(predictions)
+        }
+        
+    def _analyze_metric_trend(self, data: pd.DataFrame, metric: str) -> Dict:
+        """メトリクストレンド分析"""
+        if metric not in data.columns:
+            return {'status': 'no_data'}
+            
+        values = data[metric].values
+        timestamps = np.arange(len(values))
+        
+        # 線形トレンド
+        linear_model = LinearRegression().fit(timestamps.reshape(-1, 1), values)
+        linear_slope = linear_model.coef_[0]
+        
+        # 多項式トレンド（2次）
+        poly_features = PolynomialFeatures(degree=2)
+        poly_timestamps = poly_features.fit_transform(timestamps.reshape(-1, 1))
+        poly_model = LinearRegression().fit(poly_timestamps, values)
+        
+        # 季節性分析
+        seasonality = self._detect_seasonality(values)
+        
+        return {
+            'linear_slope': linear_slope,
+            'linear_model': linear_model,
+            'polynomial_model': poly_model,
+            'seasonality': seasonality,
+            'current_value': values[-1] if len(values) > 0 else 0,
+            'avg_value': np.mean(values),
+            'volatility': np.std(values)
+        }
+        
+    def _predict_future_usage(self, trend: Dict, forecast_days: int) -> Dict:
+        """将来使用量予測"""
+        if trend.get('status') == 'no_data':
+            return {'status': 'no_prediction'}
+            
+        future_timestamps = np.arange(forecast_days)
+        
+        # 線形予測
+        linear_prediction = trend['linear_model'].predict(
+            future_timestamps.reshape(-1, 1)
+        )
+        
+        # 季節性を考慮した調整
+        if trend['seasonality']['detected']:
+            seasonal_adjustment = self._apply_seasonal_adjustment(
+                linear_prediction, trend['seasonality']
+            )
+            adjusted_prediction = linear_prediction + seasonal_adjustment
+        else:
+            adjusted_prediction = linear_prediction
+            
+        # 信頼区間計算
+        confidence_interval = self._calculate_confidence_interval(
+            adjusted_prediction, trend['volatility']
+        )
+        
+        return {
+            'predicted_values': adjusted_prediction.tolist(),
+            'confidence_interval': confidence_interval,
+            'peak_usage_day': int(np.argmax(adjusted_prediction)),
+            'predicted_peak_value': float(np.max(adjusted_prediction)),
+            'growth_rate_percent': trend['linear_slope'] * 100 if trend['linear_slope'] else 0
+        }
+        
+    def _generate_capacity_warnings(self, predictions: Dict) -> List[Dict]:
+        """容量警告生成"""
+        warnings = []
+        
+        capacity_limits = {
+            'cpu_usage': 90.0,      # 90% CPU使用率
+            'memory_usage': 85.0,   # 85% メモリ使用率
+            'storage_usage': 80.0,  # 80% ストレージ使用率
+            'user_count': 10000     # 10,000 ユーザー
+        }
+        
+        for metric, prediction in predictions.items():
+            if prediction.get('status') == 'no_prediction':
+                continue
+                
+            limit = capacity_limits.get(metric)
+            if not limit:
+                continue
+                
+            predicted_values = prediction['predicted_values']
+            peak_value = prediction['predicted_peak_value']
+            
+            # 容量制限に達する日を予測
+            days_to_limit = None
+            for day, value in enumerate(predicted_values):
+                if value >= limit:
+                    days_to_limit = day
+                    break
+                    
+            if days_to_limit is not None and days_to_limit < 60:  # 60日以内
+                severity = 'critical' if days_to_limit < 30 else 'warning'
+                warnings.append({
+                    'metric': metric,
+                    'severity': severity,
+                    'days_to_limit': days_to_limit,
+                    'predicted_value': predicted_values[days_to_limit],
+                    'limit': limit,
+                    'message': f'{metric} will reach {limit} limit in {days_to_limit} days'
+                })
+                
+        return warnings
+```
+
+== 🔧 定期メンテナンス
+
+=== メンテナンススケジュール
+
+**自動メンテナンスタスク**
+```python
+# src/maintenance/scheduled_tasks.py
+import asyncio
+import schedule
+import time
+from datetime import datetime
+from typing import Dict, List
+import shutil
+import os
+
+class MaintenanceScheduler:
+    """定期メンテナンススケジューラー"""
+    
+    def __init__(self, config_manager):
+        self.config_manager = config_manager
+        self.maintenance_log = []
+        
+    def setup_schedules(self):
+        """メンテナンススケジュール設定"""
+        
+        # 毎日のタスク
+        schedule.every().day.at("02:00").do(self.daily_maintenance)
+        schedule.every().day.at("03:00").do(self.log_rotation)
+        schedule.every().day.at("04:00").do(self.cache_cleanup)
+        
+        # 週次タスク
+        schedule.every().sunday.at("01:00").do(self.weekly_maintenance)
+        schedule.every().sunday.at("05:00").do(self.database_optimization)
+        
+        # 月次タスク
+        schedule.every().month.do(self.monthly_maintenance)
+        
+    async def daily_maintenance(self):
+        """日次メンテナンス"""
+        start_time = datetime.now()
+        tasks_completed = []
+        
+        try:
+            # ディスク使用量チェック
+            disk_usage = await self._check_disk_usage()
+            if disk_usage > 80:
+                await self._cleanup_old_files()
+                tasks_completed.append("disk_cleanup")
+                
+            # メモリリーク検知
+            memory_growth = await self._check_memory_growth()
+            if memory_growth > 10:  # 10%以上の増加
+                await self._restart_memory_intensive_services()
+                tasks_completed.append("memory_optimization")
+                
+            # パフォーマンス統計更新
+            await self._update_performance_statistics()
+            tasks_completed.append("performance_stats_update")
+            
+            # ヘルスチェック
+            health_status = await self._comprehensive_health_check()
+            tasks_completed.append("health_check")
+            
+            self._log_maintenance_completion("daily", tasks_completed, start_time)
+            
+        except Exception as e:
+            logger.error(f"Daily maintenance failed: {e}")
+            await self._send_maintenance_alert("daily_maintenance_failed", str(e))
+            
+    async def weekly_maintenance(self):
+        """週次メンテナンス"""
+        start_time = datetime.now()
+        tasks_completed = []
+        
+        try:
+            # ログアーカイブ
+            await self._archive_old_logs()
+            tasks_completed.append("log_archival")
+            
+            # データベース統計更新
+            await self._update_database_statistics()
+            tasks_completed.append("database_stats_update")
+            
+            # セキュリティスキャン
+            security_issues = await self._security_vulnerability_scan()
+            if security_issues:
+                await self._send_security_alert(security_issues)
+            tasks_completed.append("security_scan")
+            
+            # バックアップ検証
+            backup_status = await self._verify_backups()
+            tasks_completed.append("backup_verification")
+            
+            # パフォーマンストレンド分析
+            await self._analyze_weekly_performance_trends()
+            tasks_completed.append("performance_trend_analysis")
+            
+            self._log_maintenance_completion("weekly", tasks_completed, start_time)
+            
+        except Exception as e:
+            logger.error(f"Weekly maintenance failed: {e}")
+            await self._send_maintenance_alert("weekly_maintenance_failed", str(e))
+            
+    async def _check_disk_usage(self) -> float:
+        """ディスク使用量チェック"""
+        total, used, free = shutil.disk_usage("/")
+        usage_percent = (used / total) * 100
+        return usage_percent
+        
+    async def _cleanup_old_files(self):
+        """古いファイルクリーンアップ"""
+        cleanup_paths = [
+            ("/var/log/kanshichan/", 7),  # 7日以上のログ
+            ("/tmp/kanshichan/", 1),      # 1日以上の一時ファイル
+            ("/data/cache/", 3)           # 3日以上のキャッシュ
+        ]
+        
+        for path, days in cleanup_paths:
+            if os.path.exists(path):
+                await self._remove_old_files(path, days)
+                
+    async def _comprehensive_health_check(self) -> Dict:
+        """包括的ヘルスチェック"""
+        health_status = {
+            'overall': 'healthy',
+            'components': {}
+        }
+        
+        # API エンドポイントチェック
+        api_health = await self._check_api_endpoints()
+        health_status['components']['api'] = api_health
+        
+        # データベース接続チェック
+        db_health = await self._check_database_connection()
+        health_status['components']['database'] = db_health
+        
+        # AI モデルチェック
+        ai_health = await self._check_ai_models()
+        health_status['components']['ai_models'] = ai_health
+        
+        # ファイルシステムチェック
+        fs_health = await self._check_filesystem()
+        health_status['components']['filesystem'] = fs_health
+        
+        # 全体ステータス判定
+        component_statuses = [comp['status'] for comp in health_status['components'].values()]
+        if 'critical' in component_statuses:
+            health_status['overall'] = 'critical'
+        elif 'warning' in component_statuses:
+            health_status['overall'] = 'warning'
+            
+        return health_status
+```
+
+== 🎯 まとめ
+
+KanshiChanの運用・監視体制は以下の包括的システムで構成されています：
+
+=== 主要実装項目
+
+* ✅ **監視システム**: Prometheus + Grafana + AlertManager
+* ✅ **ログ管理**: Fluentd + Elasticsearch + Kibana
+* ✅ **パフォーマンス分析**: リアルタイム分析・トレンド予測
+* ✅ **アラート設定**: 階層化アラート・通知システム
+* ✅ **容量計画**: 成長予測・容量警告システム
+* ✅ **自動メンテナンス**: 日次/週次/月次タスク自動化
+
+=== 運用目標達成状況
+
+[cols="2,2,2", options="header"]
+|===
+|項目 |目標値 |実装機能
+|サービス可用性 |99.9% |✅ ヘルスチェック + 自動復旧
+|レスポンス時間 |< 2秒 (95%ile) |✅ リアルタイム監視 + アラート
+|障害対応時間 |< 30分平均 |✅ 自動検知 + 段階的エスカレーション
+|セキュリティ |インシデント零件数 |✅ ログ分析 + 異常検知
+|===
+
+=== 運用手順
+
+1. **日常監視**: Grafanaダッシュボードでのリアルタイム監視
+2. **アラート対応**: 重要度別エスカレーション手順
+3. **定期メンテナンス**: 自動化されたメンテナンススケジュール
+4. **容量管理**: 継続的な成長予測と拡張計画
+
+---
+
+**📞 Contact**: team@kanshichan.dev +
+**🔗 Repository**: https://github.com/kanshichan/backend +
+**📅 Last Updated**: {docdate} +
+**📝 Document Version**: {revnumber} 

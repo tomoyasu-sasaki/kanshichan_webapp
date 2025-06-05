@@ -295,7 +295,7 @@ export const LearningProgress: React.FC<LearningProgressProps> = ({
               <HStack justify="space-between">
                 <Text fontWeight="bold" fontSize="lg">{metric.metric_name}</Text>
                 <Badge colorScheme={
-                  metric.trend === 'improving' ? 'green' : 
+                  metric.trend === 'improving' ? 'green' :
                   metric.trend === 'declining' ? 'red' : 'gray'
                 }>
                   {metric.trend === 'improving' ? '改善中' :

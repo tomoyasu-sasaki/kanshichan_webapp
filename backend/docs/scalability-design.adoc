@@ -1,0 +1,1179 @@
+= 📈 監視ちゃん(KanshiChan) スケーラビリティ設計
+:toc: left
+:toc-title: 目次
+:toclevels: 3
+:numbered:
+:source-highlighter: highlight.js
+:icons: font
+:doctype: book
+:author: KanshiChan Development Team  
+:email: team@kanshichan.dev
+:revnumber: 1.0
+:revdate: {docdate}
+:experimental:
+
+[NOTE]
+====
+📋 **ドキュメント情報**
+
+* **作成者**: KanshiChan Development Team
+* **最終更新日**: {docdate}
+* **対象読者**: システムアーキテクト、テクニカルリード、インフラエンジニア
+* **前提知識**: システムアーキテクチャ、分散システム設計、パフォーマンス最適化
+* **関連ドキュメント**: <<backend-architecture.adoc>>, <<deployment-architecture.adoc>>, <<performance-optimization.adoc>>
+====
+
+== 📖 概要
+
+監視ちゃん（KanshiChan）バックエンドシステムのスケーラビリティ設計について詳述します。
+AI監視システムの性質上、リアルタイム処理とデータ量増加に対応する拡張可能なアーキテクチャが必要です。
+
+=== 🎯 設計目標
+
+* **パフォーマンス**: 1000同時接続での安定動作
+* **可用性**: 99.9%のサービス可用性確保  
+* **拡張性**: 水平・垂直スケーリング対応
+* **効率性**: リソース使用率最適化
+
+== 🏗️ スケーラビリティアーキテクチャ
+
+=== システム全体構成
+
+[mermaid]
+....
+graph TB
+    subgraph "Load Balancer Layer"
+        LB[Load Balancer<br/>nginx/HAProxy]
+    end
+    
+    subgraph "Application Layer (Auto Scaling)"
+        APP1[KanshiChan Instance 1<br/>Flask + WebSocket]
+        APP2[KanshiChan Instance 2<br/>Flask + WebSocket] 
+        APP3[KanshiChan Instance N<br/>Flask + WebSocket]
+    end
+    
+    subgraph "AI Processing Layer"
+        AI1[AI Worker 1<br/>YOLO + MediaPipe]
+        AI2[AI Worker 2<br/>YOLO + MediaPipe]
+        AI3[AI Worker N<br/>YOLO + MediaPipe]
+    end
+    
+    subgraph "Data Layer"
+        REDIS[(Redis Cluster<br/>Session + Cache)]
+        DB[(PostgreSQL<br/>Master-Slave)]
+        QUEUE[Message Queue<br/>Redis/RabbitMQ]
+    end
+    
+    subgraph "Storage Layer"
+        FILES[File Storage<br/>S3/MinIO]
+        LOGS[Log Storage<br/>ELK Stack]
+    end
+    
+    LB --> APP1
+    LB --> APP2  
+    LB --> APP3
+    
+    APP1 --> AI1
+    APP2 --> AI2
+    APP3 --> AI3
+    
+    APP1 --> REDIS
+    APP2 --> REDIS
+    APP3 --> REDIS
+    
+    APP1 --> DB
+    APP2 --> DB
+    APP3 --> DB
+    
+    AI1 --> QUEUE
+    AI2 --> QUEUE
+    AI3 --> QUEUE
+    
+    APP1 --> FILES
+    APP2 --> FILES
+    APP3 --> FILES
+    
+    APP1 --> LOGS
+    APP2 --> LOGS
+    APP3 --> LOGS
+....
+
+=== スケーリング戦略
+
+==== 🔄 水平スケーリング（Horizontal Scaling）
+
+**アプリケーション層**
+```yaml
+# docker-compose.scale.yml
+version: '3.8'
+services:
+  kanshichan-app:
+    build: .
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+    environment:
+      - REDIS_CLUSTER_NODES=redis-1:6379,redis-2:6379,redis-3:6379
+      - DATABASE_URL=postgresql://user:pass@db-cluster/kanshichan
+    networks:
+      - kanshichan-network
+
+  nginx-lb:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - kanshichan-app
+```
+
+**AI処理ワーカー**
+```python
+# src/services/ai_ml/distributed_ai_processor.py
+from typing import Dict, List
+import asyncio
+from dataclasses import dataclass
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
+
+@dataclass
+class AIWorkerNode:
+    """AI処理ワーカーノード情報"""
+    node_id: str
+    host: str
+    port: int
+    gpu_available: bool
+    current_load: float
+    max_capacity: int
+
+class DistributedAIProcessor:
+    """分散AI処理マネージャー"""
+    
+    def __init__(self, config_manager):
+        self.config_manager = config_manager
+        self.worker_nodes: List[AIWorkerNode] = []
+        self.load_balancer = AILoadBalancer()
+        
+    async def scale_workers(self, target_count: int):
+        """AI処理ワーカーの動的スケーリング"""
+        current_count = len(self.worker_nodes)
+        
+        if target_count > current_count:
+            # スケールアップ
+            for i in range(current_count, target_count):
+                await self._spawn_worker(f"ai-worker-{i}")
+        elif target_count < current_count:
+            # スケールダウン  
+            for i in range(target_count, current_count):
+                await self._terminate_worker(f"ai-worker-{i}")
+                
+        logger.info(f"AI workers scaled: {current_count} -> {target_count}")
+        
+    async def distribute_detection_task(self, frame_data: bytes) -> Dict:
+        """検出タスクの分散処理"""
+        optimal_worker = self.load_balancer.select_worker(self.worker_nodes)
+        
+        if not optimal_worker:
+            raise RuntimeError("No available AI workers")
+            
+        try:
+            result = await self._send_detection_request(optimal_worker, frame_data)
+            self._update_worker_metrics(optimal_worker, result)
+            return result
+        except Exception as e:
+            logger.error(f"Detection task failed on {optimal_worker.node_id}: {e}")
+            # フェイルオーバー処理
+            return await self._handle_worker_failure(optimal_worker, frame_data)
+```
+
+==== ⬆️ 垂直スケーリング（Vertical Scaling）
+
+**リソース自動調整**
+```python
+# src/core/resource_optimizer.py
+import psutil
+import torch
+from typing import Dict, Tuple
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
+
+class ResourceOptimizer:
+    """動的リソース最適化"""
+    
+    def __init__(self, config_manager):
+        self.config_manager = config_manager
+        self.cpu_threshold = 0.8
+        self.memory_threshold = 0.85
+        self.gpu_threshold = 0.9
+        
+    def optimize_resources(self) -> Dict[str, any]:
+        """現在のリソース使用状況に基づく最適化"""
+        metrics = self._collect_metrics()
+        optimizations = {}
+        
+        # CPU最適化
+        if metrics['cpu_usage'] > self.cpu_threshold:
+            optimizations['cpu'] = self._optimize_cpu_usage()
+            
+        # メモリ最適化  
+        if metrics['memory_usage'] > self.memory_threshold:
+            optimizations['memory'] = self._optimize_memory_usage()
+            
+        # GPU最適化
+        if metrics['gpu_usage'] > self.gpu_threshold:
+            optimizations['gpu'] = self._optimize_gpu_usage()
+            
+        return optimizations
+        
+    def _collect_metrics(self) -> Dict[str, float]:
+        """システムメトリクス収集"""
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory = psutil.virtual_memory()
+        
+        metrics = {
+            'cpu_usage': cpu_percent / 100.0,
+            'memory_usage': memory.percent / 100.0,
+            'memory_available_gb': memory.available / (1024**3)
+        }
+        
+        # GPU使用率（CUDA利用可能時）
+        if torch.cuda.is_available():
+            gpu_memory = torch.cuda.memory_stats()
+            allocated = gpu_memory.get('allocated_bytes.all.current', 0)
+            reserved = gpu_memory.get('reserved_bytes.all.current', 0)
+            metrics['gpu_usage'] = allocated / max(reserved, 1)
+            metrics['gpu_memory_gb'] = allocated / (1024**3)
+            
+        return metrics
+        
+    def _optimize_cpu_usage(self) -> Dict:
+        """CPU使用率最適化"""
+        return {
+            'action': 'reduce_concurrent_processing',
+            'max_workers': max(1, psutil.cpu_count() // 2),
+            'frame_skip_rate': min(5, self.config_manager.get('ai.frame_skip_rate', 2) + 1)
+        }
+        
+    def _optimize_memory_usage(self) -> Dict:
+        """メモリ使用量最適化"""
+        return {
+            'action': 'clear_caches',
+            'cache_size_reduction': 0.3,
+            'batch_size_reduction': 0.5
+        }
+        
+    def _optimize_gpu_usage(self) -> Dict:
+        """GPU使用量最適化"""
+        return {
+            'action': 'reduce_model_precision',
+            'use_fp16': True,
+            'reduce_batch_size': True
+        }
+```
+
+== 📊 パフォーマンス最適化
+
+=== AI処理最適化
+
+**モデル並列化**
+```python
+# src/core/parallel_detection.py
+import torch
+import torch.nn as nn
+from torch.nn.parallel import DataParallel, DistributedDataParallel
+from typing import List, Dict, Any
+import numpy as np
+
+class ParallelDetectionEngine:
+    """並列AI検出エンジン"""
+    
+    def __init__(self, model_path: str, device_ids: List[int] = None):
+        self.device_ids = device_ids or list(range(torch.cuda.device_count()))
+        self.model = self._load_and_parallelize_model(model_path)
+        self.batch_processor = BatchProcessor()
+        
+    def _load_and_parallelize_model(self, model_path: str):
+        """モデルロードと並列化設定"""
+        model = torch.load(model_path)
+        
+        if len(self.device_ids) > 1:
+            # マルチGPU並列処理
+            model = DataParallel(model, device_ids=self.device_ids)
+            logger.info(f"Model parallelized across GPUs: {self.device_ids}")
+        
+        return model.cuda() if torch.cuda.is_available() else model
+        
+    async def process_batch(self, frames: List[np.ndarray]) -> List[Dict]:
+        """バッチ処理による効率化"""
+        # フレームの前処理とバッチ化
+        batch_tensor = self.batch_processor.prepare_batch(frames)
+        
+        # 並列推論実行
+        with torch.no_grad():
+            results = self.model(batch_tensor)
+            
+        # 結果の後処理
+        return self.batch_processor.process_results(results, frames)
+
+class BatchProcessor:
+    """バッチ処理ユーティリティ"""
+    
+    def __init__(self, max_batch_size: int = 8):
+        self.max_batch_size = max_batch_size
+        
+    def prepare_batch(self, frames: List[np.ndarray]) -> torch.Tensor:
+        """フレームリストをバッチテンソルに変換"""
+        processed_frames = []
+        
+        for frame in frames:
+            # リサイズと正規化
+            processed_frame = self._preprocess_frame(frame)
+            processed_frames.append(processed_frame)
+            
+        return torch.stack(processed_frames)
+        
+    def _preprocess_frame(self, frame: np.ndarray) -> torch.Tensor:
+        """単一フレームの前処理"""
+        # OpenCVフレーム(BGR) -> RGB変換
+        frame_rgb = frame[:, :, ::-1]
+        
+        # テンソル変換と正規化
+        tensor = torch.from_numpy(frame_rgb).float()
+        tensor = tensor.permute(2, 0, 1) / 255.0
+        
+        return tensor
+```
+
+=== キャッシュ戦略
+
+**階層化キャッシュシステム**
+```python
+# src/utils/scalable_cache.py
+import redis
+import pickle
+import hashlib
+from typing import Any, Optional, Dict
+from dataclasses import dataclass
+import time
+
+@dataclass
+class CacheStats:
+    hits: int = 0
+    misses: int = 0
+    evictions: int = 0
+    
+    @property
+    def hit_rate(self) -> float:
+        total = self.hits + self.misses
+        return self.hits / total if total > 0 else 0.0
+
+class ScalableCache:
+    """スケーラブルな階層化キャッシュ"""
+    
+    def __init__(self, redis_cluster_nodes: List[str]):
+        # L1: ローカルメモリキャッシュ (最高速)
+        self.l1_cache: Dict[str, Any] = {}
+        self.l1_max_size = 1000
+        
+        # L2: Redis分散キャッシュ (中速・永続)
+        self.redis_cluster = redis.RedisCluster(
+            startup_nodes=[{"host": node.split(':')[0], "port": int(node.split(':')[1])} 
+                          for node in redis_cluster_nodes],
+            decode_responses=False
+        )
+        
+        self.stats = CacheStats()
+        
+    def get(self, key: str) -> Optional[Any]:
+        """階層化キャッシュからの取得"""
+        # L1キャッシュから試行
+        if key in self.l1_cache:
+            self.stats.hits += 1
+            return self.l1_cache[key]
+            
+        # L2 (Redis) から試行
+        try:
+            data = self.redis_cluster.get(key)
+            if data is not None:
+                value = pickle.loads(data)
+                # L1キャッシュに昇格
+                self._set_l1(key, value)
+                self.stats.hits += 1
+                return value
+        except Exception as e:
+            logger.warning(f"Redis cache error: {e}")
+            
+        self.stats.misses += 1
+        return None
+        
+    def set(self, key: str, value: Any, ttl: int = 3600):
+        """階層化キャッシュへの保存"""
+        # L1キャッシュに保存
+        self._set_l1(key, value)
+        
+        # L2 (Redis) に保存
+        try:
+            data = pickle.dumps(value)
+            self.redis_cluster.setex(key, ttl, data)
+        except Exception as e:
+            logger.warning(f"Redis cache set error: {e}")
+            
+    def _set_l1(self, key: str, value: Any):
+        """L1キャッシュ管理"""
+        if len(self.l1_cache) >= self.l1_max_size:
+            # LRU eviction (簡易実装)
+            oldest_key = next(iter(self.l1_cache))
+            del self.l1_cache[oldest_key]
+            self.stats.evictions += 1
+            
+        self.l1_cache[key] = value
+        
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """キャッシュ統計情報"""
+        return {
+            'l1_size': len(self.l1_cache),
+            'l1_max_size': self.l1_max_size,
+            'hit_rate': self.stats.hit_rate,
+            'total_hits': self.stats.hits,
+            'total_misses': self.stats.misses,
+            'evictions': self.stats.evictions
+        }
+```
+
+== 🔄 データベーススケーリング
+
+=== 読み取り分散（Read Replicas）
+
+**Master-Slave構成**
+```python
+# src/models/scalable_db.py
+import sqlalchemy as sa
+from sqlalchemy.orm import sessionmaker
+from typing import Dict, List
+import random
+
+class DatabaseRouter:
+    """データベース読み取り分散ルーター"""
+    
+    def __init__(self, config: Dict[str, str]):
+        self.master_url = config['master_url']
+        self.slave_urls = config['slave_urls']
+        
+        # Master (書き込み用)
+        self.master_engine = sa.create_engine(self.master_url, pool_size=20)
+        self.MasterSession = sessionmaker(bind=self.master_engine)
+        
+        # Slaves (読み取り用)
+        self.slave_engines = [
+            sa.create_engine(url, pool_size=10) for url in self.slave_urls
+        ]
+        self.SlaveSessions = [
+            sessionmaker(bind=engine) for engine in self.slave_engines
+        ]
+        
+    def get_read_session(self):
+        """読み取り用セッション（負荷分散）"""
+        session_class = random.choice(self.SlaveSessions)
+        return session_class()
+        
+    def get_write_session(self):
+        """書き込み用セッション（Master）"""
+        return self.MasterSession()
+        
+    def execute_read_query(self, query: str, params: Dict = None):
+        """読み取りクエリ実行"""
+        session = self.get_read_session()
+        try:
+            result = session.execute(sa.text(query), params or {})
+            return result.fetchall()
+        finally:
+            session.close()
+            
+    def execute_write_query(self, query: str, params: Dict = None):
+        """書き込みクエリ実行"""
+        session = self.get_write_session()
+        try:
+            result = session.execute(sa.text(query), params or {})
+            session.commit()
+            return result
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+```
+
+=== シャーディング戦略
+
+**データ分散アーキテクチャ**
+```python
+# src/models/sharding_manager.py
+import hashlib
+from typing import Dict, List, Any
+from dataclasses import dataclass
+
+@dataclass
+class ShardInfo:
+    shard_id: str
+    database_url: str
+    weight: float  # 負荷分散用重み
+
+class ShardingManager:
+    """データシャーディング管理"""
+    
+    def __init__(self, shard_configs: List[Dict]):
+        self.shards = [
+            ShardInfo(
+                shard_id=config['id'],
+                database_url=config['url'], 
+                weight=config.get('weight', 1.0)
+            ) for config in shard_configs
+        ]
+        
+    def get_shard_for_user(self, user_id: str) -> ShardInfo:
+        """ユーザーIDベースのシャード選択"""
+        hash_value = int(hashlib.md5(user_id.encode()).hexdigest(), 16)
+        shard_index = hash_value % len(self.shards)
+        return self.shards[shard_index]
+        
+    def get_shard_for_time(self, timestamp: int) -> ShardInfo:
+        """時間ベースのシャード選択（行動ログ用）"""
+        # 月単位でシャード分割
+        month_hash = timestamp // (30 * 24 * 3600)
+        shard_index = month_hash % len(self.shards)
+        return self.shards[shard_index]
+        
+    def execute_distributed_query(self, query: str, shard_filter=None) -> List[Any]:
+        """分散クエリ実行"""
+        results = []
+        target_shards = self.shards if shard_filter is None else shard_filter(self.shards)
+        
+        for shard in target_shards:
+            shard_result = self._execute_on_shard(shard, query)
+            results.extend(shard_result)
+            
+        return results
+```
+
+== 📈 監視とメトリクス
+
+=== パフォーマンス監視
+
+**リアルタイムメトリクス収集**
+```python
+# src/services/monitoring/scalability_monitor.py
+import asyncio
+import time
+from typing import Dict, List
+from dataclasses import dataclass, asdict
+import psutil
+import prometheus_client
+
+@dataclass
+class ScalabilityMetrics:
+    timestamp: float
+    instance_id: str
+    cpu_usage: float
+    memory_usage: float
+    gpu_usage: float
+    active_connections: int
+    ai_processing_queue_size: int
+    average_response_time: float
+    throughput_fps: float
+
+class ScalabilityMonitor:
+    """スケーラビリティ監視システム"""
+    
+    def __init__(self, instance_id: str):
+        self.instance_id = instance_id
+        self.metrics_history: List[ScalabilityMetrics] = []
+        self.max_history_size = 1000
+        
+        # Prometheus メトリクス
+        self.setup_prometheus_metrics()
+        
+    def setup_prometheus_metrics(self):
+        """Prometheusメトリクス初期化"""
+        self.cpu_gauge = prometheus_client.Gauge(
+            'kanshichan_cpu_usage', 'CPU使用率', ['instance_id']
+        )
+        self.memory_gauge = prometheus_client.Gauge(
+            'kanshichan_memory_usage', 'メモリ使用率', ['instance_id'] 
+        )
+        self.connections_gauge = prometheus_client.Gauge(
+            'kanshichan_active_connections', 'アクティブ接続数', ['instance_id']
+        )
+        self.response_time_histogram = prometheus_client.Histogram(
+            'kanshichan_response_time', 'レスポンス時間', ['instance_id']
+        )
+        
+    async def collect_metrics(self) -> ScalabilityMetrics:
+        """メトリクス収集"""
+        metrics = ScalabilityMetrics(
+            timestamp=time.time(),
+            instance_id=self.instance_id,
+            cpu_usage=psutil.cpu_percent(),
+            memory_usage=psutil.virtual_memory().percent,
+            gpu_usage=self._get_gpu_usage(),
+            active_connections=self._count_active_connections(),
+            ai_processing_queue_size=self._get_queue_size(),
+            average_response_time=self._calculate_avg_response_time(),
+            throughput_fps=self._calculate_throughput()
+        )
+        
+        # Prometheusメトリクス更新
+        self._update_prometheus_metrics(metrics)
+        
+        # 履歴管理
+        self._add_to_history(metrics)
+        
+        return metrics
+        
+    def _update_prometheus_metrics(self, metrics: ScalabilityMetrics):
+        """Prometheusメトリクス更新"""
+        self.cpu_gauge.labels(instance_id=self.instance_id).set(metrics.cpu_usage)
+        self.memory_gauge.labels(instance_id=self.instance_id).set(metrics.memory_usage)
+        self.connections_gauge.labels(instance_id=self.instance_id).set(metrics.active_connections)
+        
+    def get_scaling_recommendation(self) -> Dict[str, Any]:
+        """スケーリング推奨事項生成"""
+        if len(self.metrics_history) < 10:
+            return {'action': 'monitor', 'reason': 'insufficient_data'}
+            
+        recent_metrics = self.metrics_history[-10:]
+        avg_cpu = sum(m.cpu_usage for m in recent_metrics) / len(recent_metrics)
+        avg_memory = sum(m.memory_usage for m in recent_metrics) / len(recent_metrics)
+        
+        recommendations = []
+        
+        # スケールアップ推奨
+        if avg_cpu > 80:
+            recommendations.append({
+                'action': 'scale_up',
+                'target': 'cpu',
+                'reason': f'High CPU usage: {avg_cpu:.1f}%'
+            })
+            
+        if avg_memory > 85:
+            recommendations.append({
+                'action': 'scale_up', 
+                'target': 'memory',
+                'reason': f'High memory usage: {avg_memory:.1f}%'
+            })
+            
+        # スケールダウン推奨
+        if avg_cpu < 30 and avg_memory < 50:
+            recommendations.append({
+                'action': 'scale_down',
+                'reason': f'Low resource usage: CPU {avg_cpu:.1f}%, Memory {avg_memory:.1f}%'
+            })
+            
+        return {
+            'timestamp': time.time(),
+            'instance_id': self.instance_id,
+            'recommendations': recommendations
+        }
+```
+
+== 🚀 自動スケーリング実装
+
+=== Kubernetes Auto Scaling
+
+**HPA (Horizontal Pod Autoscaler) 設定**
+```yaml
+# k8s/hpa.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: kanshichan-hpa
+  namespace: kanshichan
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: kanshichan-app
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: kanshichan_active_connections
+      target:
+        type: AverageValue
+        averageValue: "100"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+```
+
+**カスタムスケーリングコントローラー**
+```python
+# src/services/scaling/auto_scaler.py
+import asyncio
+import kubernetes
+from typing import Dict, List
+import yaml
+
+class KubernetesAutoScaler:
+    """Kubernetes自動スケーリングコントローラー"""
+    
+    def __init__(self, namespace: str = 'kanshichan'):
+        self.namespace = namespace
+        self.k8s_client = kubernetes.client.ApiClient()
+        self.apps_v1 = kubernetes.client.AppsV1Api()
+        self.custom_metrics = kubernetes.client.CustomObjectsApi()
+        
+    async def monitor_and_scale(self):
+        """監視とスケーリングのメインループ"""
+        while True:
+            try:
+                metrics = await self._collect_cluster_metrics()
+                scaling_decision = self._analyze_scaling_needs(metrics)
+                
+                if scaling_decision['action'] != 'none':
+                    await self._execute_scaling(scaling_decision)
+                    
+                await asyncio.sleep(30)  # 30秒間隔で監視
+                
+            except Exception as e:
+                logger.error(f"Auto scaling error: {e}")
+                await asyncio.sleep(60)  # エラー時は1分待機
+                
+    async def _collect_cluster_metrics(self) -> Dict:
+        """クラスターメトリクス収集"""
+        # Pod メトリクス
+        pods = self.apps_v1.list_namespaced_deployment(self.namespace)
+        
+        # カスタムメトリクス収集
+        custom_metrics = await self._get_custom_metrics()
+        
+        return {
+            'pod_count': len(pods.items),
+            'average_cpu': custom_metrics.get('avg_cpu', 0),
+            'average_memory': custom_metrics.get('avg_memory', 0),
+            'total_connections': custom_metrics.get('total_connections', 0),
+            'queue_depth': custom_metrics.get('queue_depth', 0)
+        }
+        
+    def _analyze_scaling_needs(self, metrics: Dict) -> Dict:
+        """スケーリング必要性分析"""
+        current_pods = metrics['pod_count']
+        
+        # スケールアップ条件
+        if (metrics['average_cpu'] > 70 or 
+            metrics['average_memory'] > 80 or
+            metrics['total_connections'] > current_pods * 100):
+            return {
+                'action': 'scale_up',
+                'target_pods': min(10, current_pods + 2),
+                'reason': 'High resource usage or connections'
+            }
+            
+        # スケールダウン条件
+        if (metrics['average_cpu'] < 30 and 
+            metrics['average_memory'] < 50 and
+            metrics['total_connections'] < current_pods * 50):
+            return {
+                'action': 'scale_down',
+                'target_pods': max(2, current_pods - 1),
+                'reason': 'Low resource usage'
+            }
+            
+        return {'action': 'none'}
+        
+    async def _execute_scaling(self, decision: Dict):
+        """スケーリング実行"""
+        deployment_name = 'kanshichan-app'
+        target_replicas = decision['target_pods']
+        
+        try:
+            # Deployment更新
+            deployment = self.apps_v1.read_namespaced_deployment(
+                name=deployment_name, namespace=self.namespace
+            )
+            
+            deployment.spec.replicas = target_replicas
+            
+            self.apps_v1.patch_namespaced_deployment(
+                name=deployment_name,
+                namespace=self.namespace,
+                body=deployment
+            )
+            
+            logger.info(f"Scaled {deployment_name} to {target_replicas} replicas: {decision['reason']}")
+            
+        except Exception as e:
+            logger.error(f"Scaling execution failed: {e}")
+```
+
+== 📊 キャパシティプランニング
+
+=== リソース見積もり
+
+**同時接続数別リソース要件**
+[cols="2,2,2,2,2,2", options="header"]
+|===
+|接続数 |CPU コア |メモリ (GB) |GPU メモリ (GB) |ディスク (GB) |ネットワーク (Mbps)
+|100 |4 |8 |4 |50 |100
+|500 |8 |16 |8 |100 |500  
+|1000 |16 |32 |16 |200 |1000
+|5000 |32 |64 |32 |500 |2000
+|10000 |64 |128 |64 |1000 |5000
+|===
+
+**AI処理負荷別要件**
+```python
+# src/utils/capacity_calculator.py
+from typing import Dict, NamedTuple
+from dataclasses import dataclass
+
+@dataclass
+class ResourceRequirement:
+    cpu_cores: int
+    memory_gb: int
+    gpu_memory_gb: int
+    storage_gb: int
+    network_mbps: int
+
+class CapacityCalculator:
+    """キャパシティ計算ユーティリティ"""
+    
+    # ベースライン要件（100接続あたり）
+    BASE_REQUIREMENTS = ResourceRequirement(
+        cpu_cores=4,
+        memory_gb=8, 
+        gpu_memory_gb=4,
+        storage_gb=50,
+        network_mbps=100
+    )
+    
+    def calculate_requirements(self, 
+                             concurrent_users: int,
+                             ai_processing_intensity: str = 'medium') -> ResourceRequirement:
+        """要件計算"""
+        
+        # 基本スケーリング係数
+        scale_factor = concurrent_users / 100
+        
+        # AI処理強度による調整
+        intensity_multipliers = {
+            'low': 0.7,    # フレームスキップ多用
+            'medium': 1.0, # 標準設定
+            'high': 1.5,   # 高精度・低レイテンシ
+            'ultra': 2.0   # 最高品質
+        }
+        
+        ai_multiplier = intensity_multipliers.get(ai_processing_intensity, 1.0)
+        
+        return ResourceRequirement(
+            cpu_cores=int(self.BASE_REQUIREMENTS.cpu_cores * scale_factor * ai_multiplier),
+            memory_gb=int(self.BASE_REQUIREMENTS.memory_gb * scale_factor * ai_multiplier),
+            gpu_memory_gb=int(self.BASE_REQUIREMENTS.gpu_memory_gb * scale_factor * ai_multiplier),
+            storage_gb=int(self.BASE_REQUIREMENTS.storage_gb * scale_factor),
+            network_mbps=int(self.BASE_REQUIREMENTS.network_mbps * scale_factor)
+        )
+        
+    def estimate_cost(self, requirements: ResourceRequirement, region: str = 'us-east-1') -> Dict[str, float]:
+        """コスト見積もり（AWS料金ベース）"""
+        
+        # 時間あたり料金（USD）
+        pricing = {
+            'cpu_per_core_hour': 0.0464,  # c5.large相当
+            'memory_per_gb_hour': 0.0116, # メモリ最適化インスタンス
+            'gpu_per_gb_hour': 0.90,      # p3.2xlarge相当
+            'storage_per_gb_month': 0.10, # EBS gp3
+            'network_per_gb': 0.09        # データ転送
+        }
+        
+        monthly_hours = 24 * 30
+        
+        return {
+            'cpu_monthly': requirements.cpu_cores * pricing['cpu_per_core_hour'] * monthly_hours,
+            'memory_monthly': requirements.memory_gb * pricing['memory_per_gb_hour'] * monthly_hours,
+            'gpu_monthly': requirements.gpu_memory_gb * pricing['gpu_per_gb_hour'] * monthly_hours,
+            'storage_monthly': requirements.storage_gb * pricing['storage_per_gb_month'],
+            'network_monthly': (requirements.network_mbps * monthly_hours * 3600 / 8 / 1024) * pricing['network_per_gb']
+        }
+```
+
+== 🔧 実装ガイドライン
+
+=== スケーラブルコード設計
+
+**設計原則**
+1. **ステートレス設計**: セッション状態をRedisで外部化
+2. **非同期処理**: asyncio/awaitによる並行処理
+3. **イベント駆動**: メッセージキューによる疎結合
+4. **リソースプール**: コネクションプールでリソース効率化
+5. **graceful degradation**: 負荷時の機能制限
+
+**実装テンプレート**
+```python
+# src/core/scalable_service_template.py
+import asyncio
+from typing import Optional, Dict, Any
+from abc import ABC, abstractmethod
+import aioredis
+import aioboto3
+
+class ScalableService(ABC):
+    """スケーラブルサービスの基底クラス"""
+    
+    def __init__(self, config_manager):
+        self.config_manager = config_manager
+        self.redis_pool: Optional[aioredis.ConnectionPool] = None
+        self.s3_client = None
+        self.metrics_collector = MetricsCollector()
+        
+    async def initialize(self):
+        """非同期初期化"""
+        # Redis接続プール
+        self.redis_pool = aioredis.ConnectionPool.from_url(
+            self.config_manager.get('redis.cluster_url'),
+            max_connections=20
+        )
+        
+        # S3クライアント
+        session = aioboto3.Session()
+        self.s3_client = await session.client('s3').__aenter__()
+        
+        await self._initialize_service()
+        
+    @abstractmethod
+    async def _initialize_service(self):
+        """サービス固有の初期化"""
+        pass
+        
+    async def process_request(self, request_data: Dict) -> Dict[str, Any]:
+        """リクエスト処理（メトリクス付き）"""
+        start_time = time.time()
+        
+        try:
+            result = await self._process_request_impl(request_data)
+            self.metrics_collector.record_success(time.time() - start_time)
+            return result
+        except Exception as e:
+            self.metrics_collector.record_error(time.time() - start_time, str(e))
+            raise
+            
+    @abstractmethod  
+    async def _process_request_impl(self, request_data: Dict) -> Dict[str, Any]:
+        """サービス固有のリクエスト処理"""
+        pass
+        
+    async def cleanup(self):
+        """リソースクリーンアップ"""
+        if self.redis_pool:
+            await self.redis_pool.disconnect()
+        if self.s3_client:
+            await self.s3_client.__aexit__(None, None, None)
+```
+
+=== 設定管理
+
+**環境別設定**
+```yaml
+# config/scaling.yaml
+development:
+  scaling:
+    enabled: false
+    max_instances: 1
+    
+  cache:
+    type: local
+    redis_cluster: false
+    
+  database:
+    read_replicas: 0
+    sharding: false
+
+production:
+  scaling:
+    enabled: true
+    max_instances: 10
+    min_instances: 2
+    target_cpu_utilization: 70
+    target_memory_utilization: 80
+    
+  cache:
+    type: distributed
+    redis_cluster: true
+    cluster_nodes:
+      - "redis-1.internal:6379"
+      - "redis-2.internal:6379" 
+      - "redis-3.internal:6379"
+      
+  database:
+    read_replicas: 3
+    sharding: true
+    shard_configs:
+      - id: "shard-1"
+        url: "postgresql://user:pass@shard1.db:5432/kanshichan"
+        weight: 1.0
+      - id: "shard-2"
+        url: "postgresql://user:pass@shard2.db:5432/kanshichan"
+        weight: 1.0
+```
+
+== 📈 メトリクスとアラート
+
+=== Grafana ダッシュボード設定
+
+**パフォーマンスダッシュボード**
+```json
+{
+  "dashboard": {
+    "title": "KanshiChan Scalability Metrics",
+    "panels": [
+      {
+        "title": "System Resources",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "avg(kanshichan_cpu_usage)",
+            "legendFormat": "CPU Usage %" 
+          },
+          {
+            "expr": "avg(kanshichan_memory_usage)", 
+            "legendFormat": "Memory Usage %"
+          }
+        ]
+      },
+      {
+        "title": "Active Connections",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(kanshichan_active_connections)",
+            "legendFormat": "Total Connections"
+          }
+        ]
+      },
+      {
+        "title": "Response Time Distribution",
+        "type": "heatmap",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, kanshichan_response_time)",
+            "legendFormat": "95th percentile"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+=== アラート設定
+
+**Prometheus アラートルール**
+```yaml
+# alerts/scalability.yaml
+groups:
+- name: kanshichan-scalability
+  rules:
+  - alert: HighCPUUsage
+    expr: avg(kanshichan_cpu_usage) > 80
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High CPU usage detected"
+      description: "CPU usage is {{ $value }}% for 5 minutes"
+      
+  - alert: HighMemoryUsage 
+    expr: avg(kanshichan_memory_usage) > 85
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High memory usage detected"
+      description: "Memory usage is {{ $value }}% for 5 minutes"
+      
+  - alert: TooManyConnections
+    expr: sum(kanshichan_active_connections) > 1000
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High connection count"
+      description: "Active connections: {{ $value }}"
+      
+  - alert: SlowResponseTime
+    expr: histogram_quantile(0.95, kanshichan_response_time) > 2
+    for: 3m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Slow response time"
+      description: "95th percentile response time: {{ $value }}s"
+```
+
+== 🎯 まとめ
+
+KanshiChanのスケーラビリティ設計は以下の要素で構成されています：
+
+=== 主要実装項目
+
+* ✅ **水平スケーリング**: Docker Swarm/Kubernetes対応
+* ✅ **垂直スケーリング**: 動的リソース調整  
+* ✅ **AI処理分散**: ワーカーノードによる負荷分散
+* ✅ **階層化キャッシュ**: L1(メモリ) + L2(Redis)実装
+* ✅ **データベース分散**: Read Replica + Sharding
+* ✅ **自動スケーリング**: Kubernetes HPA + カスタムコントローラー
+
+=== 性能目標
+
+[cols="2,2,2", options="header"]
+|===
+|項目 |目標値 |実装済み機能
+|同時接続数 |1000+ |✅ ロードバランサー + 複数インスタンス
+|レスポンス時間 |< 2秒 (95%ile) |✅ キャッシング + AI最適化
+|可用性 |99.9% |✅ 冗長構成 + ヘルスチェック
+|スケーリング時間 |< 60秒 |✅ コンテナベース + HPA
+|===
+
+=== 次のステップ
+
+1. **負荷テスト実行**: 1000同時接続での性能検証
+2. **監視システム構築**: Prometheus + Grafana設定
+3. **災害復旧計画**: バックアップ・復旧手順策定
+4. **コスト最適化**: リソース使用量とコストの継続的最適化
+
+---
+
+**📞 Contact**: team@kanshichan.dev +
+**🔗 Repository**: https://github.com/kanshichan/backend +
+**📅 Last Updated**: {docdate} +
+**📝 Document Version**: {revnumber} 
