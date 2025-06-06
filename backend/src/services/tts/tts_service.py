@@ -30,6 +30,11 @@ from .emotion_manager import EmotionManager
 from .audio_processor import AudioProcessor
 from .quality_evaluator import QualityEvaluator
 
+# 埋め込みZonosへのパスを追加
+EMBEDDED_ZONOS_PATH = os.path.join(os.path.dirname(__file__), 'Zonos')
+if EMBEDDED_ZONOS_PATH not in sys.path:
+    sys.path.insert(0, EMBEDDED_ZONOS_PATH)
+
 logger = setup_logger(__name__)
 
 
@@ -83,10 +88,6 @@ class TTSService:
             print("="*60)
             logger.info("🔄 Initializing Zonos TTS model...")
             
-            # デバイス最適化設定
-            logger.info(f"📱 Configuring device optimizations for: {self.device_manager.device}")
-            self.device_manager.configure_device_optimizations()
-            
             # Torch Compile最適化無効化
             logger.info("🔧 Disabling torch compile optimizations...")
             self._disable_torch_compile_optimizations()
@@ -94,18 +95,28 @@ class TTSService:
             # Zonosライブラリのインポート
             logger.info("📦 Importing Zonos library...")
             try:
-                from zonos.model import Zonos
-                from zonos.conditioning import make_cond_dict
-                logger.info("✅ Zonos library imported successfully")
+                # まず埋め込みコードからインポートを試みる
+                try:
+                    logger.info("🔍 Trying embedded Zonos import...")
+                    from zonos.model import Zonos
+                    from zonos.conditioning import make_cond_dict
+                    logger.info("✅ Zonos library imported from embedded code")
+                except ImportError:
+                    # 埋め込みコードのインポートに失敗した場合、インストール済みパッケージからインポート
+                    logger.info("⚠️ Embedded import failed, trying installed package...")
+                    from zonos.model import Zonos
+                    from zonos.conditioning import make_cond_dict
+                    logger.info("✅ Zonos library imported from installed package")
             except ImportError as import_error:
                 print("❌ ZONOS LIBRARY IMPORT FAILED")
                 error = wrap_exception(
                     import_error, ServiceUnavailableError,
-                    "Zonos TTS library not available. Please install zonos package.",
+                    "Zonos TTS library not available. Check embedded code or install zonos package.",
                     details={
                         'install_command': 'pip install git+https://github.com/Zyphra/Zonos.git',
                         'model_id': self.tts_config.get_model_id(),
-                        'device': self.device_manager.device
+                        'device': self.device_manager.device,
+                        'embedded_path': EMBEDDED_ZONOS_PATH
                     }
                 )
                 logger.error(f"Zonos import error: {error.to_dict()}")
@@ -122,9 +133,7 @@ class TTSService:
                 # モデル読み込み開始時刻記録
                 start_time = time.time()
                 
-                logger.info("🔄 Downloading/Loading model from Hugging Face...")
-                print("🔄 Downloading/Loading model (this may take a while on first run)...")
-                
+                # モデル読み込み
                 self.model = Zonos.from_pretrained(model_id, device=self.device_manager.device)
                 
                 load_time = time.time() - start_time
@@ -132,7 +141,7 @@ class TTSService:
                 print(f"✅ Model loaded in {load_time:.2f} seconds")
                 
                 # デバイス最適化適用
-                logger.info(f"⚙️ Applying device optimizations for {self.device_manager.device}...")
+                logger.info(f"⚙️ Optimizing model for {self.device_manager.device}...")
                 print(f"⚙️ Optimizing model for {self.device_manager.device.upper()}...")
                 
                 optimization_start = time.time()
@@ -158,28 +167,22 @@ class TTSService:
                 return True
                 
             except Exception as e:
-                print(f"⚠️ PRIMARY DEVICE FAILED, ATTEMPTING FALLBACK...")
-                logger.warning(f"Primary device initialization failed: {e}")
+                # デバイスエラー時はCPUにフォールバック
+                logger.warning(f"Device error detected, attempting fallback to CPU: {e}")
+                print(f"⚠️ PRIMARY DEVICE FAILED, FALLING BACK TO CPU...")
                 
-                # デバイスエラーのフォールバック処理
+                # シンプルなCPUフォールバック
+                new_device, _ = self.device_manager.handle_device_error(e, self.model)
+                
                 try:
+                    # CPUでモデルを再ロード
+                    model_id = self.tts_config.get_model_id()
+                    logger.info(f"📥 Re-loading model on CPU...")
+                    print(f"📥 Re-loading model on CPU...")
+                    
                     fallback_start = time.time()
-                    new_device, fallback_model = self.device_manager.handle_device_error(e, self.model)
-                    
-                    print(f"🔄 Falling back to: {new_device.upper()}")
-                    logger.info(f"Attempting fallback to device: {new_device}")
-                    
-                    if fallback_model is not None:
-                        self.model = fallback_model
-                    
-                    # フォールバック後の再初期化
-                    if self.model is None:
-                        model_id = self.tts_config.get_model_id()
-                        logger.info(f"📥 Re-loading model on fallback device: {new_device}")
-                        print(f"📥 Re-loading model on {new_device.upper()}...")
-                        
-                        self.model = Zonos.from_pretrained(model_id, device=new_device)
-                        self.model = self.device_manager.optimize_model_for_device(self.model)
+                    self.model = Zonos.from_pretrained(model_id, device='cpu')
+                    self.model = self.device_manager.optimize_model_for_device(self.model)
                     
                     self.make_cond_dict = make_cond_dict
                     self.is_initialized = True
@@ -187,13 +190,13 @@ class TTSService:
                     fallback_time = time.time() - fallback_start
                     
                     print("\n" + "="*60)
-                    print("🎉 TTS MODEL LOADING COMPLETED (FALLBACK)!")
+                    print("🎉 TTS MODEL LOADING COMPLETED (CPU FALLBACK)")
                     print(f"📊 Model: {model_id}")
-                    print(f"🎯 Device: {new_device.upper()} (fallback)")
+                    print(f"🎯 Device: CPU (fallback)")
                     print(f"⏰ Fallback initialization time: {fallback_time:.2f} seconds")
                     print("="*60 + "\n")
                     
-                    logger.info(f"✅ Zonos TTS model initialized successfully on {new_device.upper()} (fallback, {fallback_time:.2f}s)")
+                    logger.info(f"✅ Zonos TTS model initialized successfully on CPU (fallback, {fallback_time:.2f}s)")
                     return True
                     
                 except Exception as fallback_error:
@@ -204,11 +207,10 @@ class TTSService:
                     
                     error = wrap_exception(
                         fallback_error, ServiceUnavailableError,
-                        f"Failed to initialize Zonos TTS model even with fallback: {model_id}",
+                        f"Failed to initialize Zonos TTS model even with CPU fallback: {model_id}",
                         details={
                             'model_id': model_id,
-                            'original_device': self.device_manager.original_device,
-                            'fallback_device': self.device_manager.device,
+                            'device': self.device_manager.device,
                             'original_error': str(e),
                             'fallback_error': str(fallback_error)
                         }
@@ -226,8 +228,7 @@ class TTSService:
                 f"Failed to initialize Zonos TTS model: {self.tts_config.get_model_id()}",
                 details={
                     'model_id': self.tts_config.get_model_id(),
-                    'device': self.device_manager.device,
-                    'use_hybrid': self.tts_config.use_hybrid
+                    'device': self.device_manager.device
                 }
             )
             logger.error(f"TTS initialization error: {error.to_dict()}")
@@ -448,7 +449,7 @@ class TTSService:
             cond_dict: 条件辞書
             
         Returns:
-            Dict[str, Any]: デバイス一貫性が保証された条件辞書
+            Dict[str, Any]: デバイス一貫性が確保された条件辞書
         """
         if not self.is_initialized or self.model is None:
             return cond_dict
@@ -456,7 +457,14 @@ class TTSService:
         try:
             for key, value in cond_dict.items():
                 if isinstance(value, torch.Tensor):
-                    cond_dict[key] = self.device_manager.ensure_tensor_device_consistency(value, self.model)
+                    # MPSデバイスの場合はfloat16に統一（BF16/F16混在問題の回避）
+                    if self.device_manager.device == 'mps':
+                        cond_dict[key] = self.device_manager.ensure_tensor_device_consistency(value, self.model)
+                        # 型の確認と記録
+                        if hasattr(cond_dict[key], 'dtype'):
+                            logger.debug(f"Tensor '{key}' dtype: {cond_dict[key].dtype}")
+                    else:
+                        cond_dict[key] = self.device_manager.ensure_tensor_device_consistency(value, self.model)
                         
             return cond_dict
         except Exception as e:

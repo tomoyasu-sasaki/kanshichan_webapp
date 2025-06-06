@@ -19,6 +19,7 @@ import librosa
 import soundfile as sf
 import numpy as np
 
+from .tts_config import TTSConfig
 from utils.logger import setup_logger
 from utils.exceptions import AudioError, wrap_exception
 
