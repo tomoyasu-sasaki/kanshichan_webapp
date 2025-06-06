@@ -31,6 +31,12 @@ DEFAULT_CONFIG = {
         'model_name': 'TinyLlama/TinyLlama-1.1B-Chat-v1.0',
         'temperature': 0.7,
         'analysis_interval_seconds': 300
+    },
+    'models': {
+        'yolo': {
+            'model_name': 'yolov8n.pt',
+            'models_dir': 'models'  # プロジェクトルートからの相対パス
+        }
     }
     # 必要に応じて他のデフォルト設定を追加
 }

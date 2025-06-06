@@ -456,12 +456,24 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
           isClosable: true,
         });
       } else {
-        // TTSサービスが利用できない場合のフォールバック
-        if (settings.voiceMode === 'tts' && response.status === 503) {
-          // TTS標準モードでエラーの場合、ブラウザTTSを使用
+        // TTSサービスが利用できない場合のフォールバック処理を強化
+        const errorData = await response.json().catch(() => ({ error: 'unknown', message: '不明なエラー' }));
+        console.error('TTSサービスエラー:', errorData);
+        
+        if (response.status === 503 || errorData.message?.includes('TTS service is not available')) {
+          // TTSサービスが利用できない場合のメッセージを改善
+          toast({
+            title: 'TTSサービス未準備',
+            description: 'TTSサービスが準備中または利用できません。ブラウザの音声合成を使用します。',
+            status: 'warning',
+            duration: 4000,
+            isClosable: true,
+          });
+          
+          // すべてのモードでブラウザTTSを試行
           await handleBrowserTTSFallback();
         } else {
-          throw new Error('音声合成に失敗しました');
+          throw new Error(`音声合成に失敗しました: ${errorData.message || '不明なエラー'}`);
         }
       }
     } catch (error) {
@@ -475,25 +487,31 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
         error: error
       });
       
-      // エラー処理の改善
-      if (settings.voiceMode === 'tts') {
-        // TTS標準モードでエラーの場合、ブラウザTTSを試行
-        try {
-          await handleBrowserTTSFallback();
-          return; // 成功した場合は早期リターン
-        } catch (fallbackError) {
-          console.warn('Browser TTS fallback also failed:', fallbackError);
-        }
+      // エラー処理の改善 - すべてのエラーでブラウザTTSを試行
+      try {
+        toast({
+          title: 'フォールバック処理',
+          description: 'サーバーでエラーが発生したため、ブラウザの音声合成を使用します',
+          status: 'warning',
+          duration: 3000,
+          isClosable: true,
+        });
+        
+        await handleBrowserTTSFallback();
+        return; // 成功した場合は早期リターン
+      } catch (fallbackError) {
+        console.warn('Browser TTS fallback also failed:', fallbackError);
+        
+        // 両方失敗した場合のエラー表示
+        setPreviewing(false);
+        toast({
+          title: '音声合成エラー',
+          description: `すべての音声合成方法が失敗しました。設定を確認してください。`,
+          status: 'error',
+          duration: 4000,
+          isClosable: true,
+        });
       }
-      
-      setPreviewing(false);
-      toast({
-        title: 'プレビューエラー',
-        description: `音声プレビューに失敗しました: ${error}`,
-        status: 'error',
-        duration: 4000,
-        isClosable: true,
-      });
     }
   }, [previewing, currentAudio, testText, settings, toast]);
 

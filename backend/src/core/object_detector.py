@@ -178,13 +178,42 @@ class ObjectDetector:
             
         try:
             # モデルファイルのパスを設定
-            model_path = "yolov8n.pt"
+            model_name = self.config_manager.get('models.yolo.model_name', 'yolov8n.pt') if self.config_manager else 'yolov8n.pt'
+            
+            # モデルディレクトリの設定
+            if self.config_manager:
+                models_dir_rel = self.config_manager.get('models.yolo.models_dir', 'models')
+                # プロジェクトルートからの相対パスを絶対パスに変換
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+                models_dir = os.path.join(project_root, models_dir_rel)
+            else:
+                # 設定がない場合はデフォルトパスを使用
+                models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "models")
+            
+            # モデルディレクトリが存在しない場合は作成
+            os.makedirs(models_dir, exist_ok=True)
+            
+            # モデルの絶対パスを設定
+            model_path = os.path.join(models_dir, model_name)
             
             # モデルが存在しない場合はダウンロード
             if not os.path.exists(model_path):
-                logger.warning("YOLOモデルをダウンロードします...")
-                self.model = YOLO("yolov8n.pt")
+                logger.warning(f"YOLOモデルをダウンロードします... 保存先: {model_path}")
+                self.model = YOLO(model_name)
+                # モデルを指定パスに保存（環境によってはコピーする必要がある）
+                if hasattr(self.model, 'export') and callable(getattr(self.model, 'export')):
+                    try:
+                        self.model.export(format="pt", imgsz=640)
+                        # エクスポートされたモデルを移動
+                        exported_path = os.path.join(os.getcwd(), model_name)
+                        if os.path.exists(exported_path) and exported_path != model_path:
+                            import shutil
+                            shutil.move(exported_path, model_path)
+                            logger.info(f"モデルファイルを移動しました: {exported_path} -> {model_path}")
+                    except Exception as e:
+                        logger.error(f"モデルのエクスポート中にエラーが発生しました: {e}")
             else:
+                logger.info(f"既存のYOLOモデルを読み込みます: {model_path}")
                 self.model = YOLO(model_path)
             
             # YOLOモデルの最適化設定
