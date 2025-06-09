@@ -56,7 +56,7 @@ def init_monitor_service(config: Dict[str, Any]) -> None:
     
     try:
         monitor_instance = SimpleMonitor(config)
-        logger.info("Monitor service initialized successfully (simplified)")
+        logger.info("Monitor service initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize Monitor service: {e}")
         raise

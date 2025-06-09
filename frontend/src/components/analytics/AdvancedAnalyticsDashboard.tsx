@@ -107,7 +107,6 @@ export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProp
   const cardBg = useColorModeValue('white', 'gray.800');
   const toast = useToast();
 
-  // API基底URL設定（Phase 0.2で追加）
   const API_BASE_URL = 'http://localhost:8000/api';
 
   // Data fetching functions
@@ -192,14 +191,12 @@ export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProp
     let socket: Socket | null = null;
 
     if (realtimeEnabled) {
-      // Phase 4対応: Socket.IOクライアント接続
       socket = io('http://localhost:8000');
       
       socket.on('connect', () => {
         console.log('WebSocket connected to backend');
       });
 
-      // Phase 4で実装した新しいイベントを受信
       socket.on('behavior_data', (data: any) => {
         try {
           console.log('Received behavior_data:', data);

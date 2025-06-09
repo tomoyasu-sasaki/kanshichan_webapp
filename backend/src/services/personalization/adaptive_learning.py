@@ -1,7 +1,7 @@
 """
 Adaptive Learning System Service
 
-適応学習システム - Phase 4.2実装
+適応学習システム
 フィードバック学習、A/Bテスト機能、学習効果測定
 """
 
@@ -18,9 +18,6 @@ import random
 
 from models.behavior_log import BehaviorLog
 from models.user_profile import UserProfile
-# 循環インポートを避けるため、必要時に遅延インポートを使用
-# from .personalization_engine import PersonalizationEngine
-# from .recommendation_system import RecommendationSystem
 from ..ai_ml.advanced_behavior_analyzer import AdvancedBehaviorAnalyzer
 from ..ai_ml.pattern_recognition import PatternRecognizer
 from utils.logger import setup_logger

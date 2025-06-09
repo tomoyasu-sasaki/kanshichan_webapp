@@ -28,18 +28,11 @@ def pad_weight_(w: nn.Embedding | nn.Linear, multiple: int):
 
 
 def get_device() -> torch.device:
-    """利用可能な最適なデバイスを安全に取得"""
     if torch.cuda.is_available():
         return torch.device(torch.cuda.current_device())
-    
-    # MPSの安全な検出
-    try:
-        if hasattr(torch, 'mps') and hasattr(torch.mps, 'is_available') and torch.mps.is_available():
-            return torch.device("mps")
-    except Exception:
-        # MPSデバイス検出エラーの場合はCPUにフォールバック
-        pass
-        
+    # MPS breaks for whatever reason. Uncomment when it's working.
+    if torch.mps.is_available():
+        return torch.device("mps")
     return torch.device("cpu")
 
 

@@ -79,7 +79,6 @@ class StatusBroadcaster:
             )
             logger.error(f"Status broadcast error: {broadcast_error.to_dict()}")
 
-    # Phase 4.1: フロントエンド向け拡張イベント配信機能
     def broadcast_behavior_data(self, behavior_data: Dict[str, Any]) -> None:
         """
         行動データをWebSocketでブロードキャストする
@@ -111,7 +110,6 @@ class StatusBroadcaster:
         except Exception as e:
             logger.error(f"Failed to broadcast analysis results: {e}", exc_info=True)
 
-    # Phase 4.2: 拡張ステータス配信メソッド
     def broadcast_enhanced_status(self, enhanced_status: Dict[str, Any]) -> None:
         """
         拡張ステータス情報をWebSocketで配信する

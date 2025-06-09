@@ -19,13 +19,15 @@ class Camera:
             # 設定の読み込み
             self.config_manager = config_manager
             self.show_window = False
+            self.device_index = 0  # デフォルト値
             if config_manager:
                 self.show_window = config_manager.get('display.show_opencv_window', False)
+                self.device_index = config_manager.get('camera.device_index', 0)
                 
             # カメラの初期化を試みる
             self.cap = self._initialize_camera()
             if not self.cap.isOpened():
-                logger.error("Error: Could not open camera. Using dummy camera.")
+                logger.error(f"Error: Could not open camera (index: {self.device_index}). Using dummy camera.")
                 self._use_dummy_camera = True
             else:
                 self._use_dummy_camera = False
@@ -46,7 +48,7 @@ class Camera:
             camera_error = wrap_exception(
                 e, CameraInitializationError,
                 "Camera initialization failed, falling back to dummy mode",
-                details={'dummy_mode': True, 'screen_size': (640, 480)}
+                details={'dummy_mode': True, 'screen_size': (640, 480), 'device_index': self.device_index}
             )
             logger.warning(f"Camera error details: {camera_error.to_dict()}")
 
@@ -55,16 +57,21 @@ class Camera:
         system = platform.system()
         try:
             if system == "Windows":
-                return cv2.VideoCapture(0, cv2.CAP_DSHOW)  # DirectShowを使用
+                return cv2.VideoCapture(self.device_index, cv2.CAP_DSHOW)  # DirectShowを使用
             elif system == "Darwin":  # macOS
-                return cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
+                # macOS Sonoma以降の問題に対応するため、設定ファイルから読み込んだインデックスを使用
+                logger.info(f"Initializing camera for macOS with device index: {self.device_index}")
+                return cv2.VideoCapture(self.device_index, cv2.CAP_AVFOUNDATION)
             else:  # Linux等
-                return cv2.VideoCapture(0)
+                return cv2.VideoCapture(self.device_index)
         except Exception as e:
-            logger.error(f"Camera initialization error: {e}")
+            logger.error(f"Camera initialization error with index {self.device_index}: {e}")
             # フォールバックを試みる
             try:
-                return cv2.VideoCapture(0)
+                if self.device_index != 0:
+                    logger.warning("Falling back to camera index 0")
+                    return cv2.VideoCapture(0)
+                raise e # 0でも失敗した場合は再raise
             except Exception as e2:
                 logger.error(f"Fallback camera initialization also failed: {e2}")
                 # 詳細なエラー情報をログ
@@ -72,6 +79,8 @@ class Camera:
                     e2, CameraInitializationError,
                     "Both primary and fallback camera initialization failed",
                     details={
+                        'primary_index': self.device_index,
+                        'fallback_index': 0,
                         'primary_error': str(e),
                         'fallback_error': str(e2),
                         'platform': platform.system()
@@ -79,7 +88,7 @@ class Camera:
                 )
                 logger.error(f"Complete camera failure: {fallback_error.to_dict()}")
                 # ダミーモードを使用
-                return cv2.VideoCapture()
+                return None
 
     def _get_screen_dimensions(self):
         """クロスプラットフォーム対応の画面サイズ取得"""

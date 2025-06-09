@@ -41,14 +41,13 @@ class DataCollector:
             detector: 検出エンジンインスタンス
             state_manager: 状態管理インスタンス
             collection_interval: データ収集間隔（秒）- デフォルト2秒（リアルタイム性向上）
-            flask_app: Flaskアプリケーションインスタンス（Phase 2追加）
+            flask_app: Flaskアプリケーションインスタンス
         """
         self.camera = camera
         self.detector = detector
         self.state_manager = state_manager
         self.collection_interval = collection_interval
-        self.flask_app = flask_app                   # Phase 2: Flaskアプリ保持
-        
+        self.flask_app = flask_app
         # データ収集制御
         self._collecting = False
         self._collection_thread: Optional[threading.Thread] = None
@@ -67,8 +66,6 @@ class DataCollector:
         self._data_callbacks: List[Callable] = []
         
         logger.info(f"DataCollector initialized with {collection_interval}s interval (Real-time optimized)")
-        
-        # Phase 2: デバッグログ追加
         logger.debug(f"DataCollector debug info - Camera: {camera}, Detector: {detector}, StateManager: {state_manager}")
     
     def start_collection(self, session_id: Optional[str] = None) -> bool:
@@ -195,8 +192,7 @@ class DataCollector:
             logger.info("Data collection loop started")
             logger.debug(f"Collection loop thread ID: {threading.current_thread().ident}")
             logger.debug(f"Collection flags - collecting: {self._collecting}, stop_event: {self._stop_event.is_set()}")
-            
-            loop_count = 0  # Phase 2: ループカウンタ追加
+            loop_count = 0
             
             while self._collecting and not self._stop_event.is_set():
                 try:
@@ -250,7 +246,6 @@ class DataCollector:
                 logger.warning("Failed to get camera frame")
                 return None
             
-            # 検出実行（Phase 1修正: detect → detect_objects）
             detection_results = self.detector.detect_objects(frame)
             
             # 状態情報取得
@@ -374,7 +369,6 @@ class DataCollector:
             float or None: 集中度スコア (0.0-1.0)
         """
         try:
-            # Phase 5.1: デバッグログ追加 - 実際のデータ構造を確認
             logger.debug(f"MediaPipe results structure: {list(mediapipe_results.keys()) if mediapipe_results else 'Empty'}")
             
             # 実際のデータ構造に対応した取得方法に修正
@@ -390,7 +384,7 @@ class DataCollector:
             # データが何もない場合はデフォルト値を返す（None ではなく）
             if not pose_data and not face_data:
                 logger.debug("No pose or face data available, returning default focus level 0.5")
-                return 0.5  # Phase 5.1: デフォルト値を設定（None → 0.5）
+                return 0.5
             
             focus_factors = []
             
@@ -427,7 +421,7 @@ class DataCollector:
             
         except Exception as e:
             logger.error(f"Error calculating focus level: {e}", exc_info=True)
-            return 0.5  # Phase 5.1: エラー時もデフォルト値を返す
+            return 0.5
     
     def _extract_posture_data(self, mediapipe_results: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """姿勢データを抽出
@@ -439,12 +433,10 @@ class DataCollector:
             dict or None: 姿勢データ
         """
         try:
-            # Phase 5.1: 実際のデータ構造に対応
             pose_data = mediapipe_results.get('pose_landmarks')
             
             if not pose_data:
                 logger.debug("No pose landmarks available for posture data")
-                # Phase 5.1: デフォルト姿勢データを返す
                 return {
                     'head_position': 0.0,
                     'shoulder_alignment': 0.0,
@@ -452,7 +444,6 @@ class DataCollector:
                     'posture_score': 0.5  # デフォルト値
                 }
             
-            # Phase 5.1: 実際のランドマークからの推定（簡易版）
             posture_data = {
                 'head_position': 0.0,  # 暫定値、後で実装改善
                 'shoulder_alignment': 0.0,  # 暫定値
@@ -465,7 +456,6 @@ class DataCollector:
             
         except Exception as e:
             logger.error(f"Error extracting posture data: {e}", exc_info=True)
-            # Phase 5.1: エラー時もデフォルト値を返す
             return {
                 'head_position': 0.0,
                 'shoulder_alignment': 0.0,
@@ -492,14 +482,12 @@ class DataCollector:
                     logger.debug(f"Smartphone detected via YOLO: {obj['class']}")
                     return True
             
-            # Phase 5.1: 実際のデータ構造に対応した手の位置と顔の向きからの推定
             hands_data = mediapipe_results.get('hands_landmarks')
             face_data = mediapipe_results.get('face_landmarks')
             
             logger.debug(f"Smartphone detection - Hands: {hands_data is not None}, Face: {face_data is not None}")
             
             if hands_data and face_data:
-                # Phase 5.1: 簡易的な推定（後で改善）
                 # 実際のランドマーク解析は複雑なため、暫定的にFalseを返す
                 logger.debug("Hand and face landmarks available, but smartphone detection logic needs implementation")
                 return False  # 暫定的にFalse
@@ -535,12 +523,10 @@ class DataCollector:
             float or None: 動きスコア (0.0-1.0)
         """
         try:
-            # Phase 5.1: 実際のデータ構造に対応
             pose_data = mediapipe_results.get('pose_landmarks')
             
             logger.debug(f"Movement calculation - Pose data available: {pose_data is not None}")
             
-            # Phase 5.1: 簡易的な動き検出（将来的に時系列データでの詳細計算）
             if pose_data:
                 # 暫定的に低い動きスコアを返す（実際のランドマーク解析は後で実装）
                 movement_score = 0.1  # 最小動きレベル

@@ -463,7 +463,7 @@ def synthesize_speech_fast():
 
 @tts_synthesis_bp.route('/synthesize-advanced', methods=['POST'])
 def synthesize_advanced_speech():
-    """高度なテキスト音声合成（Phase 2.3強化版）
+    """高度なテキスト音声合成
     
     Request Body:
         {

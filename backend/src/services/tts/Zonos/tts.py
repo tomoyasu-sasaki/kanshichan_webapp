@@ -11,6 +11,12 @@ from zonos.conditioning import make_cond_dict, supported_language_codes
 # 対応言語を日本語と英語のみに制限
 SUPPORTED_LANGUAGES = ["ja", "en-us"]
 
+# ローカルモデルのパス設定
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+LOCAL_MODEL_DIR = os.path.join(CURRENT_DIR, "model")
+LOCAL_CONFIG_PATH = os.path.join(LOCAL_MODEL_DIR, "config.json")
+LOCAL_MODEL_PATH = os.path.join(LOCAL_MODEL_DIR, "model.safetensors")
+
 class MacOSTTSApp:
     """macOS対応のTTSアプリケーション（CLI版）"""
     
@@ -48,7 +54,14 @@ class MacOSTTSApp:
             
             print(f"🔄 {model_choice} モデルを読み込み中...")
             try:
-                self.model = Zonos.from_pretrained(model_choice, device=self.device)
+                # ローカルモデルファイルから読み込む
+                if os.path.exists(LOCAL_CONFIG_PATH) and os.path.exists(LOCAL_MODEL_PATH):
+                    print(f"📂 ローカルモデルファイルを使用します: {LOCAL_MODEL_DIR}")
+                    self.model = Zonos.from_local(LOCAL_CONFIG_PATH, LOCAL_MODEL_PATH, device=self.device)
+                else:
+                    print(f"⚠️ ローカルモデルファイルが見つかりません。HuggingFaceからダウンロードします。")
+                    self.model = Zonos.from_pretrained(model_choice, device=self.device)
+                
                 self.model.requires_grad_(False).eval()
                 self.current_model_type = model_choice
                 print(f"✅ {model_choice} モデルの読み込みが完了しました！")
@@ -58,10 +71,20 @@ class MacOSTTSApp:
                 if "hybrid" in model_choice:
                     print("🔄 Hybridモデルには'mamba-ssm'パッケージが必要です。transformerモデルを使用します...")
                     fallback_model = "Zyphra/Zonos-v0.1-transformer"
-                    self.model = Zonos.from_pretrained(fallback_model, device=self.device)
-                    self.model.requires_grad_(False).eval()
-                    self.current_model_type = fallback_model
-                    print(f"✅ {fallback_model} モデルの読み込みが完了しました！")
+                    try:
+                        # フォールバック時もローカルファイルを優先
+                        if os.path.exists(LOCAL_CONFIG_PATH) and os.path.exists(LOCAL_MODEL_PATH):
+                            print(f"📂 ローカルモデルファイルを使用します: {LOCAL_MODEL_DIR}")
+                            self.model = Zonos.from_local(LOCAL_CONFIG_PATH, LOCAL_MODEL_PATH, device=self.device)
+                        else:
+                            self.model = Zonos.from_pretrained(fallback_model, device=self.device)
+                        
+                        self.model.requires_grad_(False).eval()
+                        self.current_model_type = fallback_model
+                        print(f"✅ {fallback_model} モデルの読み込みが完了しました！")
+                    except Exception as fallback_error:
+                        print(f"❌ フォールバックモデルの読み込みにも失敗しました: {fallback_error}")
+                        raise fallback_error
                 else:
                     raise e
         

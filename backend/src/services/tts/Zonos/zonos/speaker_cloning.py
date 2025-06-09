@@ -409,4 +409,6 @@ class SpeakerEmbeddingLDA(nn.Module):
 
     def forward(self, wav: torch.Tensor, sample_rate: int):
         emb = self.model(wav, sample_rate).to(torch.float32)
-        return emb, self.lda(emb)
+        lda_output = self.lda(emb)
+        # MPSデバイスの型問題を避けるためにfloat32として返す
+        return emb, lda_output.to(torch.float32)

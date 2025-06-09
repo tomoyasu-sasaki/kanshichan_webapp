@@ -97,14 +97,14 @@ class DetectionRenderer:
                 self._draw_landmarks(frame, results)
             
             # 人物検出状態の表示
-            self._draw_person_status(frame, results)
+            # self._draw_person_status(frame, results)
             
             # 物体検出描画（YOLO）
             if self.use_yolo:
                 self._draw_object_detections(frame, results)
             
             # ステータス情報描画
-            self._draw_status_info(frame, results)
+            # self._draw_status_info(frame, results)
             
             return frame
             

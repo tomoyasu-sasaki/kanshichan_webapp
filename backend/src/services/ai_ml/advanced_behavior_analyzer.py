@@ -1,7 +1,7 @@
 """
 Advanced Behavior Analyzer Service
 
-高度行動パターン分析エンジン - Phase 4.1実装
+高度行動パターン分析エンジン
 時系列データ解析、詳細集中度分析、健康評価、生産性分析
 """
 

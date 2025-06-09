@@ -1,8 +1,4 @@
-/**
- * Phase 5: 統合ダッシュボード
- * ============================
- * 全Phase機能を統一管理するメインダッシュボード
- */
+
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
@@ -46,9 +42,10 @@ import {
   FiSettings, FiTrendingUp
 } from 'react-icons/fi';
 
-// Import Phase components
 import { MonitorView } from './MonitorView';
 import { VoiceSettings } from './VoiceSettings';
+import { SettingsPanel } from './SettingsPanel';
+import { ScheduleView } from './ScheduleView';
 import { BehaviorInsights } from './BehaviorInsights';
 import { AdvancedAnalyticsDashboard } from './analytics/AdvancedAnalyticsDashboard';
 import { PersonalizationPanel } from './analytics/PersonalizationPanel';
@@ -56,10 +53,10 @@ import { PredictiveInsights } from './analytics/PredictiveInsights';
 import { LearningProgress } from './analytics/LearningProgress';
 
 interface SystemStatus {
-  phase1_data_collection: 'active' | 'inactive' | 'error';
-  phase2_tts_system: 'active' | 'inactive' | 'error';
-  phase3_integration: 'active' | 'inactive' | 'error';
-  phase4_ai_analysis: 'active' | 'inactive' | 'error';
+  data_collection: 'active' | 'inactive' | 'error';
+  tts_system: 'active' | 'inactive' | 'error';
+  integration: 'active' | 'inactive' | 'error';
+  ai_analysis: 'active' | 'inactive' | 'error';
   overall_health: number; // 0-1
   last_update: string;
 }
@@ -145,10 +142,10 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
 
       // Process responses with better error handling
       const statusData: SystemStatus = {
-        phase1_data_collection: 'inactive',
-        phase2_tts_system: 'inactive',
-        phase3_integration: 'active', // Integration layer is current component
-        phase4_ai_analysis: 'inactive',
+        data_collection: 'inactive',
+        tts_system: 'inactive',
+        integration: 'active', // Integration layer is current component
+        ai_analysis: 'inactive',
         overall_health: 0.25, // Start with low baseline
         last_update: new Date().toISOString()
       };
@@ -159,7 +156,7 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
           if (monitorStatus.value.ok) {
             const monitorData = await monitorStatus.value.json();
             console.log('Monitor API Response:', monitorData);
-            statusData.phase1_data_collection = 'active';
+            statusData.data_collection = 'active';
           } else {
             console.warn('Monitor API returned error:', monitorStatus.value.status);
           }
@@ -176,7 +173,7 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
           if (ttsStatus.value.ok) {
             const ttsData = await ttsStatus.value.json();
             console.log('TTS API Response:', ttsData);
-            statusData.phase2_tts_system = 'active';
+            statusData.tts_system = 'active';
           } else {
             console.warn('TTS API returned error:', ttsStatus.value.status);
           }
@@ -193,7 +190,7 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
           if (analysisStatus.value.ok) {
             const analysisData = await analysisStatus.value.json();
             console.log('Analysis API Response:', analysisData);
-            statusData.phase4_ai_analysis = 'active';
+            statusData.ai_analysis = 'active';
           } else {
             console.warn('Analysis API returned error:', analysisStatus.value.status);
           }
@@ -254,9 +251,9 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
           <CardBody>
             <HStack justify="space-between">
               <VStack align="start" spacing={1}>
-                <Text fontSize="sm" color="gray.500">Phase 1: データ収集</Text>
-                <Badge colorScheme={statusMapping[systemStatus.phase1_data_collection].color}>
-                  {statusMapping[systemStatus.phase1_data_collection].label}
+                <Text fontSize="sm" color="gray.500">データ収集</Text>
+                <Badge colorScheme={statusMapping[systemStatus.data_collection].color}>
+                  {statusMapping[systemStatus.data_collection].label}
                 </Badge>
               </VStack>
               <Icon as={FiHome} color="blue.500" />
@@ -268,9 +265,9 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
           <CardBody>
             <HStack justify="space-between">
               <VStack align="start" spacing={1}>
-                <Text fontSize="sm" color="gray.500">Phase 2: TTS音声</Text>
-                <Badge colorScheme={statusMapping[systemStatus.phase2_tts_system].color}>
-                  {statusMapping[systemStatus.phase2_tts_system].label}
+                <Text fontSize="sm" color="gray.500">TTS音声</Text>
+                <Badge colorScheme={statusMapping[systemStatus.tts_system].color}>
+                  {statusMapping[systemStatus.tts_system].label}
                 </Badge>
               </VStack>
               <Icon as={FiVolumeX} color="purple.500" />
@@ -282,9 +279,9 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
           <CardBody>
             <HStack justify="space-between">
               <VStack align="start" spacing={1}>
-                <Text fontSize="sm" color="gray.500">Phase 3: 統合</Text>
-                <Badge colorScheme={statusMapping[systemStatus.phase3_integration].color}>
-                  {statusMapping[systemStatus.phase3_integration].label}
+                <Text fontSize="sm" color="gray.500">統合</Text>
+                <Badge colorScheme={statusMapping[systemStatus.integration].color}>
+                  {statusMapping[systemStatus.integration].label}
                 </Badge>
               </VStack>
               <Icon as={FiActivity} color="green.500" />
@@ -296,9 +293,9 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
           <CardBody>
             <HStack justify="space-between">
               <VStack align="start" spacing={1}>
-                <Text fontSize="sm" color="gray.500">Phase 4: AI分析</Text>
-                <Badge colorScheme={statusMapping[systemStatus.phase4_ai_analysis].color}>
-                  {statusMapping[systemStatus.phase4_ai_analysis].label}
+                <Text fontSize="sm" color="gray.500">AI分析</Text>
+                <Badge colorScheme={statusMapping[systemStatus.ai_analysis].color}>
+                  {statusMapping[systemStatus.ai_analysis].label}
                 </Badge>
               </VStack>
               <Icon as={FiTarget} color="orange.500" />
@@ -383,6 +380,10 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
         return <MonitorView />;
       case 'voice':
         return <VoiceSettings />;
+      case 'settings':
+        return <SettingsPanel />;
+      case 'schedule':
+        return <ScheduleView />;
       case 'behavior':
         return <BehaviorInsights onNavigate={handleViewChange} />;
       case 'analytics':
@@ -457,7 +458,7 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
               </Button>
               
               <Divider />
-              <Text fontSize="sm" fontWeight="bold" color="gray.500">Phase 1-3</Text>
+              <Text fontSize="sm" fontWeight="bold" color="gray.500">基本機能</Text>
               
               <Button
                 variant={selectedView === 'monitor' ? 'solid' : 'ghost'}
@@ -476,6 +477,24 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
               >
                 音声設定
               </Button>
+
+              <Button
+                variant={selectedView === 'schedule' ? 'solid' : 'ghost'}
+                justifyContent="flex-start"
+                leftIcon={<Icon as={FiVolumeX} />}
+                onClick={() => handleViewChange('schedule')}
+              >
+                スケジュール登録
+              </Button>
+
+              <Button
+                variant={selectedView === 'settings' ? 'solid' : 'ghost'}
+                justifyContent="flex-start"
+                leftIcon={<Icon as={FiSettings} />}
+                onClick={() => handleViewChange('settings')}
+              >
+                監視機能設定
+              </Button>
               
               <Button
                 variant={selectedView === 'behavior' ? 'solid' : 'ghost'}
@@ -487,7 +506,7 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
               </Button>
               
               <Divider />
-              <Text fontSize="sm" fontWeight="bold" color="gray.500">Phase 4</Text>
+              <Text fontSize="sm" fontWeight="bold" color="gray.500">拡張機能（未実装）</Text>
               
               <Button
                 variant={selectedView === 'analytics' ? 'solid' : 'ghost'}

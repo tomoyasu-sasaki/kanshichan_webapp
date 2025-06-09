@@ -60,7 +60,6 @@ class BehaviorLog(BaseModel):
         Index('idx_timestamp_session', 'timestamp', 'session_id'),
         Index('idx_presence_attention', 'presence_status', 'attention_status'),
         Index('idx_smartphone_usage', 'smartphone_detected', 'timestamp'),
-        # Phase 3.2 最適化: 分析クエリ向けインデックス
         Index('idx_focus_analysis', 'timestamp', 'focus_level', 'attention_status'),
         Index('idx_timeframe_presence', 'timestamp', 'presence_status', 'session_id'),
         Index('idx_recent_activity', 'timestamp', 'smartphone_detected', 'focus_level'),
@@ -331,7 +330,6 @@ class BehaviorLog(BaseModel):
         
         return paginated.items, paginated.total
 
-    # Phase 3.2 パフォーマンス最適化メソッド
     @classmethod 
     def get_optimized_focus_trends(cls,
                                   start_time: datetime,

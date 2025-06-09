@@ -20,7 +20,6 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    // Phase 3.2: パフォーマンス最適化
     chunkSizeWarningLimit: 500,
     rollupOptions: {
       output: {

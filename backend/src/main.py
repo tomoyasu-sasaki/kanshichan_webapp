@@ -25,7 +25,6 @@ def start_monitor_thread(monitor_instance):
     monitor_thread.start()
     return monitor_thread
 
-# Phase 3.3: 定期分析実行関数
 def run_periodic_analysis(app_instance):
     """定期分析実行関数"""
     
@@ -102,23 +101,20 @@ if __name__ == '__main__':
         # ScheduleManagerのインスタンス化
         schedule_manager = ScheduleManager(config_manager)
         app_logger.info("ScheduleManager を初期化しました。")
-        # --- ここまで ---
 
-        # Phase 1.1: DataCollector の初期化
         app_logger.info("DataCollector を初期化しています...")
         data_collector = DataCollector(
             camera=camera,
             detector=detector,
             state_manager=state,
             collection_interval=2.0,  # 2秒間隔
-            flask_app=app             # Phase 2: Flaskアプリを追加
+            flask_app=app
         )
         
         # StorageService の初期化
         storage_service = StorageService()
         app_logger.info("StorageService を初期化しました")
 
-        # Phase 3.1: BehaviorAnalyzer の初期化
         app_logger.info("BehaviorAnalyzer を初期化しています...")
         behavior_analyzer = BehaviorAnalyzer(config_manager.get_all())
         app_logger.info("BehaviorAnalyzer を初期化しました")
@@ -132,9 +128,9 @@ if __name__ == '__main__':
             state=state,
             alert_manager=alert_manager,
             schedule_manager=schedule_manager,  # ScheduleManager を追加
-            data_collector=data_collector,      # Phase 1.2: 追加
-            storage_service=storage_service,    # Phase 1.2: 追加
-            flask_app=app                       # Phase 4.2: Flask app を追加
+            data_collector=data_collector,     
+            storage_service=storage_service,   
+            flask_app=app                      
         )
         app_logger.info("Monitor インスタンスを作成しました。")
 
@@ -144,17 +140,14 @@ if __name__ == '__main__':
         app.config['monitor_instance'] = monitor
         app.config['config_manager'] = config_manager # 念のため設定
         app.config['schedule_manager'] = schedule_manager # ScheduleManagerを設定
-        # Phase 3.1: BehaviorAnalyzer をアプリケーション設定に追加
         app.config['behavior_analyzer'] = behavior_analyzer
         app_logger.info("Flask アプリケーションに Monitor, ConfigManager, ScheduleManager, BehaviorAnalyzer を設定しました。")
-        # --- ここまで ---
 
         # モニターを別スレッドで開始
         app_logger.info("モニタリングを別スレッドで開始します...")
         monitor_thread = start_monitor_thread(monitor)
         app_logger.info("モニタリングスレッドを開始しました。")
 
-        # Phase 3.3: 定期分析スレッドの開始
         app_logger.info("定期分析スレッドを開始します...")
         analysis_thread = threading.Thread(target=run_periodic_analysis, args=(app,), daemon=True)
         analysis_thread.start()

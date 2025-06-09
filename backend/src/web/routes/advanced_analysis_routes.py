@@ -417,7 +417,7 @@ def get_productivity_score():
 # ========== ヘルパー関数 ==========
 
 def _get_advanced_behavior_analyzer() -> Optional[Any]:
-    """高度行動分析器インスタンス取得
+    """高度行動分析器インスタンス取得（シングルトンパターン）
     
     AdvancedBehaviorAnalyzerのインスタンスを作成し、設定を適用します。
     複雑な行動パターンの詳細分析に使用されます。
@@ -428,18 +428,26 @@ def _get_advanced_behavior_analyzer() -> Optional[Any]:
     Note:
         設定はFlaskのcurrent_app.configから取得されます。
         初期化に失敗した場合はログに記録し、Noneを返します。
+        インスタンスはFlaskアプリケーションコンテキストにキャッシュされます。
     """
+    # インスタンスがすでにFlaskアプリケーションコンテキストに存在するか確認
+    if 'advanced_behavior_analyzer' in current_app.config:
+        return current_app.config['advanced_behavior_analyzer']
+    
     try:
         from services.ai_ml.advanced_behavior_analyzer import AdvancedBehaviorAnalyzer
         config = current_app.config.get('config_manager').get_all()
-        return AdvancedBehaviorAnalyzer(config)
+        analyzer = AdvancedBehaviorAnalyzer(config)
+        # キャッシュに保存
+        current_app.config['advanced_behavior_analyzer'] = analyzer
+        return analyzer
     except Exception as e:
         logger.error(f"Error creating AdvancedBehaviorAnalyzer: {e}")
     return None
 
 
 def _get_pattern_recognizer() -> Optional[Any]:
-    """パターン認識エンジンインスタンス取得（高度分析用）
+    """パターン認識エンジンインスタンス取得（シングルトンパターン）
     
     PatternRecognizerのインスタンスを作成し、設定を適用します。
     行動データからの複雑なパターン認識に使用されます。
@@ -450,11 +458,19 @@ def _get_pattern_recognizer() -> Optional[Any]:
     Note:
         設定はFlaskのcurrent_app.configから取得されます。
         初期化に失敗した場合はログに記録し、Noneを返します。
+        インスタンスはFlaskアプリケーションコンテキストにキャッシュされます。
     """
+    # インスタンスがすでにFlaskアプリケーションコンテキストに存在するか確認
+    if 'pattern_recognizer' in current_app.config:
+        return current_app.config['pattern_recognizer']
+    
     try:
         from services.ai_ml.pattern_recognition import PatternRecognizer
         config = current_app.config.get('config_manager').get_all()
-        return PatternRecognizer(config)
+        recognizer = PatternRecognizer(config)
+        # キャッシュに保存
+        current_app.config['pattern_recognizer'] = recognizer
+        return recognizer
     except Exception as e:
         logger.error(f"Error creating PatternRecognizer: {e}")
     return None

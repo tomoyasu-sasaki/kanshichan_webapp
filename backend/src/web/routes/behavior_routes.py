@@ -867,7 +867,7 @@ def _get_daily_dashboard_data(timeframe: str, user_id: str = None) -> Dict[str, 
             return _empty_dashboard_data()
         
         # 基本統計計算
-        total_seconds = len(logs) * 30  # 30秒間隔と仮定
+        total_seconds = len(logs) * 2  # 5秒間隔と仮定
         
         # 集中度関連計算
         focus_scores = [log.focus_level for log in logs if log.focus_level is not None]

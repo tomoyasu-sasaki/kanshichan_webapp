@@ -63,7 +63,7 @@ platformdirs==4.3.8
 playsound==1.2.2
 pooch==1.8.2
 propcache==0.3.1
-protobuf==4.25.8
+protobuf==5.27.2
 psutil==7.0.0
 py-cpuinfo==9.0.0
 pycparser==2.22

@@ -56,8 +56,6 @@ class Monitor:
         self.alert_manager = alert_manager
         self.schedule_manager = schedule_manager
         self.flask_app = flask_app
-        
-        # Phase 1.2: DataCollector関連の追加
         self.data_collector = data_collector
         self.storage_service = storage_service
         
@@ -104,7 +102,6 @@ class Monitor:
             config_manager=config_manager
         )
         
-        # Phase 4.2: 分析データ配信関連の初期化
         self.last_analysis_broadcast = time.time()
         self.analysis_broadcast_interval = 10  # 10秒間隔で分析データ配信
         
@@ -152,7 +149,6 @@ class Monitor:
                 self.status_broadcaster.update_frame_buffer(frame)
                 self.status_broadcaster.broadcast_status()
 
-                # Phase 4.2: 定期的な分析データ配信
                 if current_time - self.last_analysis_broadcast >= self.analysis_broadcast_interval:
                     self._broadcast_analysis_data(detection_results)
                     self.last_analysis_broadcast = current_time
@@ -180,7 +176,6 @@ class Monitor:
 
     def cleanup(self):
         """リソースのクリーンアップ"""
-        # Phase 1.2: DataCollector停止
         if self.data_collector:
             self.data_collector.stop_collection()
             logger.info("DataCollector stopped")
@@ -295,7 +290,6 @@ class Monitor:
         
         return status
 
-    # Phase 4.2: 分析データ配信メソッド
     def _broadcast_analysis_data(self, current_detection_results: Dict[str, Any]) -> None:
         """
         分析データをWebSocketで配信する
@@ -304,7 +298,6 @@ class Monitor:
             current_detection_results: 現在の検出結果
         """
         try:
-            # Phase 4.2: Flask アプリケーションコンテキストの確保
             if not self.flask_app:
                 logger.warning("Flask app not available for analysis broadcast")
                 return

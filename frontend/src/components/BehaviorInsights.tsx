@@ -371,16 +371,13 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
     );
 
     try {
-      // Phase 1: 高速でサマリーデータを表示
       await fetchBehaviorSummary();
       
-      // Phase 2: 並行してトレンドと推奨事項を取得
       await Promise.all([
         fetchBehaviorTrends(timeframe),
         fetchRecommendations(priorityFilter)
       ]);
       
-      // Phase 3: 最後に重いインサイトを取得（バックグラウンド）
       void fetchDailyInsights(); // 非同期で実行、完了を待たない
       
       setLastUpdated(new Date());
@@ -549,6 +546,23 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
             ))
           ) : behaviorSummary ? (
             <>
+              <Card>
+                <CardBody>
+                  <Stat>
+                    <StatLabel>今日の監視時間</StatLabel>
+                    <StatNumber>{formatTime(behaviorSummary.today?.total_time ?? 0)}</StatNumber>
+                    <StatHelpText>
+                      {(behaviorSummary.today?.total_time ?? 0) > (behaviorSummary.yesterday?.total_time ?? 0) ? (
+                        <StatArrow type="increase" />
+                      ) : (
+                        <StatArrow type="decrease" />
+                      )}
+                      前日比: {formatTime(Math.abs((behaviorSummary.today?.total_time ?? 0) - (behaviorSummary.yesterday?.total_time ?? 0)))}
+                    </StatHelpText>
+                  </Stat>
+                </CardBody>
+              </Card>
+              
               <Card>
                 <CardBody>
                   <Stat>
