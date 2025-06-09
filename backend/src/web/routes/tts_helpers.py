@@ -10,6 +10,7 @@ import logging
 import time
 from pathlib import Path
 from typing import Dict, Any, Optional
+import importlib
 
 from services.tts.tts_service import TTSService
 from services.voice_manager import VoiceManager
@@ -87,49 +88,42 @@ def init_tts_services(config: Dict[str, Any]) -> None:
     global tts_service, voice_manager
     
     try:
-        print("\n" + "="*70)
-        print("🎯 TTS SERVICE INITIALIZATION STARTED")
-        print("="*70)
+        logger.info("="*70)
+        logger.info("🎯 TTS SERVICE INITIALIZATION STARTED")
+        logger.info("="*70)
         
         # TTS初期化時の進捗バー無効化
         ensure_tqdm_disabled()
         logger.info("📝 TTS initialization with progress bars disabled")
-        print("📝 Progress bars disabled for initialization")
         
         logger.info("🏗️ Creating TTS Service instance...")
-        print("🏗️ Creating TTS Service instance...")
         tts_service = TTSService(config)
         
         logger.info("🏗️ Creating Voice Manager instance...")
-        print("🏗️ Creating Voice Manager instance...")
         voice_manager = VoiceManager(config)
         
         # 強制初期化実行
         logger.info("🚀 Forcing TTS model initialization...")
-        print("🚀 Forcing TTS model initialization...")
         
         init_start_time = time.time()
         
         if tts_service.initialize():
             init_total_time = time.time() - init_start_time
             
-            print("\n" + "="*70)
-            print("🎉 TTS SERVICE INITIALIZATION COMPLETED!")
-            print(f"⏰ Total service initialization time: {init_total_time:.2f} seconds")
-            print("✅ TTS Service: Ready")
-            print("✅ Voice Manager: Ready")
-            print("✅ Model Status: Initialized")
-            print("="*70 + "\n")
-            
-            logger.info(f"✅ TTS services initialization completed in {init_total_time:.2f} seconds")
+            logger.info("="*70)
+            logger.info("🎉 TTS SERVICE INITIALIZATION COMPLETED!")
+            logger.info(f"⏰ Total service initialization time: {init_total_time:.2f} seconds")
+            logger.info("✅ TTS Service: Ready")
+            logger.info("✅ Voice Manager: Ready")
+            logger.info("✅ Model Status: Initialized")
+            logger.info("="*70)
+
         else:
-            print("\n" + "="*70)
-            print("⚠️ TTS SERVICE INITIALIZATION PARTIALLY FAILED")
-            print("❌ Model Status: Not Initialized")
-            print("⚠️ Service will continue with limited functionality")
-            print("="*70 + "\n")
-            
-            logger.warning("⚠️ TTS model initialization failed but services created")
+            logger.warning("="*70)
+            logger.warning("⚠️ TTS SERVICE INITIALIZATION PARTIALLY FAILED")
+            logger.warning("❌ Model Status: Not Initialized")
+            logger.warning("⚠️ Service will continue with limited functionality")
+            logger.warning("="*70)
         
         # 分割されたコンポーネントに初期化
         _initialize_tts_components()
@@ -137,13 +131,11 @@ def init_tts_services(config: Dict[str, Any]) -> None:
         logger.info("✅ TTS services setup completed")
         
     except Exception as e:
-        print("\n" + "="*70)
-        print("❌ TTS SERVICE INITIALIZATION FAILED!")
-        print(f"❌ Error: {str(e)}")
-        print("❌ TTS functionality will be unavailable")
-        print("="*70 + "\n")
-        
-        logger.error(f"Failed to initialize TTS services: {e}")
+        logger.error("="*70)
+        logger.error("❌ TTS SERVICE INITIALIZATION FAILED!")
+        logger.error(f"❌ Error: {str(e)}")
+        logger.error("❌ TTS functionality will be unavailable")
+        logger.error("="*70)
         raise
 
 
@@ -157,45 +149,47 @@ def _initialize_tts_components() -> None:
     if not tts_service or not voice_manager:
         logger.warning("TTS services not available for component initialization")
         return
-    
-    try:
-        # 音声合成コンポーネント初期化
-        from .tts_synthesis_routes import init_synthesis_services
-        init_synthesis_services(tts_service, voice_manager)
-        logger.info("🎵 TTS Synthesis component initialized")
-        
-        # 音声クローンコンポーネント初期化
-        from .tts_voice_clone_routes import init_voice_clone_services
-        init_voice_clone_services(tts_service, voice_manager)
-        logger.info("🎭 TTS Voice Clone component initialized")
-        
-        # ファイル管理コンポーネント初期化
-        from .tts_file_routes import init_file_services
-        init_file_services(tts_service, voice_manager)
-        logger.info("📁 TTS File Management component initialized")
-        
-        # 感情処理コンポーネント初期化
-        from .tts_emotion_routes import init_emotion_services
-        init_emotion_services(tts_service, voice_manager)
-        logger.info("😊 TTS Emotion Processing component initialized")
-        
-        # ストリーミングコンポーネント初期化
-        from .tts_streaming_routes import init_streaming_services
-        init_streaming_services(tts_service, voice_manager)
-        logger.info("📡 TTS Streaming component initialized")
-        
-        # システム管理コンポーネント初期化
-        from .tts_system_routes import init_system_services
-        init_system_services(tts_service, voice_manager)
-        logger.info("⚙️ TTS System Management component initialized")
-        
-        logger.info("🎉 All TTS components successfully initialized")
-        
-    except ImportError as e:
-        logger.warning(f"Some TTS components not yet available: {e}")
-    except Exception as e:
-        logger.error(f"Failed to initialize TTS components: {e}")
-        raise
+
+    # 初期化が必須なコンポーネントのみをリストアップ
+    # 他はBlueprint登録のみで動作するため、明示的な初期化は不要
+    components_to_initialize = {
+        "TTS Synthesis": ".tts_synthesis_routes",
+        "TTS Voice Clone": ".tts_voice_clone_routes",
+        "TTS File": ".tts_file_routes",
+        "TTS Streaming": ".tts_streaming_routes",
+        "TTS System": ".tts_system_routes",
+    }
+
+    initialized_components = []
+    for name, module_name in components_to_initialize.items():
+        try:
+            module = importlib.import_module(module_name, package='web.routes')
+            
+            # init_..._services 関数を探して実行
+            # 例: TTS Synthesis -> init_synthesis_services
+            init_func_name = f"init_{name.lower().replace(' ', '_').replace('tts_', '')}_services"
+            init_func = getattr(module, init_func_name, None)
+
+            if init_func and callable(init_func):
+                init_func(tts_service, voice_manager)
+                logger.info(f"🎵 {name} component initialized")
+                initialized_components.append(name)
+            else:
+                 # これは設計上の問題を示す可能性があるため、警告を残す
+                 logger.warning(f"Expected initialization function '{init_func_name}' not found for {name} component.")
+
+        except ImportError as e:
+            logger.warning(f"{name} component module not found: {e}")
+        except Exception as e:
+            logger.error(f"Failed to initialize {name} component: {e}", exc_info=True)
+
+    if len(initialized_components) == len(components_to_initialize):
+        logger.info(f"✅ All {len(initialized_components)} required TTS components initialized successfully.")
+    else:
+        logger.warning(
+            f"⚠️ Only {len(initialized_components)} out of {len(components_to_initialize)} required TTS components were initialized. "
+            f"Initialized: {initialized_components}"
+        )
 
 
 def get_tts_service() -> Optional[TTSService]:

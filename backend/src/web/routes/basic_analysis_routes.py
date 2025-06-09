@@ -128,7 +128,6 @@ def get_behavior_trends():
         # 行動ログ取得
         logs = BehaviorLog.get_recent_logs(hours=hours, user_id=user_id)
         
-        # Phase 3.2: フォールバック処理追加
         if not logs or len(logs) == 0:
             return jsonify({
                 'status': 'success',
@@ -295,7 +294,6 @@ def get_daily_insights():
             user_id=user_id
         )
         
-        # Phase 3.2: フォールバック処理追加
         if not logs or len(logs) == 0:
             return jsonify({
                 'status': 'success',
@@ -514,26 +512,37 @@ def get_recommendations():
 
 def _get_behavior_analyzer() -> Optional[BehaviorAnalyzer]:
     """BehaviorAnalyzerインスタンスを取得"""
-    # Phase 3.2: main.pyで設定したBehaviorAnalyzerインスタンスを取得
     return current_app.config.get('behavior_analyzer')
 
 
 def _get_llm_service() -> Optional[LLMService]:
-    """LLMServiceインスタンスを取得"""
+    """LLMServiceインスタンスを取得（シングルトンパターン）"""
+    # インスタンスがすでにFlaskアプリケーションコンテキストに存在するか確認
+    if 'llm_service' in current_app.config:
+        return current_app.config['llm_service']
+    
     config_manager = current_app.config.get('config_manager')
     if not config_manager:
         return None
     
     try:
         config = config_manager.get_all() if hasattr(config_manager, 'get_all') else {}
-        return LLMService(config)
+        # 新しいインスタンスを作成
+        llm_service = LLMService(config)
+        # キャッシュに保存
+        current_app.config['llm_service'] = llm_service
+        return llm_service
     except Exception as e:
         logger.warning(f"Failed to initialize LLMService: {e}")
         return None
 
 
 def _get_advice_generator() -> Optional[AdviceGenerator]:
-    """AdviceGeneratorインスタンスを取得"""
+    """AdviceGeneratorインスタンスを取得（シングルトンパターン）"""
+    # インスタンスがすでにFlaskアプリケーションコンテキストに存在するか確認
+    if 'advice_generator' in current_app.config:
+        return current_app.config['advice_generator']
+    
     config_manager = current_app.config.get('config_manager')
     if not config_manager:
         return None
@@ -545,17 +554,24 @@ def _get_advice_generator() -> Optional[AdviceGenerator]:
         
         if not llm_service or not analyzer:
             return None
-            
-        return AdviceGenerator(llm_service, analyzer, config)
+        
+        # 新しいインスタンスを作成    
+        advice_generator = AdviceGenerator(llm_service, analyzer, config)
+        # キャッシュに保存
+        current_app.config['advice_generator'] = advice_generator
+        return advice_generator
     except Exception as e:
         logger.warning(f"Failed to initialize AdviceGenerator: {e}")
         return None
 
 
 def _get_advanced_behavior_analyzer() -> Optional[Any]:
-    """AdvancedBehaviorAnalyzerインスタンス取得 - Phase 5.2で復旧"""
+    """AdvancedBehaviorAnalyzerインスタンス取得（シングルトンパターン）"""
+    # インスタンスがすでにFlaskアプリケーションコンテキストに存在するか確認
+    if 'advanced_behavior_analyzer' in current_app.config:
+        return current_app.config['advanced_behavior_analyzer']
+    
     try:
-        # Phase 5.2: 実際にAdvancedBehaviorAnalyzerをインポートして使用
         from services.ai_ml.advanced_behavior_analyzer import AdvancedBehaviorAnalyzer
         
         config_manager = current_app.config.get('config_manager')
@@ -570,6 +586,9 @@ def _get_advanced_behavior_analyzer() -> Optional[Any]:
         # AdvancedBehaviorAnalyzerのインスタンス作成
         advanced_analyzer = AdvancedBehaviorAnalyzer(config)
         logger.info("AdvancedBehaviorAnalyzer initialized successfully")
+        
+        # キャッシュに保存
+        current_app.config['advanced_behavior_analyzer'] = advanced_analyzer
         return advanced_analyzer
         
     except ImportError as e:

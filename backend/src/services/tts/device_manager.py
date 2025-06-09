@@ -48,7 +48,19 @@ class DeviceManager:
             if self.device == 'mps':
                 # MPSではBF16とF16の混在問題を避けるためF16に統一
                 logger.info("🍎 MPS detected: Converting model to float16 for compatibility")
-                model = model.to(self.device, torch.float16)
+                
+                # まずパラメータをCPUにコピーして型変換してからMPSに移動する（より安全な方法）
+                if hasattr(model, 'to'):
+                    # まずCPUに移動
+                    model = model.to('cpu')
+                    # float32に変換（中間ステップ）
+                    model = model.to(dtype=torch.float32)
+                    # そしてMPSのfloat16に変換
+                    model = model.to(self.device, torch.float16)
+                    logger.info("🔢 MPS: Model converted to float16 using safe conversion path")
+                else:
+                    # 通常の変換（フォールバック）
+                    model = model.to(self.device, torch.float16)
             else:
                 model = model.to(self.device)
             

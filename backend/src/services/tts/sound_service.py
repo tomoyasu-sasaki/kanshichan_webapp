@@ -6,14 +6,17 @@ from utils.exceptions import (
     AudioError, AudioPlaybackError, AudioFileError,
     HardwareError, FileNotFoundError, wrap_exception
 )
+from pathlib import Path
 
 logger = setup_logger(__name__)
 
 class SoundService:
     def __init__(self):
-        self.base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-        self.sound_dir = os.path.join(self.base_dir, 'backend', 'src', 'sounds')
-        logger.info(f"Sound directory: {self.sound_dir}")
+        # プロジェクトのルートディレクトリを基準に絶対パスを構築
+        project_root = Path(__file__).resolve().parent.parent.parent.parent
+        self.sound_dir = project_root / 'src' / 'sounds'
+        
+        logger.info(f"Sound directory set to: {self.sound_dir}")
         self._initialize_sound_system()
 
     def _initialize_sound_system(self):
@@ -39,7 +42,7 @@ class SoundService:
                 details={
                     'sound_path': sound_path,
                     'platform': 'Windows',
-                    'file_exists': os.path.exists(sound_path) if sound_path else False
+                    'file_exists': Path(sound_path).exists() if sound_path else False
                 }
             )
             logger.error(f"Windows audio error: {windows_audio_error.to_dict()}")
@@ -61,7 +64,7 @@ class SoundService:
                 details={
                     'sound_path': sound_path,
                     'platform': platform.system(),
-                    'file_exists': os.path.exists(sound_path) if sound_path else False
+                    'file_exists': Path(sound_path).exists() if sound_path else False
                 }
             )
             logger.error(f"Unix audio error: {unix_audio_error.to_dict()}")
@@ -69,15 +72,15 @@ class SoundService:
     def play_alert(self, sound_file='alert.wav'):
         def play():
             try:
-                sound_path = os.path.join(self.sound_dir, sound_file)
+                sound_path = self.sound_dir / sound_file
                 logger.info(f"Attempting to play sound: {sound_path}")
                 
-                if not os.path.exists(sound_path):
+                if not sound_path.exists():
                     logger.warning(f"音声ファイルが見つかりません: {sound_path}")
                     
                     # ファイル名の検索を改善 - スペースや大文字小文字の違いを無視
                     # ディレクトリ内のすべてのファイルをリスト
-                    files_in_dir = os.listdir(self.sound_dir)
+                    files_in_dir = [f.name for f in self.sound_dir.iterdir() if f.is_file()]
                     logger.info(f"利用可能な音声ファイル: {files_in_dir}")
                     
                     # ファイル名の類似性でマッチングを試みる
@@ -85,19 +88,19 @@ class SoundService:
                     for file_name in files_in_dir:
                         normalized_file = file_name.lower().replace(" ", "")
                         if normalized_sound_file in normalized_file:
-                            sound_path = os.path.join(self.sound_dir, file_name)
+                            sound_path = self.sound_dir / file_name
                             logger.info(f"類似の音声ファイルが見つかりました: {file_name}")
                             break
                     
                     # それでも見つからなければデフォルト音声を使用
-                    if not os.path.exists(sound_path):
+                    if not sound_path.exists():
                         logger.warning(f"類似の音声ファイルも見つかりません。デフォルトの音声を使用します")
-                        sound_path = os.path.join(self.sound_dir, 'alert.wav')
-                        if not os.path.exists(sound_path):
+                        sound_path = self.sound_dir / 'alert.wav'
+                        if not sound_path.exists():
                             logger.error("デフォルトのアラート音も見つかりません")
                             return
 
-                self.play_sound(sound_path)
+                self.play_sound(str(sound_path))
             except Exception as e:
                 audio_play_error = wrap_exception(
                     e, AudioError,

@@ -119,6 +119,9 @@ def ensure_tensor_device(tensor: torch.Tensor, target_device: str) -> torch.Tens
         # MPSデバイスの場合は型を明示的に変換
         if target_device == 'mps':
             # MPSではbf16とf16の混在を避けるためf16に統一
+            if hasattr(tensor, 'dtype') and tensor.dtype == torch.bfloat16:
+                # bfloat16からfloat16への明示的な変換
+                tensor = tensor.to(dtype=torch.float32).to(dtype=torch.float16)
             return tensor.to(target_device, dtype=torch.float16)
         return tensor.to(target_device)
     except Exception:

@@ -51,7 +51,7 @@ class TTSConfig:
         self.suppress_warnings = self.tts_config.get('suppress_warnings', True)
         
         # MPS設定
-        self.enable_mps = self.tts_config.get('enable_mps', True)
+        self.enable_mps = self.tts_config.get('enable_mps', False)
         self.mps_memory_fraction = self.tts_config.get('mps_memory_fraction', 0.75)
         self.mps_half_precision = self.tts_config.get('mps_half_precision', False)
         self.debug_mps = self.tts_config.get('debug_mps', False)

@@ -14,6 +14,9 @@ from utils.exceptions import (
 )
 from core.ai_optimizer import AIOptimizer
 from core.detection_smoother import DetectionSmoother
+import shutil
+from pathlib import Path
+from ultralytics.utils import SETTINGS
 
 logger = setup_logger(__name__)
 
@@ -184,37 +187,40 @@ class ObjectDetector:
             if self.config_manager:
                 models_dir_rel = self.config_manager.get('models.yolo.models_dir', 'models')
                 # プロジェクトルートからの相対パスを絶対パスに変換
-                project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-                models_dir = os.path.join(project_root, models_dir_rel)
+                project_root = Path(__file__).resolve().parent.parent.parent
+                models_dir = project_root / models_dir_rel
             else:
                 # 設定がない場合はデフォルトパスを使用
-                models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "models")
+                project_root = Path(__file__).resolve().parent.parent.parent
+                models_dir = project_root / "models"
             
             # モデルディレクトリが存在しない場合は作成
             os.makedirs(models_dir, exist_ok=True)
             
             # モデルの絶対パスを設定
-            model_path = os.path.join(models_dir, model_name)
+            model_path = models_dir / model_name
             
-            # モデルが存在しない場合はダウンロード
-            if not os.path.exists(model_path):
-                logger.warning(f"YOLOモデルをダウンロードします... 保存先: {model_path}")
-                self.model = YOLO(model_name)
-                # モデルを指定パスに保存（環境によってはコピーする必要がある）
-                if hasattr(self.model, 'export') and callable(getattr(self.model, 'export')):
-                    try:
-                        self.model.export(format="pt", imgsz=640)
-                        # エクスポートされたモデルを移動
-                        exported_path = os.path.join(os.getcwd(), model_name)
-                        if os.path.exists(exported_path) and exported_path != model_path:
-                            import shutil
-                            shutil.move(exported_path, model_path)
-                            logger.info(f"モデルファイルを移動しました: {exported_path} -> {model_path}")
-                    except Exception as e:
-                        logger.error(f"モデルのエクスポート中にエラーが発生しました: {e}")
+            # モデルが存在しない場合はダウンロードして保存
+            if not model_path.exists():
+                logger.warning(f"YOLOモデルファイルが見つかりません: {model_path}。'{model_name}' をダウンロードします...")
+                self.model = YOLO(model_name)  # ダウンロード実行
+
+                # ダウンロードしたモデルファイルを所定の場所にコピー
+                weights_dir = Path(SETTINGS['weights_dir'])
+                source_model_path = weights_dir / model_name
+                
+                if source_model_path.exists():
+                    logger.info(f"ダウンロードしたモデルをコピーします: {source_model_path} -> {model_path}")
+                    shutil.copy(source_model_path, model_path)
+                    logger.info(f"モデルを正常に保存しました: {model_path}")
+                else:
+                    logger.error(f"モデルの保存に失敗しました。ダウンロードされたモデルがキャッシュに見つかりません: {source_model_path}")
+
             else:
                 logger.info(f"既存のYOLOモデルを読み込みます: {model_path}")
-                self.model = YOLO(model_path)
+
+            # モデルをインスタンス化（ローカルパスから）
+            self.model = YOLO(str(model_path))
             
             # YOLOモデルの最適化設定
             self.model.verbose = False
@@ -251,7 +257,7 @@ class ObjectDetector:
                 e, YOLOError,
                 "YOLO object detector initialization failed",
                 details={
-                    'model_path': model_path,
+                    'model_path': str(model_path) if 'model_path' in locals() else 'unknown',
                     'device': str(self.device) if hasattr(self, 'device') else 'unknown',
                     'torch_available': torch.cuda.is_available() if hasattr(torch, 'cuda') else False,
                     'mps_available': torch.backends.mps.is_built() if hasattr(torch.backends, 'mps') else False
@@ -532,9 +538,12 @@ class ObjectDetector:
         """
         設定を再読み込みして検出システムを再初期化
         """
+        logger.info("Reloading ObjectDetector settings...")
         if self.config_manager:
             self.landmark_settings = self.config_manager.get_landmark_settings()
             self.detection_objects = self.config_manager.get_detection_objects()
-            logger.info("Detection settings reloaded.")
+            self.use_mediapipe = self.config_manager.get('detector.use_mediapipe', False)
+            self.use_yolo = self.config_manager.get('detector.use_yolo', True)
+            logger.info(f"Settings reloaded: MediaPipe={'enabled' if self.use_mediapipe else 'disabled'}, YOLO={'enabled' if self.use_yolo else 'disabled'}")
         else:
-            logger.warning("Cannot reload settings: ConfigManager not available.") 
+            logger.warning("ConfigManager not available, cannot reload settings.") 

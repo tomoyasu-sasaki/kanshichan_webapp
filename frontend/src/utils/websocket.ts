@@ -23,7 +23,6 @@ export interface ScheduleAlert {
   time: string;
 }
 
-// 音声ストリーミング関連の型定義 (Phase 2.4 新機能)
 export interface AudioStreamData {
   audio_data: string;  // Base64エンコードされた音声データ
   metadata: {
@@ -186,8 +185,6 @@ class WebSocketManager {
   private errorCallbacks: SocketEventCallback<Error>[] = [];
   private statusUpdateCallbacks: SocketEventCallback<DetectionStatus>[] = [];
   private scheduleAlertCallbacks: SocketEventCallback<ScheduleAlert>[] = [];
-  
-  // 音声ストリーミング関連のコールバック (Phase 2.4 新機能)
   private audioStreamCallbacks: SocketEventCallback<AudioStreamData>[] = [];
   private audioNotificationCallbacks: SocketEventCallback<AudioNotification>[] = [];
   private audioStatusUpdateCallbacks: SocketEventCallback<AudioStatusUpdate>[] = [];
@@ -247,7 +244,6 @@ class WebSocketManager {
       this.scheduleAlertCallbacks.forEach(callback => callback(data));
     });
 
-    // 音声ストリーミング関連のイベントリスナー (Phase 2.4 新機能)
     this.socket.on('audio_stream', (data: AudioStreamData) => {
       console.log('Audio stream received:', data.metadata);
       
@@ -330,8 +326,6 @@ class WebSocketManager {
       this.scheduleAlertCallbacks = this.scheduleAlertCallbacks.filter(cb => cb !== callback);
     };
   }
-
-  // 音声ストリーミング関連のイベントリスナー登録メソッド (Phase 2.4 新機能)
   public onAudioStream(callback: SocketEventCallback<AudioStreamData>) {
     this.audioStreamCallbacks.push(callback);
     return () => {

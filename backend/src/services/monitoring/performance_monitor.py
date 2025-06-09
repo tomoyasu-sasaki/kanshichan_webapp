@@ -21,9 +21,6 @@ import psutil
 import numpy as np
 
 from models.behavior_log import BehaviorLog
-# 削除ファイルへの参照をコメントアウト（Phase 0.1）
-# from ..streaming.real_time_analyzer import RealTimeAnalyzer, RealTimeMetrics
-# from ..streaming.streaming_processor import StreamingProcessor
 from .alert_system import AlertSystem
 from utils.logger import setup_logger
 
@@ -702,7 +699,6 @@ class PerformanceMonitor:
             logger.error(f"Critical error in integrated monitoring: {e}")
     
     async def _perform_integrated_evaluation(self):
-        """統合評価実行 - Phase 0.1で安全化"""
         try:
             # 包括的状態取得（簡易版）
             status = self.get_comprehensive_status()
@@ -847,8 +843,6 @@ class PerformanceMonitor:
         """アラート要約 - 実装予定"""
         return {} 
 
-
-# 削除ファイル代替定義（Phase 0.1で追加）
 @dataclass
 class RealTimeMetrics:
     """リアルタイムメトリクス代替定義"""

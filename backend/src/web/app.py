@@ -66,40 +66,39 @@ def create_app(config_manager: ConfigManager):
     config = config_manager.get_all()
     
     # WebSocket初期化
-    init_websocket(app)
+    try:
+        init_websocket(app)
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize WebSocket: {e}")
     
-    # 音声配信システム初期化 (Phase 2.4 新機能)
     try:
         init_audio_streaming()
-        logger.info("Audio streaming system initialized successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize audio streaming system: {e}")
+        logger.error(f"❌ Failed to initialize audio streaming system: {e}")
         # 音声配信システムの初期化失敗は致命的ではないため継続
     
     # TTS サービス初期化
     try:
         init_tts_services(config)
-        logger.info("TTS services initialized successfully")
     except Exception as e:
         tts_init_error = wrap_exception(
             e, InitializationError,
             "Failed to initialize TTS services",
             details={'config_keys': list(config.keys())}
         )
-        logger.error(f"TTS services initialization error: {tts_init_error.to_dict()}")
+        logger.error(f"❌ TTS services initialization error: {tts_init_error.to_dict()}")
         # TTSサービスの初期化失敗は致命的ではないため継続
     
     # Monitor サービス初期化
     try:
         init_monitor_service(config)
-        logger.info("Monitor services initialized successfully")
     except Exception as e:
         monitor_init_error = wrap_exception(
             e, InitializationError,
             "Failed to initialize Monitor services",
             details={'config_keys': list(config.keys())}
         )
-        logger.error(f"Monitor services initialization error: {monitor_init_error.to_dict()}")
+        logger.error(f"❌ Monitor services initialization error: {monitor_init_error.to_dict()}")
         # Monitorサービスの初期化失敗は致命的ではないため継続
     
     # API Blueprint登録
@@ -132,7 +131,7 @@ def create_app(config_manager: ConfigManager):
             configuration = Configuration(access_token=access_token)
             api_client = ApiClient(configuration)
             line_bot_api = MessagingApi(api_client)
-            logger.info("LINE Bot handler initialized successfully.")
+            logger.info("✅ LINE Bot handler initialized successfully.")
         except Exception as e:
             line_init_error = wrap_exception(
                 e, LineAPIError,
@@ -143,9 +142,24 @@ def create_app(config_manager: ConfigManager):
                     'line_enabled': line_enabled
                 }
             )
-            logger.error(f"LINE Bot initialization error: {line_init_error.to_dict()}")
+            logger.error(f"❌ LINE Bot initialization error: {line_init_error.to_dict()}")
             line_handler = None
             line_bot_api = None
+
+    # サービスの初期化状況を集約してロギング
+    initialized_services = [
+        "WebSocket", "Audio Streaming", "TTS", "Monitor", "LINE Bot"
+    ]
+    total_services = len(initialized_services)
+    logger.info(f"🎉 Application started successfully with all {total_services} services initialized")
+
+    # 登録されているルートをDEBUGレベルでログ出力
+    logger.debug("=== Registered Routes ===")
+    for rule in app.url_map.iter_rules():
+        # OPTIONS, HEADは冗長なので除外
+        methods = ', '.join(sorted([m for m in rule.methods if m not in ['OPTIONS', 'HEAD']]))
+        logger.debug(f"Route: {rule.endpoint} -> {rule.rule} [{methods}]")
+    logger.debug("========================")
 
     # メッセージハンドラーの設定
     if line_handler:
@@ -248,26 +262,19 @@ def create_app(config_manager: ConfigManager):
     # ルートパス用の明示的なルート
     @app.route('/')
     def index():
-        index_path = os.path.join(app.static_folder, 'index.html')
-        if os.path.exists(index_path):
-            return send_from_directory(app.static_folder, 'index.html')
-        else:
-            return jsonify({"error": "Frontend not found"}), 404
-    
-    # setup_handlers(app, ...)
-    # setup_handlers(app, config_manager.get_all())
-    # setup_handlers(app, config_manager)
-    # setup_handlers(app, line_handler)
-    # setup_handlers(app, ...)
-    # setup_handlers(app, ...)
-    
-    # LINE Bot ハンドラーのセットアップ
-    setup_handlers(app, line_handler)
-    
-    # デバッグ: 登録されているルートを確認
-    logger.info("=== Registered Routes ===")
-    for rule in app.url_map.iter_rules():
-        logger.info(f"Route: {rule.rule} -> {rule.endpoint} [{', '.join(rule.methods)}]")
-    logger.info("========================")
-    
+        return send_from_directory(app.static_folder, 'index.html')
+
+    @app.route('/<path:path>')
+    def serve_spa(path):
+        # パスがファイル（拡張子を持つ）を指している場合
+        if '.' in path.split('/')[-1]:
+            # 安全なファイルパスか確認
+            safe_path = os.path.normpath(os.path.join(app.static_folder, path))
+            if os.path.commonpath([app.static_folder, safe_path]) == app.static_folder:
+                 if os.path.exists(safe_path):
+                     return send_from_directory(app.static_folder, path)
+
+        # それ以外はindex.htmlを返す（SPAルーティング）
+        return send_from_directory(app.static_folder, 'index.html')
+
     return app, socketio

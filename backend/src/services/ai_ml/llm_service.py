@@ -2,7 +2,6 @@
 LLM Service
 
 ローカルLLM（Ollama）を使用した行動分析とアドバイス生成
-Phase 3.2: パフォーマンス最適化実装
 """
 
 from typing import Dict, Any, List, Optional
@@ -26,7 +25,6 @@ class LLMService:
     Ollamaを使用してローカルでLLM推論を実行
     - ELYZA Llama-3-JP (日本語特化)
     - Qwen2:7b (多言語対応)
-    - Phase 3.2: キャッシュ、バッチ処理、最適化
     """
     
     def __init__(self, config: Dict[str, Any]):
@@ -40,17 +38,11 @@ class LLMService:
         self.fallback_model = self.config.get('fallback_model', 'qwen2:7b')
         self.temperature = self.config.get('temperature', 0.7)
         self.max_tokens = self.config.get('max_tokens', 300)
-        
-        # フォールバックモードフラグ（初期化）
         self.fallback_mode = False
-        
-        # Phase 3.2: パフォーマンス最適化設定
         self.cache_enabled = self.config.get('enable_cache', True)
         self.cache_ttl = self.config.get('cache_ttl_hours', 24)
         self.batch_size = self.config.get('batch_size', 5)
         self.inference_timeout = self.config.get('inference_timeout_seconds', 30)
-        
-        # キャッシュとバッチ処理用のストレージ
         self._response_cache = {}
         self._batch_queue = []
         self._cache_lock = threading.Lock()
@@ -109,7 +101,6 @@ class LLMService:
                 self._enable_fallback_mode()
                 return
             
-            # Phase 3.2: モデル最適化設定（モデルが利用可能な場合のみ）
             try:
                 self._optimize_model_settings()
             except Exception as optimize_error:
@@ -189,7 +180,6 @@ class LLMService:
             }
         
         try:
-            # Phase 3.2: キャッシュチェック
             cache_key = self._generate_cache_key('analysis', behavior_data, context)
             
             if self.cache_enabled:
@@ -202,7 +192,6 @@ class LLMService:
             
             prompt = self._create_behavior_analysis_prompt(behavior_data, context)
             
-            # Phase 3.2: タイムアウト付き推論
             response = self._inference_with_timeout(
                 model=self.active_model,
                 messages=[
@@ -238,7 +227,6 @@ class LLMService:
                 'processing_time_ms': processing_time
             }
             
-            # Phase 3.2: キャッシュに保存
             if self.cache_enabled:
                 self._save_to_cache(cache_key, result)
             
@@ -529,7 +517,6 @@ JSON形式での構造化された回答も含めて提供してください。"
                 'timestamp': datetime.utcnow().isoformat()
             }
 
-    # Phase 3.2: パフォーマンス最適化メソッド
     def _generate_cache_key(self, operation: str, *args) -> str:
         """キャッシュキーを生成
         

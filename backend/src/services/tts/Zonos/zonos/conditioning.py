@@ -193,6 +193,8 @@ def get_backend(language: str) -> "EspeakBackend":
     from phonemizer.backend import EspeakBackend
 
     logger = logging.getLogger("phonemizer")
+    # MPSデバイスでの型の不一致エラーを回避するためにキャッシュ関数を無効化
+    logger.setLevel(logging.ERROR)  # 不要なログを抑制
     backend = EspeakBackend(
         language,
         preserve_punctuation=True,
@@ -201,6 +203,7 @@ def get_backend(language: str) -> "EspeakBackend":
         logger=logger,
     )
     logger.setLevel(logging.ERROR)
+    # MPSデバイスとの互換性のためにfloat16をデフォルトにする
     return backend
 
 

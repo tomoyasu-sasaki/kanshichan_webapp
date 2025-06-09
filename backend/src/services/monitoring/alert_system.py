@@ -21,10 +21,7 @@ import time
 
 from models.behavior_log import BehaviorLog
 from models.user_profile import UserProfile
-# 削除ファイルへの参照をコメントアウト（Phase 0.1）
-# from ..streaming.real_time_analyzer import StreamAnalysisResult, StreamEvent
-# from ..streaming.streaming_processor import StreamingProcessor
-# 実在ファイルへのimport復活（Priority 3）
+
 from ..streaming.real_time_analyzer import StreamAnalysisResult, StreamEvent
 from ..streaming.streaming_processor import StreamingProcessor
 from utils.logger import setup_logger

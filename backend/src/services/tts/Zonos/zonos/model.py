@@ -76,7 +76,7 @@ class Zonos(nn.Module):
             if is_transformer and "torch" in BACKBONES:
                 backbone_cls = BACKBONES["torch"]
 
-        # MPS doesn't support GQA - deviceは文字列かtorch.deviceのどちらかをサポート
+         # MPS doesn't support GQA
         is_mps = False
         if isinstance(device, torch.device):
             is_mps = device.type == "mps"
@@ -84,8 +84,9 @@ class Zonos(nn.Module):
             is_mps = device == "mps"
         
         config.backbone.attn_cfg["use_gqa"] = not is_mps
+        # config.backbone.attn_cfg["use_gqa"] = device.type != "mps"
 
-        model = cls(config, backbone_cls).to(device, torch.bfloat16)
+        model = cls(config, backbone_cls).to(device, torch.float16)
         model.autoencoder.dac.to(device)
 
         sd = model.state_dict()
@@ -101,7 +102,7 @@ class Zonos(nn.Module):
         if self.spk_clone_model is None:
             self.spk_clone_model = SpeakerEmbeddingLDA()
         _, spk_embedding = self.spk_clone_model(wav.to(self.spk_clone_model.device), sr)
-        return spk_embedding.unsqueeze(0).bfloat16()
+        return spk_embedding.unsqueeze(0).to(dtype=torch.float16)
 
     def embed_codes(self, codes: torch.Tensor) -> torch.Tensor:
         return sum(emb(codes[:, i]) for i, emb in enumerate(self.embeddings))
@@ -204,7 +205,7 @@ class Zonos(nn.Module):
         hidden_states = torch.cat([prefix_hidden_states, self.embed_codes(input_ids)], dim=1)
         return self._compute_logits(hidden_states, inference_params, cfg_scale)
 
-    def setup_cache(self, batch_size: int, max_seqlen: int, dtype: torch.dtype = torch.bfloat16) -> InferenceParams:
+    def setup_cache(self, batch_size: int, max_seqlen: int, dtype: torch.dtype = torch.float16) -> InferenceParams:
         max_seqlen = find_multiple(max_seqlen, 8)
         key_value_memory_dict = self.backbone.allocate_inference_cache(batch_size, max_seqlen, dtype=dtype)
         lengths_per_sample = torch.full((batch_size,), 0, dtype=torch.int32)
