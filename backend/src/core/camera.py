@@ -9,48 +9,66 @@ from utils.exceptions import (
     CameraError, CameraInitializationError, CameraFrameError,
     ConfigError, HardwareError, wrap_exception
 )
+import threading
 
 logger = setup_logger(__name__)
 
 class Camera:
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls, *args, **kwargs):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self, config_manager=None):
         """カメラの初期化とウィンドウのセットアップを行う"""
-        try:
-            # 設定の読み込み
-            self.config_manager = config_manager
-            self.show_window = False
-            self.device_index = 0  # デフォルト値
-            if config_manager:
-                self.show_window = config_manager.get('display.show_opencv_window', False)
-                self.device_index = config_manager.get('camera.device_index', 0)
+        with self._lock:
+            if hasattr(self, '_initialized') and self._initialized:
+                return
+            
+            self.frame_lock = threading.Lock()
+
+            try:
+                # 設定の読み込み
+                self.config_manager = config_manager
+                self.show_window = False
+                self.device_index = 0  # デフォルト値
+                if config_manager:
+                    self.show_window = config_manager.get('display.show_opencv_window', False)
+                    self.device_index = config_manager.get('camera.device_index', 0)
                 
-            # カメラの初期化を試みる
-            self.cap = self._initialize_camera()
-            if not self.cap.isOpened():
-                logger.error(f"Error: Could not open camera (index: {self.device_index}). Using dummy camera.")
+                # カメラの初期化を試みる
+                self.cap = self._initialize_camera()
+                if not self.cap or not self.cap.isOpened():
+                    logger.error(f"Error: Could not open camera (index: {self.device_index}). Using dummy camera.")
+                    self._use_dummy_camera = True
+                else:
+                    self._use_dummy_camera = False
+                    # 画面サイズの設定
+                    self.screen_width, self.screen_height = self._get_screen_dimensions()
+                    self._setup_camera()
+                
+                # ウィンドウのセットアップは共通
+                self._setup_window()
+            except Exception as e:
+                logger.error(f"Camera initialization failed: {e}")
+                # ダミーカメラモードを有効化
                 self._use_dummy_camera = True
-            else:
-                self._use_dummy_camera = False
-                # 画面サイズの設定
-                self.screen_width, self.screen_height = self._get_screen_dimensions()
-                self._setup_camera()
-                
-            # ウィンドウのセットアップは共通
-            self._setup_window()
-        except Exception as e:
-            logger.error(f"Camera initialization failed: {e}")
-            # ダミーカメラモードを有効化
-            self._use_dummy_camera = True
-            self.screen_width, self.screen_height = 640, 480
-            # OpenCVのVideoCaptureをダミーで初期化
-            self.cap = None
-            # カスタム例外としてリログ（ダミーモードで継続するため、raiseはしない）
-            camera_error = wrap_exception(
-                e, CameraInitializationError,
-                "Camera initialization failed, falling back to dummy mode",
-                details={'dummy_mode': True, 'screen_size': (640, 480), 'device_index': self.device_index}
-            )
-            logger.warning(f"Camera error details: {camera_error.to_dict()}")
+                self.screen_width, self.screen_height = 640, 480
+                # OpenCVのVideoCaptureをダミーで初期化
+                self.cap = None
+                # カスタム例外としてリログ（ダミーモードで継続するため、raiseはしない）
+                camera_error = wrap_exception(
+                    e, CameraInitializationError,
+                    "Camera initialization failed, falling back to dummy mode",
+                    details={'dummy_mode': True, 'screen_size': (640, 480), 'device_index': self.device_index}
+                )
+                logger.warning(f"Camera error details: {camera_error.to_dict()}")
+
+            self._initialized = True
 
     def _initialize_camera(self):
         """OSに応じたカメラの初期化"""
@@ -149,29 +167,33 @@ class Camera:
 
     def get_frame(self):
         """カメラからフレームを取得する"""
-        if self._use_dummy_camera:
-            # ダミーモード - 黒い画像を生成
-            frame = self._create_dummy_frame()
-            return frame
-        
-        try:
-            ret, frame = self.cap.read()
-            if not ret:
-                logger.error("Failed to grab frame from camera")
-                # 一時的にダミーフレームを返す
-                return self._create_dummy_frame()
+        with self.frame_lock:
+            if self._use_dummy_camera:
+                # ダミーモード - 黒い画像を生成
+                frame = self._create_dummy_frame()
+                return True, frame
 
-            # アスペクト比を維持しながらリサイズ
-            frame = self._resize_frame(frame)
-            return frame
-        except Exception as e:
-            frame_error = wrap_exception(
-                e, CameraFrameError,
-                "Error capturing frame from camera",
-                details={'fallback_to_dummy': True}
-            )
-            logger.error(f"Frame capture error: {frame_error.to_dict()}")
-            return self._create_dummy_frame()
+            if not self.cap or not self.cap.isOpened():
+                logger.error("Camera is not available.")
+                return False, self._create_dummy_frame()
+            
+            try:
+                ret, frame = self.cap.read()
+                if not ret:
+                    logger.error("Failed to grab frame from camera")
+                    return False, self._create_dummy_frame()
+
+                # アスペクト比を維持しながらリサイズ
+                resized_frame = self._resize_frame(frame)
+                return True, resized_frame
+            except Exception as e:
+                frame_error = wrap_exception(
+                    e, CameraFrameError,
+                    "Error capturing frame from camera",
+                    details={'fallback_to_dummy': True}
+                )
+                logger.error(f"Frame capture error: {frame_error.to_dict()}")
+                return False, self._create_dummy_frame()
 
     def _resize_frame(self, frame):
         """フレームをアスペクト比を維持しながらリサイズする"""
@@ -212,18 +234,20 @@ class Camera:
 
     def release(self):
         """カメラリソースを解放する"""
-        try:
-            if self.cap is not None:
-                self.cap.release()
-            cv2.destroyAllWindows()
-            logger.info("Camera resources released")
-        except Exception as e:
-            release_error = wrap_exception(
-                e, CameraError,
-                "Error releasing camera resources",
-                details={'cleanup_partial': True}
-            )
-            logger.error(f"Resource release error: {release_error.to_dict()}")
+        with self.frame_lock:
+            try:
+                if self.cap is not None:
+                    self.cap.release()
+                    self.cap = None
+                cv2.destroyAllWindows()
+                logger.info("Camera resources released")
+            except Exception as e:
+                release_error = wrap_exception(
+                    e, CameraError,
+                    "Error releasing camera resources",
+                    details={'cleanup_partial': True}
+                )
+                logger.error(f"Resource release error: {release_error.to_dict()}")
 
     def _create_dummy_frame(self):
         """カメラが使用できない場合のダミーフレームを生成"""
