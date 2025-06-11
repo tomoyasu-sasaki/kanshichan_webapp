@@ -20,11 +20,12 @@ from .analysis_helpers import (
     calculate_data_quality_metrics,
 
 )
+from services.analysis.service_loader import get_pattern_recognizer
 
 logger = setup_logger(__name__)
 
 # Blueprint定義
-prediction_analysis_bp = Blueprint('prediction_analysis', __name__, url_prefix='/api/analysis')
+prediction_analysis_bp = Blueprint('prediction_analysis', __name__, url_prefix='/api/analysis/prediction')
 
 
 @prediction_analysis_bp.route('/predictions', methods=['GET'])
@@ -500,25 +501,8 @@ def get_adaptive_learning_status():
 # ========== ヘルパー関数 ==========
 
 def _get_pattern_recognizer() -> Optional[Any]:
-    """パターン認識エンジンインスタンス取得（予測分析用）
-    
-    PatternRecognizerのインスタンスを作成し、設定を適用します。
-    予測モデルのベースとなるパターン認識に使用されます。
-    
-    Returns:
-        Optional[Any]: PatternRecognizerインスタンス、またはエラー時はNone
-        
-    Note:
-        設定はFlaskのcurrent_app.configから取得されます。
-        初期化に失敗した場合はログに記録し、Noneを返します。
-    """
-    try:
-        from services.ai_ml.pattern_recognition import PatternRecognizer
-        config = current_app.config.get('config_manager').get_all()
-        return PatternRecognizer(config)
-    except Exception as e:
-        logger.error(f"Error creating PatternRecognizer: {e}")
-    return None
+    """PatternRecognizerインスタンスを取得（service_loader経由）"""
+    return get_pattern_recognizer()
 
 
 def _get_personalization_engine() -> Optional[Any]:

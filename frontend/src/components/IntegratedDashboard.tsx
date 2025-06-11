@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
@@ -131,7 +130,7 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
       const [monitorStatus, ttsStatus, analysisStatus] = await Promise.allSettled([
         fetch('/api/monitor/status'),
         fetch('/api/tts/status'),
-        fetch('/api/analysis/status')
+        fetch('/api/analysis/basic/status')
       ]);
 
       console.log('API Status Results:', {

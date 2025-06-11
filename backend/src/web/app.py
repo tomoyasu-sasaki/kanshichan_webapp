@@ -19,12 +19,23 @@ tqdm.tqdm.disable = True
 from flask import Flask, request, jsonify, send_from_directory, current_app
 from flask_cors import CORS
 from flask_socketio import SocketIO
-from linebot.v3 import WebhookHandler
-from linebot.v3.webhooks import (
-	MessageEvent, TextMessageContent
+from linebot.v3 import (
+    WebhookHandler
 )
-from linebot.v3.exceptions import InvalidSignatureError
-from linebot.v3.messaging import Configuration, ApiClient, MessagingApi
+from linebot.v3.exceptions import (
+    InvalidSignatureError
+)
+from linebot.v3.messaging import (
+    Configuration,
+    ApiClient,
+    MessagingApi,
+    ReplyMessageRequest,
+    TextMessage
+)
+from linebot.v3.webhooks import (
+    MessageEvent,
+    TextMessageContent
+)
 from web.handlers import setup_handlers
 from web.api import api
 from web.routes import (
