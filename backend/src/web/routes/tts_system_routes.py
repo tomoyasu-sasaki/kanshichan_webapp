@@ -557,4 +557,151 @@ def restart_services():
             'error': 'internal_error',
             'message': 'Failed to restart services',
             'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+@tts_system_bp.route('/voice-settings', methods=['GET'])
+def get_voice_settings():
+    """音声設定情報を取得
+    
+    Returns:
+        JSON response with voice settings
+    """
+    try:
+        # ConfigManagerは再ロードせず、現在のアプリケーション設定から取得
+        from flask import current_app
+        config_manager = current_app.config.get('config_manager')
+        
+        if not config_manager:
+            return jsonify({
+                'success': False,
+                'error': 'config_not_available',
+                'message': 'Configuration manager is not available'
+            }), 500
+        
+        voice_settings = {
+            'success': True,
+            'voice_settings': {
+                'voiceMode': config_manager.get('tts.default_voice_mode', 'tts'),
+                'defaultEmotion': config_manager.get('tts.default_emotion', 'neutral'),
+                'defaultLanguage': config_manager.get('tts.default_language', 'ja'),
+                'voiceSpeed': config_manager.get('tts.default_voice_speed', 1.0),
+                'voicePitch': config_manager.get('tts.default_voice_pitch', 1.0),
+                'voiceSampleId': config_manager.get('tts.default_voice_sample_id', None),
+                'voiceVolume': config_manager.get('tts.default_voice_volume', 0.7),
+                'fastMode': config_manager.get('tts.default_fast_mode', False)
+            }
+        }
+        
+        return jsonify(voice_settings)
+        
+    except Exception as e:
+        logger.error(f"Error getting voice settings: {e}")
+        return jsonify({
+            'error': 'internal_error',
+            'message': 'Failed to get voice settings'
+        }), 500
+
+
+@tts_system_bp.route('/voice-settings', methods=['POST'])
+def save_voice_settings():
+    """音声設定情報を保存
+    
+    Request JSON:
+        voiceMode: 音声モード ('tts' or 'voiceClone')
+        defaultEmotion: デフォルト感情
+        defaultLanguage: デフォルト言語
+        voiceSpeed: 音声速度
+        voicePitch: 音声ピッチ
+        voiceSampleId: 音声サンプルID
+        voiceVolume: 音声音量
+        fastMode: 高速モード
+        setAsDefault: デフォルト設定として保存するか
+    
+    Returns:
+        JSON response with save result
+    """
+    try:
+        # リクエストデータ取得
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': 'invalid_request',
+                'message': 'Invalid request data'
+            }), 400
+            
+        # 必須フィールドチェック
+        required_fields = ['voiceMode', 'defaultEmotion', 'defaultLanguage', 
+                         'voiceSpeed', 'voicePitch', 'voiceVolume', 'fastMode']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    'success': False,
+                    'error': 'missing_field',
+                    'message': f'Missing required field: {field}'
+                }), 400
+        
+        # デフォルト設定として保存するかどうか
+        set_as_default = data.get('setAsDefault', False)
+        
+        # デフォルト設定として保存する場合
+        if set_as_default:
+            # ConfigManagerは再ロードせず、現在のアプリケーション設定から取得
+            from flask import current_app
+            config_manager = current_app.config.get('config_manager')
+            
+            if not config_manager:
+                return jsonify({
+                    'success': False,
+                    'error': 'config_not_available',
+                    'message': 'Configuration manager is not available'
+                }), 500
+            
+            # 設定を更新
+            config_manager.set('tts.default_voice_mode', data['voiceMode'])
+            config_manager.set('tts.default_emotion', data['defaultEmotion'])
+            config_manager.set('tts.default_language', data['defaultLanguage'])
+            config_manager.set('tts.default_voice_speed', float(data['voiceSpeed']))
+            config_manager.set('tts.default_voice_pitch', float(data['voicePitch']))
+            config_manager.set('tts.default_voice_volume', float(data['voiceVolume']))
+            config_manager.set('tts.default_fast_mode', bool(data['fastMode']))
+            
+            # voiceSampleId が設定されている場合のみ更新
+            if 'voiceSampleId' in data and data['voiceSampleId'] and data['voiceSampleId'] != 'none':
+                config_manager.set('tts.default_voice_sample_id', data['voiceSampleId'])
+                
+                # サンプルファイルパスも保存（設定されている場合）
+                if voice_manager:
+                    try:
+                        sample_path, _ = voice_manager.get_audio_file(data['voiceSampleId'])
+                        config_manager.set('tts.default_voice_sample_path', sample_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to get sample file path: {e}")
+            
+            # 設定を保存
+            if config_manager.save():
+                logger.info("Voice settings saved as default")
+                return jsonify({
+                    'success': True,
+                    'message': 'Voice settings saved as default'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'save_failed',
+                    'message': 'Failed to save settings to file'
+                }), 500
+        
+        # 一時的な設定として使用する場合
+        return jsonify({
+            'success': True,
+            'message': 'Voice settings applied (not saved as default)'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error saving voice settings: {e}")
+        return jsonify({
+            'error': 'internal_error',
+            'message': 'Failed to save voice settings'
         }), 500 

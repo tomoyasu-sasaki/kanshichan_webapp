@@ -194,6 +194,7 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
   useEffect(() => {
     fetchTTSStatus();
     fetchAudioFiles();
+    loadDefaultVoiceSettings(); // デフォルト設定を読み込む
   }, [fetchTTSStatus, fetchAudioFiles]);
 
   // 設定変更の通知
@@ -573,6 +574,68 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
     }));
   }, []);
 
+  // デフォルト音声設定を読み込む
+  const loadDefaultVoiceSettings = useCallback(async () => {
+    try {
+      const response = await fetch('/api/tts/voice-settings');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.voice_settings) {
+          // デフォルト設定を反映
+          setSettings(prevSettings => ({
+            ...prevSettings,
+            ...data.voice_settings
+          }));
+          console.log('Default voice settings loaded', data.voice_settings);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load default voice settings:', error);
+    }
+  }, []);
+
+  // デフォルト音声に設定
+  const saveAsDefaultVoice = useCallback(async () => {
+    try {
+      const response = await fetch('/api/tts/voice-settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...settings,
+          setAsDefault: true
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          toast({
+            title: '設定完了',
+            description: 'デフォルト音声設定として保存しました',
+            status: 'success',
+            duration: 3000,
+            isClosable: true,
+          });
+        } else {
+          throw new Error(data.message || 'デフォルト設定の保存に失敗しました');
+        }
+      } else {
+        throw new Error('デフォルト設定の保存に失敗しました');
+      }
+    } catch (error) {
+      console.error('Failed to save default voice settings:', error);
+      toast({
+        title: '保存エラー',
+        description: error instanceof Error ? error.message : '設定の保存に失敗しました',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  }, [settings, toast]);
+
   return (
     <Box width="100%" maxWidth="800px" mx="auto">
       <VStack spacing={6} align="stretch">
@@ -741,6 +804,16 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
                   <SliderThumb />
                 </Slider>
               </FormControl>
+
+              {/* デフォルト設定ボタン */}
+              <Button
+                colorScheme="teal"
+                leftIcon={<FaVolumeUp />}
+                onClick={saveAsDefaultVoice}
+                mt={4}
+              >
+                デフォルト音声に設定する
+              </Button>
             </VStack>
           </CardBody>
         </Card>
