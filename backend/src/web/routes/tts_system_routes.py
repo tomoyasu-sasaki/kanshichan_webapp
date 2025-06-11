@@ -605,103 +605,188 @@ def get_voice_settings():
 
 @tts_system_bp.route('/voice-settings', methods=['POST'])
 def save_voice_settings():
-    """音声設定情報を保存
-    
-    Request JSON:
-        voiceMode: 音声モード ('tts' or 'voiceClone')
-        defaultEmotion: デフォルト感情
-        defaultLanguage: デフォルト言語
-        voiceSpeed: 音声速度
-        voicePitch: 音声ピッチ
-        voiceSampleId: 音声サンプルID
-        voiceVolume: 音声音量
-        fastMode: 高速モード
-        setAsDefault: デフォルト設定として保存するか
+    """音声設定をデフォルト設定として保存する
     
     Returns:
-        JSON response with save result
+        JSON response with result
     """
     try:
-        # リクエストデータ取得
-        data = request.get_json()
-        if not data:
+        data = request.json
+        from flask import current_app
+        config_manager = current_app.config.get('config_manager')
+        
+        if not config_manager:
             return jsonify({
                 'success': False,
-                'error': 'invalid_request',
-                'message': 'Invalid request data'
-            }), 400
-            
-        # 必須フィールドチェック
-        required_fields = ['voiceMode', 'defaultEmotion', 'defaultLanguage', 
-                         'voiceSpeed', 'voicePitch', 'voiceVolume', 'fastMode']
-        for field in required_fields:
-            if field not in data:
-                return jsonify({
-                    'success': False,
-                    'error': 'missing_field',
-                    'message': f'Missing required field: {field}'
-                }), 400
+                'error': 'config_not_available',
+                'message': 'Configuration manager is not available'
+            }), 500
         
-        # デフォルト設定として保存するかどうか
-        set_as_default = data.get('setAsDefault', False)
+        # 設定保存
+        voice_mode = data.get('voiceMode', 'tts')
+        config_manager.set('tts.default_voice_mode', voice_mode)
         
-        # デフォルト設定として保存する場合
-        if set_as_default:
-            # ConfigManagerは再ロードせず、現在のアプリケーション設定から取得
-            from flask import current_app
-            config_manager = current_app.config.get('config_manager')
-            
-            if not config_manager:
-                return jsonify({
-                    'success': False,
-                    'error': 'config_not_available',
-                    'message': 'Configuration manager is not available'
-                }), 500
-            
-            # 設定を更新
-            config_manager.set('tts.default_voice_mode', data['voiceMode'])
-            config_manager.set('tts.default_emotion', data['defaultEmotion'])
-            config_manager.set('tts.default_language', data['defaultLanguage'])
-            config_manager.set('tts.default_voice_speed', float(data['voiceSpeed']))
-            config_manager.set('tts.default_voice_pitch', float(data['voicePitch']))
-            config_manager.set('tts.default_voice_volume', float(data['voiceVolume']))
-            config_manager.set('tts.default_fast_mode', bool(data['fastMode']))
-            
-            # voiceSampleId が設定されている場合のみ更新
-            if 'voiceSampleId' in data and data['voiceSampleId'] and data['voiceSampleId'] != 'none':
-                config_manager.set('tts.default_voice_sample_id', data['voiceSampleId'])
-                
-                # サンプルファイルパスも保存（設定されている場合）
-                if voice_manager:
-                    try:
-                        sample_path, _ = voice_manager.get_audio_file(data['voiceSampleId'])
-                        config_manager.set('tts.default_voice_sample_path', sample_path)
-                    except Exception as e:
-                        logger.warning(f"Failed to get sample file path: {e}")
-            
-            # 設定を保存
-            if config_manager.save():
-                logger.info("Voice settings saved as default")
-                return jsonify({
-                    'success': True,
-                    'message': 'Voice settings saved as default'
-                })
-            else:
-                return jsonify({
-                    'success': False,
-                    'error': 'save_failed',
-                    'message': 'Failed to save settings to file'
-                }), 500
+        config_manager.set('tts.default_emotion', data.get('defaultEmotion', 'neutral'))
+        config_manager.set('tts.default_language', data.get('defaultLanguage', 'ja'))
+        config_manager.set('tts.default_voice_speed', float(data.get('voiceSpeed', 1.0)))
+        config_manager.set('tts.default_voice_pitch', float(data.get('voicePitch', 1.0)))
+        config_manager.set('tts.default_voice_volume', float(data.get('voiceVolume', 0.7)))
+        config_manager.set('tts.default_fast_mode', bool(data.get('fastMode', False)))
         
-        # 一時的な設定として使用する場合
+        # ボイスクローンの場合はサンプルファイルも保存
+        if voice_mode == 'voiceClone' and data.get('voiceSampleId'):
+            config_manager.set('tts.default_voice_sample_id', data.get('voiceSampleId'))
+            config_manager.set('tts.default_voice_sample_path', data.get('voiceSamplePath'))
+        
+        # 設定ファイル保存
+        config_manager.save()
+        
+        logger.info("Voice settings saved as default")
         return jsonify({
             'success': True,
-            'message': 'Voice settings applied (not saved as default)'
+            'message': 'Voice settings saved as default'
         })
-        
     except Exception as e:
         logger.error(f"Error saving voice settings: {e}")
         return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to save voice settings'
+            'success': False,
+            'error': 'save_failed',
+            'message': str(e)
+        }), 500
+
+
+@tts_system_bp.route('/schedule', methods=['POST'])
+def add_schedule():
+    """スケジュール通知を追加する
+    
+    Returns:
+        JSON response with result
+    """
+    try:
+        data = request.json
+        
+        # 入力チェック
+        if not data or 'time' not in data or 'content' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'invalid_parameters',
+                'message': 'Time and content are required'
+            }), 400
+        
+        from flask import current_app
+        schedule_manager = current_app.config.get('schedule_manager')
+        
+        if not schedule_manager:
+            return jsonify({
+                'success': False,
+                'error': 'service_not_available',
+                'message': 'Schedule manager is not available'
+            }), 500
+        
+        # スケジュール追加（音声ファイル生成を含む）
+        new_schedule = schedule_manager.add_schedule(
+            time=data['time'],
+            content=data['content']
+        )
+        
+        if not new_schedule:
+            return jsonify({
+                'success': False,
+                'error': 'schedule_add_failed',
+                'message': 'Failed to add schedule'
+            }), 500
+            
+        voice_file = new_schedule.get('voice_file', None)
+        voice_file_created = voice_file is not None
+        
+        return jsonify({
+            'success': True,
+            'message': 'Schedule added successfully',
+            'schedule': new_schedule,
+            'voice_file_created': voice_file_created
+        })
+    except Exception as e:
+        logger.error(f"Error adding schedule: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'unexpected_error',
+            'message': str(e)
+        }), 500
+
+
+@tts_system_bp.route('/schedule/<schedule_id>', methods=['DELETE'])
+def delete_schedule(schedule_id):
+    """スケジュール通知を削除する
+    
+    Args:
+        schedule_id: 削除するスケジュールID
+        
+    Returns:
+        JSON response with result
+    """
+    try:
+        from flask import current_app
+        schedule_manager = current_app.config.get('schedule_manager')
+        
+        if not schedule_manager:
+            return jsonify({
+                'success': False,
+                'error': 'service_not_available',
+                'message': 'Schedule manager is not available'
+            }), 500
+        
+        # スケジュール削除（関連する音声ファイルも削除される）
+        result = schedule_manager.delete_schedule(schedule_id)
+        
+        if not result:
+            return jsonify({
+                'success': False,
+                'error': 'schedule_delete_failed',
+                'message': 'Failed to delete schedule or schedule not found'
+            }), 404
+            
+        return jsonify({
+            'success': True,
+            'message': 'Schedule deleted successfully'
+        })
+    except Exception as e:
+        logger.error(f"Error deleting schedule: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'unexpected_error',
+            'message': str(e)
+        }), 500
+
+
+@tts_system_bp.route('/schedules', methods=['GET'])
+def get_schedules():
+    """全てのスケジュール通知を取得する
+    
+    Returns:
+        JSON response with schedules
+    """
+    try:
+        from flask import current_app
+        schedule_manager = current_app.config.get('schedule_manager')
+        
+        if not schedule_manager:
+            return jsonify({
+                'success': False,
+                'error': 'service_not_available',
+                'message': 'Schedule manager is not available'
+            }), 500
+        
+        # スケジュール一覧取得
+        schedules = schedule_manager.get_schedules()
+        
+        return jsonify({
+            'success': True,
+            'schedules': schedules
+        })
+    except Exception as e:
+        logger.error(f"Error getting schedules: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'unexpected_error',
+            'message': str(e)
         }), 500 
