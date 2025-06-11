@@ -241,8 +241,8 @@ class DataCollector:
         
         try:
             # フレーム取得
-            frame = self.camera.get_frame()
-            if frame is None:
+            ret, frame = self.camera.get_frame()
+            if not ret or frame is None:
                 logger.warning("Failed to get camera frame")
                 return None
             

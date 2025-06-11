@@ -21,6 +21,9 @@ from utils.config_manager import ConfigManager
 from utils.logger import setup_logger
 from utils.exceptions import ConfigError
 from models import init_db
+import faulthandler
+
+faulthandler.enable()
 
 def start_monitor_thread(monitor_instance):
     """モニターを別スレッドで実行"""

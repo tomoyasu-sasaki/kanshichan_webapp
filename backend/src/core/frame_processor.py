@@ -35,8 +35,8 @@ class FrameProcessor:
             state_manager: 状態管理インスタンス
         """
         self.camera = camera
-        self.detection = detection_manager
-        self.state = state_manager
+        self.detection_manager = detection_manager
+        self.state_manager = state_manager
         
         # 検出結果の管理
         self.detection_results = {
@@ -55,50 +55,36 @@ class FrameProcessor:
         
         logger.info("FrameProcessor initialized.")
 
-    def process_frame(self) -> Optional[Tuple[np.ndarray, List[Dict[str, Any]]]]:
+    def process_frame(self) -> Optional[Tuple[Any, List[Dict[str, Any]]]]:
         """
         フレームを取得し、検出を実行、StateManagerを更新する
         
         Returns:
             Optional[Tuple[frame, detections_list]]: 処理結果のタプル、失敗時はNone
         """
-        try:
-            frame = self.camera.get_frame()
-            if frame is None:
-                return None
-
-            # 検出処理の実行 (DetectionManagerを使用)
-            detections_list = self.detection.detect(frame)
-
-            # StateManager への情報連携
-            self.state.update_detection_state(detections_list)
-
-            # StateManager を使った状態更新とアラートチェック
-            person_now_detected = self.state.person_detected
-            if person_now_detected:
-                self.state.handle_person_presence()
-            else:
-                self.state.handle_person_absence()
-
-            smartphone_found_in_current_frame = any(
-                det.get('label') == 'smartphone' for det in detections_list
-            )
-            self.state.handle_smartphone_usage(smartphone_found_in_current_frame)
-            
-            return frame, detections_list
-
-        except Exception as e:
-            frame_processing_error = wrap_exception(
-                e, AIProcessingError,
-                "Error during frame processing",
-                details={
-                    'camera_available': self.camera is not None,
-                    'detection_manager_available': self.detection is not None,
-                    'state_manager_available': self.state is not None
-                }
-            )
-            logger.error(f"Frame processing error: {frame_processing_error.to_dict()}")
+        ret, frame = self.camera.get_frame()
+        if not ret or frame is None:
             return None
+
+        # 検出処理の実行 (DetectionManagerを使用)
+        detections_list = self.detection_manager.detect(frame)
+
+        # StateManager への情報連携
+        self.state_manager.update_detection_state(detections_list)
+
+        # StateManager を使った状態更新とアラートチェック
+        person_now_detected = self.state_manager.person_detected
+        if person_now_detected:
+            self.state_manager.handle_person_presence()
+        else:
+            self.state_manager.handle_person_absence()
+
+        smartphone_found_in_current_frame = any(
+            det.get('label') == 'smartphone' for det in detections_list
+        )
+        self.state_manager.handle_smartphone_usage(smartphone_found_in_current_frame)
+        
+        return frame, detections_list
 
     def update_detection_results(self, detections_list: List[Dict[str, Any]]) -> None:
         """
@@ -108,10 +94,10 @@ class FrameProcessor:
             detections_list: 検出結果のリスト
         """
         # StateManager から最新の状態を取得 (描画用)
-        person_now_detected = self.state.person_detected
-        smartphone_now_in_use_for_drawing = self.state.smartphone_in_use
+        person_now_detected = self.state_manager.person_detected
+        smartphone_now_in_use_for_drawing = self.state_manager.smartphone_in_use
         # StateManagerからステータスサマリーを取得
-        status_summary = self.state.get_status_summary()
+        status_summary = self.state_manager.get_status_summary()
 
         # detections_list を draw_detections が期待する形式 (クラス名ごとの辞書) に変換
         detections_dict_for_draw = {}
