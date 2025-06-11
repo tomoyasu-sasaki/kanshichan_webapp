@@ -49,25 +49,58 @@ class ConfigManager:
     - 設定値バリデーション
     - 動的設定更新
     - 複数形式対応（YAML/JSON）
+    - 環境別設定（dev/prod/ci）
     """
-    def __init__(self, config_path: Optional[str] = None, enable_env_override: bool = True):
+    def __init__(self, config_path: Optional[str] = None, enable_env_override: bool = True, 
+                 environment: Optional[str] = None, fail_on_missing: bool = False):
         """
         ConfigManager を初期化します。
 
         Args:
             config_path (Optional[str]): 設定ファイルのパス。None の場合はデフォルトパスを使用。
             enable_env_override (bool): 環境変数による設定上書きを有効にするか
+            environment (Optional[str]): 環境指定（dev/prod/ci）。Noneの場合は環境変数から自動検出
+            fail_on_missing (bool): 設定ファイルがない場合に例外を発生させるか
         """
-        self.config_path = config_path or DEFAULT_CONFIG_PATH
+        self.fail_on_missing = fail_on_missing
+        self.environment = environment or os.environ.get("KANSHICHAN_ENV", "prod")
+        self.config_path = config_path or self._get_config_path_for_env(self.environment)
         self.enable_env_override = enable_env_override
         self._config: Dict[str, Any] = {}
         self._env_prefix = "KANSHICHAN_"  # 環境変数のプレフィックス
         self._validation_rules: Dict[str, Dict] = {}  # バリデーションルール
+        self._loaded = False  # 設定が正常に読み込まれたかどうか
         
         # デフォルトバリデーションルールの設定
         self._setup_default_validation_rules()
         
-        logger.info(f"ConfigManager initialized with path: {self.config_path}, env_override: {enable_env_override}")
+        logger.info(f"ConfigManager initialized with path: {self.config_path}, env: {self.environment}, env_override: {enable_env_override}, fail_on_missing: {fail_on_missing}")
+
+    def _get_config_path_for_env(self, env: str) -> str:
+        """
+        環境に応じた設定ファイルのパスを返します。
+        
+        Args:
+            env: 環境名（dev/prod/ci）
+            
+        Returns:
+            設定ファイルのパス
+        """
+        base_dir = os.path.join(os.path.dirname(__file__), '..', 'config')
+        
+        if env == "dev":
+            config_path = os.path.join(base_dir, 'config.dev.yaml')
+            if os.path.exists(config_path):
+                return config_path
+        
+        # ciの場合はテスト用の設定を使用（存在する場合）
+        if env == "ci":
+            config_path = os.path.join(base_dir, 'config.ci.yaml')
+            if os.path.exists(config_path):
+                return config_path
+        
+        # デフォルトのconfig.yamlを返す
+        return os.path.join(base_dir, 'config.yaml')
 
     def _setup_default_validation_rules(self) -> None:
         """
@@ -130,10 +163,13 @@ class ConfigManager:
     def load(self) -> bool:
         """
         設定ファイルを読み込みます。ファイルが存在しない、または読み込みに失敗した場合は
-        デフォルト設定を使用します。
+        デフォルト設定を使用します。fail_on_missingが有効な場合は例外を発生させます。
 
         Returns:
             bool: 読み込みに成功した場合は True、失敗またはファイルが存在しない場合は False。
+            
+        Raises:
+            ConfigError: fail_on_missingが有効で設定ファイルが見つからない場合
         """
         loaded_successfully = False
         try:
@@ -144,24 +180,46 @@ class ConfigManager:
                     logger.info(f"設定ファイルを読み込みました: {self.config_path}")
                     loaded_successfully = True
                 else:
-                    logger.warning(f"設定ファイルが空または無効です: {self.config_path}. デフォルト設定を使用します。")
+                    error_msg = f"設定ファイルが空または無効です: {self.config_path}"
+                    logger.warning(f"{error_msg}. デフォルト設定を使用します。")
+                    if self.fail_on_missing:
+                        raise ConfigError(error_msg)
                     self._config = deepcopy(DEFAULT_CONFIG)
             else:
-                logger.warning(f"設定ファイルが見つかりません: {self.config_path}. デフォルト設定を使用します。")
+                error_msg = f"設定ファイルが見つかりません: {self.config_path}"
+                logger.warning(f"{error_msg}. デフォルト設定を使用します。")
+                if self.fail_on_missing:
+                    raise ConfigError(error_msg)
                 self._config = deepcopy(DEFAULT_CONFIG)
                 # デフォルト設定でファイルを作成する？ (今回はしない)
                 # self.save()
+        except ConfigError:
+            # ConfigErrorはそのまま再発生させる
+            raise
         except Exception as e:
-            logger.error(f"設定ファイルの読み込み中にエラーが発生しました ({self.config_path}): {e}", exc_info=True)
+            error_msg = f"設定ファイルの読み込み中にエラーが発生しました ({self.config_path}): {e}"
+            logger.error(f"{error_msg}", exc_info=True)
             logger.warning("エラーのためデフォルト設定を使用します。")
+            if self.fail_on_missing:
+                raise ConfigError(error_msg)
             self._config = deepcopy(DEFAULT_CONFIG)
 
         # 環境変数による設定の上書きを適用
         self._apply_env_overrides()
         
+        self._loaded = loaded_successfully
         # デバッグ用に読み込まれた設定を出力 (必要に応じて)
         # logger.debug(f"Loaded config data: {self._config}")
         return loaded_successfully
+        
+    def is_loaded(self) -> bool:
+        """
+        設定が正常に読み込まれたかどうかを返します。
+        
+        Returns:
+            bool: 設定が正常に読み込まれた場合はTrue
+        """
+        return self._loaded
 
     def _merge_configs(self, default: Dict, loaded: Dict) -> Dict:
         """デフォルト設定と読み込んだ設定を再帰的にマージする"""

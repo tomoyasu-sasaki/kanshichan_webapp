@@ -1,5 +1,7 @@
 import threading
 import time
+import sys
+import os
 from datetime import datetime
 from flask import current_app
 from web.app import create_app # create_app をインポート
@@ -17,6 +19,7 @@ from services.data.storage_service import StorageService
 from services.analysis.behavior_analyzer import BehaviorAnalyzer
 from utils.config_manager import ConfigManager
 from utils.logger import setup_logger
+from utils.exceptions import ConfigError
 from models import init_db
 
 def start_monitor_thread(monitor_instance):
@@ -62,21 +65,61 @@ def run_periodic_analysis(app_instance):
         # 1時間間隔
         time.sleep(3600)
 
+def initialize_config_manager():
+    """
+    ConfigManagerを初期化して返します。
+    設定ファイルが見つからない場合は例外を発生させます。
+    
+    Returns:
+        ConfigManager: 初期化されたConfigManagerインスタンス
+        
+    Raises:
+        ConfigError: 設定ファイルが見つからない、またはロードできない場合
+    """
+    # 環境変数から環境を取得（デフォルトはprod）
+    environment = os.environ.get("KANSHICHAN_ENV", "prod")
+    
+    # 設定がない場合は失敗させる（Fail-fast）
+    config_manager = ConfigManager(
+        environment=environment, 
+        fail_on_missing=(environment != "dev")  # 開発環境以外では設定必須
+    )
+    
+    # 設定を読み込み、失敗したら例外を投げる
+    try:
+        config_manager.load()
+    except ConfigError as e:
+        logger = setup_logger(__name__)
+        logger.critical(f"設定ファイルの読み込みに失敗しました: {e}")
+        # 開発環境以外または明示的にfail_on_missingが有効な場合は起動失敗
+        if environment != "dev" or config_manager.fail_on_missing:
+            raise
+    
+    # 読み込まれたかどうかを確認
+    if not config_manager.is_loaded() and environment != "dev":
+        error_msg = "設定ファイルが正しく読み込まれませんでした"
+        logger = setup_logger(__name__)
+        logger.critical(error_msg)
+        raise ConfigError(error_msg)
+        
+    return config_manager
+
 if __name__ == '__main__':
     try:
-        # 初期ログメッセージは削除（app_logger初期化後に出力）
-        # logger.info("アプリケーションを開始します...")
-        
-        # --- ConfigManager の初期化と設定読み込み ---
-        config_manager = ConfigManager()
-        config_manager.load() # 設定ファイルを読み込む
+        # ConfigManagerの初期化を別関数に分離
+        try:
+            config_manager = initialize_config_manager()
+        except ConfigError as e:
+            # 設定読み込み失敗時は致命的エラーとして終了
+            error_logger = setup_logger(__name__)
+            error_logger.critical(f"設定初期化に失敗したため、アプリケーションを終了します: {e}", exc_info=True)
+            sys.exit(1)
         
         # 設定読み込み後にロガーを初期化（1回のみ）
         app_logger = setup_logger(__name__, config_manager.get_all())
         app_logger.info("アプリケーションを開始します...")
-        app_logger.info("設定を ConfigManager で読み込みました。")
-        app_logger.info("ログ設定を config.yaml から適用しました。")
-        # ---------------------------------------
+        app_logger.info(f"環境 '{config_manager.environment}' 用の設定を読み込みました: {config_manager.config_path}")
+        app_logger.info("ログ設定を config から適用しました。")
 
         # --- Flask アプリケーションの作成 ---
         # create_app に config_manager を渡す
@@ -84,11 +127,17 @@ if __name__ == '__main__':
         app_logger.info("Flask アプリケーションを作成しました。")
         # --- ここまで ---
 
+        # ConfigManagerがアプリケーションに注入されたか確認（Fail-fast）
+        if 'config_manager' not in app.config:
+            error_msg = "ConfigManagerがFlaskアプリケーションに正しく注入されていません"
+            app_logger.critical(error_msg)
+            raise ConfigError(error_msg)
+
         # --- データベース初期化 ---
         app_logger.info("データベースを初期化中...")
         init_db(app)
         app_logger.info("データベース初期化が完了しました。")
-
+        
         # --- 依存コンポーネントのインスタンス化 (ConfigManager を渡す) ---
         app_logger.info("依存コンポーネントを初期化中...")
         camera = Camera(config_manager) # Cameraにも ConfigManager を渡す
@@ -135,10 +184,9 @@ if __name__ == '__main__':
         app_logger.info("Monitor インスタンスを作成しました。")
 
         # --- Flask アプリケーションに Monitor と ConfigManager を設定 ---
-        # ConfigManager は create_app に渡したので、ここで再度設定する必要はないかも？
-        # ただし、他の場所で app.config['config_manager'] を参照しているなら設定しておく。
+        # 他のコンポーネントも設定
         app.config['monitor_instance'] = monitor
-        app.config['config_manager'] = config_manager # 念のため設定
+        app.config['config_manager'] = config_manager # Flaskアプリに注入
         app.config['schedule_manager'] = schedule_manager # ScheduleManagerを設定
         app.config['behavior_analyzer'] = behavior_analyzer
         app_logger.info("Flask アプリケーションに Monitor, ConfigManager, ScheduleManager, BehaviorAnalyzer を設定しました。")
@@ -163,6 +211,7 @@ if __name__ == '__main__':
         # アプリケーション開始前のエラーの場合はsetup_loggerを直接使用
         error_logger = setup_logger(__name__)
         error_logger.critical(f"アプリケーションの起動中に致命的なエラーが発生しました: {e}", exc_info=True)
+        sys.exit(1)
     finally:
         # アプリケーション終了時のクリーンアップ
         if 'app_logger' in locals():

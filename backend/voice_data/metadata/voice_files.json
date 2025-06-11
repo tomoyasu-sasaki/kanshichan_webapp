@@ -372,5 +372,39 @@
     "language": "ja",
     "file_hash": "9639064818d0ce3f8ad879fd399990e6",
     "display_name": null
+  },
+  "5aec563599772481": {
+    "file_path": "/Users/tmys-sasaki/Projects/Private/KanshiChan/backend/voice_data/cache/5aec563599772481_tts_output_20250611_100445_936.wav.gz",
+    "original_filename": "tts_output_20250611_100445_936.wav",
+    "file_size": 1214018,
+    "duration_seconds": 7.48843537414966,
+    "sample_rate": 44100,
+    "channels": 1,
+    "created_at": "2025-06-11T10:07:09.843172",
+    "audio_format": "wav",
+    "compressed": true,
+    "voice_sample_for": null,
+    "text_content": "これは音声設定のテストです。設定した感情とトーンで再生されます。",
+    "emotion": "neutral",
+    "language": "ja",
+    "file_hash": "30ef678670c15ace884d420085c82a4a",
+    "display_name": null
+  },
+  "f1adabba63724e65": {
+    "file_path": "/Users/tmys-sasaki/Projects/Private/KanshiChan/backend/voice_data/cache/f1adabba63724e65_tts_output_20250611_101026_899.wav.gz",
+    "original_filename": "tts_output_20250611_101026_899.wav",
+    "file_size": 1211902,
+    "duration_seconds": 7.441995464852607,
+    "sample_rate": 44100,
+    "channels": 1,
+    "created_at": "2025-06-11T10:12:58.121420",
+    "audio_format": "wav",
+    "compressed": true,
+    "voice_sample_for": null,
+    "text_content": "これは音声設定のテストです。設定した感情とトーンで再生されます。",
+    "emotion": "neutral",
+    "language": "ja",
+    "file_hash": "c0bfd8a6342282516e2e0aae4b9ce8d9",
+    "display_name": null
   }
 }
