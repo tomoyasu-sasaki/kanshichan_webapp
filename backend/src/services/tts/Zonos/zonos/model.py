@@ -32,8 +32,9 @@ class Zonos(nn.Module):
         self.prefix_conditioner = PrefixConditioner(config.prefix_conditioner, dim)
         self.spk_clone_model = None
 
-        # TODO: pad to multiple of at least 8
-        self.embeddings = nn.ModuleList([nn.Embedding(1026, dim) for _ in range(self.autoencoder.num_codebooks)])
+        # 既存のモデル重みと一致するように固定サイズを使用
+        vocab_size = 1026  # 既存モデルの語彙サイズ
+        self.embeddings = nn.ModuleList([nn.Embedding(vocab_size, dim) for _ in range(self.autoencoder.num_codebooks)])
         self.heads = nn.ModuleList([nn.Linear(dim, 1025, bias=False) for _ in range(self.autoencoder.num_codebooks)])
 
         self._cg_graph = None
@@ -140,7 +141,7 @@ class Zonos(nn.Module):
         doing 3 warmup steps if needed and then capturing or replaying the graph.
         We only recapture if the batch size changes.
         """
-        # TODO: support cfg_scale==1
+        # cfg_scale=1の場合は条件付け無しで直接計算
         if cfg_scale == 1.0:
             hidden_states = self.embed_codes(input_ids)
             return self._compute_logits(hidden_states, inference_params, cfg_scale)
@@ -238,7 +239,8 @@ class Zonos(nn.Module):
         disable_torch_compile: bool = False,
         callback: Callable[[torch.Tensor, int, int], bool] | None = None,
     ):
-        assert cfg_scale != 1, "TODO: add support for cfg_scale=1"
+        # cfg_scale=1のサポートを追加
+        assert cfg_scale > 0, "cfg_scale must be positive"
         prefix_audio_len = 0 if audio_prefix_codes is None else audio_prefix_codes.shape[2]
         device = self.device
 

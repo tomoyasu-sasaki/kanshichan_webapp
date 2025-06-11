@@ -19,12 +19,6 @@ tqdm.tqdm.disable = True
 from flask import Flask, request, jsonify, send_from_directory, current_app
 from flask_cors import CORS
 from flask_socketio import SocketIO
-from linebot.v3 import (
-    WebhookHandler
-)
-from linebot.v3.exceptions import (
-    InvalidSignatureError
-)
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,
@@ -35,6 +29,12 @@ from linebot.v3.messaging import (
 from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent
+)
+from linebot.v3 import (
+    WebhookHandler
+)
+from linebot.v3.exceptions import (
+    InvalidSignatureError
 )
 from web.handlers import setup_handlers
 from web.api import api
@@ -59,7 +59,29 @@ import os
 logger = setup_logger(__name__)
 
 def create_app(config_manager: ConfigManager):
+    """
+    Flaskアプリケーションを作成し、設定を適用します。
+    
+    Args:
+        config_manager: 初期化済みのConfigManagerインスタンス。
+            必須パラメーターであり、未指定または未初期化の場合はエラーとなります。
+    
+    Returns:
+        tuple: (Flask app, SocketIO instance)
+        
+    Raises:
+        ConfigError: ConfigManagerが正しく初期化されていない場合
+    """
+    # ConfigManagerの検証
+    if not config_manager:
+        error_msg = "create_appにConfigManagerが指定されていません"
+        logger.critical(error_msg)
+        raise ConfigError(error_msg)
+        
     app = Flask(__name__, static_folder='../../../frontend/dist')
+    
+    # ConfigManagerをFlaskアプリケーションに注入
+    app.config['config_manager'] = config_manager
     
     # データベース設定 - 絶対パスに修正
     # src/instance/kanshichan.dbへの絶対パス
