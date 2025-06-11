@@ -229,7 +229,7 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
       
       const apiTimeframe = timeframeMapping[selectedTimeframe] || 'daily';
       
-      const response = await fetch(`/api/analysis/trends?timeframe=${apiTimeframe}`);
+      const response = await fetch(`/api/analysis/basic/trends?timeframe=${apiTimeframe}`);
       if (response.ok) {
         const data = await response.json();
         if (data.status === 'success') {
@@ -269,7 +269,7 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
         'BehaviorInsights'
       );
 
-      const response = await fetch('/api/analysis/insights');
+      const response = await fetch('/api/analysis/basic/insights');
       if (response.ok) {
         const data = await response.json();
         if (data.status === 'success') {
@@ -332,8 +332,8 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
       );
 
       const url = priority === 'all' 
-        ? '/api/analysis/recommendations'
-        : `/api/analysis/recommendations?priority=${priority}`;
+        ? '/api/analysis/basic/recommendations'
+        : `/api/analysis/basic/recommendations?priority=${priority}`;
         
       const response = await fetch(url);
       if (response.ok) {
