@@ -101,31 +101,97 @@ describe('BehaviorInsights Component', () => {
   });
 
   test('優先度タブで絞り込みができる', async () => {
+    // モックデータを準備
+    // high priorityのデータだけを含むレスポンスを作成
+    const highPriorityResponse = {
+      status: 'success',
+      data: {
+        recommendations: [
+          {
+            type: 'focus_improvement',
+            priority: 'high',
+            message: '集中力向上のための推奨事項です',
+            action: 'focus_training',
+            source: 'behavior_analysis',
+            timestamp: new Date().toISOString(),
+          }
+        ],
+        pagination: {
+          page: 1,
+          limit: 5,
+          total_items: 1,
+          total_pages: 1,
+        },
+      },
+      timestamp: new Date().toISOString(),
+    };
+
+    // テスト用のモックを上書き
+    (global.fetch as jest.Mock).mockImplementation((url) => {
+      console.log('Mock fetch called with URL:', url);
+      
+      if (url.includes('priority=high')) {
+        console.log('Returning high priority response');
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(highPriorityResponse),
+        });
+      } else if (url.includes('/api/analysis/basic/recommendations')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockRecommendationsResponse),
+        });
+      }
+      
+      // その他のAPIコールは空のデータを返す
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ status: 'success', data: {} }),
+      });
+    });
+
     render(
       <ChakraProvider>
         <BehaviorInsights />
       </ChakraProvider>
     );
     
-    // 初期表示でタブが表示されていることを確認
+    // 初期表示のローディングを待つ
     await waitFor(() => {
-      expect(screen.getByText('すべて')).toBeInTheDocument();
+      expect(screen.getByText('行動分析インサイト')).toBeInTheDocument();
+    });
+
+    // タブのマウントを待つ
+    await waitFor(() => {
+      const allTabs = screen.getAllByRole('tab');
+      expect(allTabs.length).toBeGreaterThan(0);
     });
     
-    // 「重要」タブをクリック
-    fireEvent.click(screen.getAllByText('重要')[0]);
+    // タブの中から「重要」を見つけてクリック
+    const importantTab = screen.getByRole('tab', { name: '重要' });
+    fireEvent.click(importantTab);
     
-    // APIが適切なパラメータで呼び出されることを確認
+    // モックfetchがpriority=highで呼ばれることを確認
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('priority=important'), expect.anything());
-    });
+      const calls = (global.fetch as jest.Mock).mock.calls;
+      const highPriorityCall = calls.find((call: Array<string | Record<string, unknown>>) => 
+        typeof call[0] === 'string' && call[0].includes('priority=high')
+      );
+      expect(highPriorityCall).toBeTruthy();
+    }, { timeout: 3000 });
     
-    // 結果が絞り込まれたことを確認
+    // 結果が絞り込まれたことを確認（これは上記が成功していれば不要かもしれない）
     await waitFor(() => {
-      // 重要タグの付いた提案のみが表示されるはず
+      // 重要タグの付いた提案が表示されていることを確認
       expect(screen.getAllByText('重要').length).toBeGreaterThan(0);
-      expect(screen.queryByText('普通')).not.toBeInTheDocument();
-    });
+      
+      // レスポンスの内容が表示されていることを確認
+      expect(screen.getByText('集中力向上のための推奨事項です')).toBeInTheDocument();
+      
+      // 「普通」優先度の項目はレスポンスに含まれていないはずなので
+      // 表示されるはずがない
+      expect(screen.queryByText('音声機能付きアドバイスメッセージ')).not.toBeInTheDocument();
+    }, { timeout: 3000 });
   });
 
   test('ページネーションが機能する', async () => {

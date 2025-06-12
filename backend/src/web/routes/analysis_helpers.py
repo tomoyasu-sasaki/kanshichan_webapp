@@ -7,7 +7,7 @@ Analysis Helper Functions - 分析用ヘルパー関数集
 
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -605,7 +605,7 @@ def _evaluate_data_freshness(logs: list) -> float:
             return 0.0
         
         latest_log = max(logs, key=lambda x: x.timestamp)
-        time_diff = (datetime.utcnow() - latest_log.timestamp.replace(tzinfo=None)).total_seconds()
+        time_diff = (datetime.now(timezone.utc) - latest_log.timestamp.replace(tzinfo=None)).total_seconds()
         
         # 5分以内なら完全に新鮮、30分以上なら新鮮度0
         if time_diff <= 300:  # 5分
