@@ -327,11 +327,11 @@ def get_performance_report():
         hours = int(request.args.get('hours', 24))
         report_format = request.args.get('format', 'summary')
         
-        # バリデーション
-        if hours < 1 or hours > 24:
+        # バリデーション（最大1週間）
+        if hours < 1 or hours > 168:
             return jsonify({
                 'status': 'error',
-                'error': 'Hours must be between 1 and 24',
+                'error': 'Hours must be between 1 and 168',
                 'code': 'VALIDATION_ERROR',
                 'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
