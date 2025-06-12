@@ -712,5 +712,22 @@
     "language": "ja",
     "file_hash": "5236c4a2b2a706da9c6e86eadf9ffad2",
     "display_name": null
+  },
+  "f177162593351c18": {
+    "file_path": "/Users/tmys-sasaki/Projects/Private/KanshiChan/backend/voice_data/cache/f177162593351c18_tts_output_20250612_102407_500.wav.gz",
+    "original_filename": "tts_output_20250612_102407_500.wav",
+    "file_size": 1133859,
+    "duration_seconds": 6.965986394557823,
+    "sample_rate": 44100,
+    "channels": 1,
+    "created_at": "2025-06-12T10:26:34.630645",
+    "audio_format": "wav",
+    "compressed": true,
+    "voice_sample_for": null,
+    "text_content": "ねぇ！ 現在の作業ペースを維持しながら、更なる改善を目指しましょう",
+    "emotion": "custom",
+    "language": "ja",
+    "file_hash": "46f7815eb073eb3c6d8a92503d765502",
+    "display_name": null
   }
 }
