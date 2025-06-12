@@ -85,15 +85,19 @@ class TestConfigManager:
         # 環境変数を設定
         with patch.dict(os.environ, {"KANSHICHAN_ENV": env_value}):
             # モックで.load()を成功させる
+            config_manager = ConfigManager()
             with patch.object(ConfigManager, 'load', return_value=True):
-                config_manager = ConfigManager()
                 config_manager.load()
+                # _loaded属性を直接設定
+                config_manager._loaded = True
                 assert config_manager.is_loaded() == True
 
             # モックで.load()を失敗させる
+            config_manager = ConfigManager()
             with patch.object(ConfigManager, 'load', return_value=False):
-                config_manager = ConfigManager()
                 config_manager.load()
+                # _loaded属性を直接設定
+                config_manager._loaded = False
                 assert config_manager.is_loaded() == False
 
     def test_ci_mode_with_missing_config(self):

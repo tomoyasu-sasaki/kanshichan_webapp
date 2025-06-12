@@ -6,12 +6,14 @@ Basic Analysis API Routes - 基本行動分析API
 """
 
 import logging
+import hashlib
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, current_app
 
 from models.behavior_log import BehaviorLog
 from models.user_profile import UserProfile
+from models.recommendation import RecommendationSchema, standardize_recommendations
 from utils.logger import setup_logger
 from services.ai_ml.llm_service import LLMService
 from services.ai_ml.advice_generator import AdviceGenerator
@@ -21,7 +23,8 @@ from .analysis_helpers import (
     calculate_behavior_score,
     detect_behavioral_patterns,
     generate_contextual_recommendations,
-    calculate_data_quality_metrics
+    calculate_data_quality_metrics,
+    _evaluate_data_freshness
 )
 from services.analysis.service_loader import get_advanced_behavior_analyzer
 
@@ -71,9 +74,9 @@ def get_analysis_status():
                     'advanced_analyzer': advanced_analyzer_status,
                     'database': db_status
                 },
-                'last_check': datetime.utcnow().isoformat()
+                'last_check': datetime.now(timezone.utc).isoformat()
             },
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
         
     except Exception as e:
@@ -82,7 +85,7 @@ def get_analysis_status():
             'status': 'error',
             'error': 'Failed to check analysis system status',
             'code': 'STATUS_CHECK_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 
@@ -109,7 +112,7 @@ def get_behavior_trends():
                 'status': 'error',
                 'error': 'Invalid timeframe. Must be one of: hourly, daily, weekly',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         # BehaviorAnalyzerインスタンス取得
@@ -119,7 +122,7 @@ def get_behavior_trends():
                 'status': 'error',
                 'error': 'BehaviorAnalyzer not available',
                 'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
         # 期間に応じたデータ取得
@@ -140,7 +143,7 @@ def get_behavior_trends():
                     'period_hours': hours,
                     'logs_count': 0
                 },
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             })
         
         # 最小データ要件チェック
@@ -155,7 +158,7 @@ def get_behavior_trends():
                     'period_hours': hours,
                     'logs_count': len(logs)
                 },
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             })
         
         if not logs:
@@ -167,7 +170,7 @@ def get_behavior_trends():
                     'period_hours': hours,
                     'logs_count': 0
                 },
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             })
         
         # 集中度パターン分析
@@ -233,7 +236,7 @@ def get_behavior_trends():
         return jsonify({
             'status': 'success',
             'data': trend_data,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
         
     except Exception as e:
@@ -242,7 +245,7 @@ def get_behavior_trends():
             'status': 'error',
             'error': 'Failed to analyze behavior trends',
             'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 
@@ -272,7 +275,7 @@ def get_daily_insights():
                 'status': 'error',
                 'error': 'Invalid date format. Use YYYY-MM-DD',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         # BehaviorAnalyzerインスタンス取得
@@ -282,7 +285,7 @@ def get_daily_insights():
                 'status': 'error',
                 'error': 'BehaviorAnalyzer not available',
                 'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
         # 対象日の行動ログ取得
@@ -306,7 +309,7 @@ def get_daily_insights():
                     'insights': [],
                     'recommendations': []
                 },
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             })
         
         # 最小データ要件チェック
@@ -321,7 +324,7 @@ def get_daily_insights():
                     'insights': [],
                     'recommendations': []
                 },
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             })
         
         if not logs:
@@ -333,7 +336,7 @@ def get_daily_insights():
                     'insights': [],
                     'recommendations': []
                 },
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             })
         
         # インサイト生成
@@ -357,7 +360,7 @@ def get_daily_insights():
                 'insights': insights_data,
                 'summary': _generate_daily_summary(insights_data, logs)
             },
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
         
     except Exception as e:
@@ -366,7 +369,7 @@ def get_daily_insights():
             'status': 'error',
             'error': 'Failed to generate daily insights',
             'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 
@@ -380,6 +383,8 @@ def get_recommendations():
         user_id (str): ユーザーID (オプション)
         priority (str): 優先度フィルタ (high/medium/low)
         limit (int): 最大返却数 (デフォルト: 5)
+        page (int): ページ番号 (デフォルト: 1)
+        tts_enabled (bool): 音声合成を有効にするフラグ (デフォルト: false)
         
     Returns:
         JSON: 推奨事項リスト
@@ -389,13 +394,16 @@ def get_recommendations():
         user_id = request.args.get('user_id')
         priority_filter = request.args.get('priority')
         limit = int(request.args.get('limit', 5))
+        page = int(request.args.get('page', 1))
+        tts_enabled = request.args.get('tts_enabled', 'false').lower() == 'true'
         
+        # バリデーション
         if priority_filter and priority_filter not in ['high', 'medium', 'low']:
             return jsonify({
                 'status': 'error',
                 'error': 'Invalid priority. Must be one of: high, medium, low',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         if limit < 1 or limit > 20:
@@ -403,7 +411,15 @@ def get_recommendations():
                 'status': 'error',
                 'error': 'Limit must be between 1 and 20',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            }), 400
+            
+        if page < 1:
+            return jsonify({
+                'status': 'error',
+                'error': 'Page must be 1 or greater',
+                'code': 'VALIDATION_ERROR',
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         # 最近の行動データ取得（過去1時間）
@@ -416,7 +432,7 @@ def get_recommendations():
                 'status': 'error',
                 'error': 'AdviceGenerator not available',
                 'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
         # 現在の行動状況を分析
@@ -434,62 +450,80 @@ def get_recommendations():
         
         # 既存の分析結果から追加推奨事項取得
         analyzer = _get_behavior_analyzer()
-        if analyzer:
-            insights = analyzer.generate_insights(timeframe='daily')
-            additional_recommendations = insights.get('recommendations', [])
-        else:
-            additional_recommendations = []
-        
-        # 推奨事項をまとめて優先度フィルタリング
         all_recommendations = []
         
-        # メインアドバイス
+        # メインアドバイスを追加 (RecommendationSchema形式)
         if advice_result.get('advice_text'):
-            all_recommendations.append({
-                'type': 'contextual_advice',
-                'priority': advice_result.get('priority', 'medium'),
-                'message': advice_result['advice_text'],
-                'emotion': advice_result.get('emotion', 'encouraging'),
-                'source': 'llm_advice',
-                'timestamp': advice_result.get('generation_timestamp')
-            })
+            main_rec = RecommendationSchema.from_advice_generator_format(advice_result)
+            
+            # 音声合成を有効にした場合の処理
+            if tts_enabled:
+                main_rec.tts_requested = True
+                main_rec.voice_text = advice_result.get('advice_text')
+                # 音声URL生成 (あとで実装する実際のTTSサービスでは置き換え)
+                main_rec.audio_url = f"/api/tts/recommendations/{_generate_deterministic_hash(main_rec.message)}.mp3"
+            
+            all_recommendations.append(main_rec)
         
-        # 分析ベースの推奨事項
-        for rec in additional_recommendations:
-            all_recommendations.append({
-                'type': rec.get('type', 'behavioral'),
-                'priority': rec.get('priority', 'medium'),
-                'message': rec.get('message', ''),
-                'action': rec.get('action', ''),
-                'source': 'behavior_analysis',
-                'timestamp': datetime.utcnow().isoformat()
-            })
+        # 分析ベースの推奨事項を追加
+        if analyzer:
+            insights = analyzer.generate_insights(timeframe='daily')
+            additional_recs = insights.get('recommendations', [])
+            
+            # 各推奨事項をRecommendationSchema形式に変換
+            for rec in additional_recs:
+                if isinstance(rec, RecommendationSchema):
+                    all_recommendations.append(rec)
+                else:
+                    schema_rec = RecommendationSchema.from_analyzer_format(rec)
+                    if tts_enabled:
+                        schema_rec.tts_requested = True
+                        schema_rec.voice_text = schema_rec.message
+                        schema_rec.audio_url = f"/api/tts/recommendations/{_generate_deterministic_hash(schema_rec.message)}.mp3"
+                    all_recommendations.append(schema_rec)
         
         # 優先度フィルタ適用
         if priority_filter:
             all_recommendations = [
                 rec for rec in all_recommendations 
-                if rec['priority'] == priority_filter
+                if rec.priority == priority_filter
             ]
         
-        # 優先度順にソートしてリミット適用
+        # 優先度とタイムスタンプでソート
         priority_order = {'high': 0, 'medium': 1, 'low': 2}
         all_recommendations.sort(
-            key=lambda x: priority_order.get(x['priority'], 3)
+            key=lambda x: (priority_order.get(x.priority, 3), x.timestamp or ''),
+            reverse=True  # タイムスタンプは新しい順
         )
         
-        recommendations = all_recommendations[:limit]
+        # ページネーション計算
+        total_items = len(all_recommendations)
+        total_pages = (total_items + limit - 1) // limit if total_items > 0 else 1
+        start_idx = (page - 1) * limit
+        end_idx = min(start_idx + limit, total_items)
+        
+        # 対象ページの推奨事項を取得
+        paged_recommendations = all_recommendations[start_idx:end_idx]
+        
+        # 辞書形式に変換（JSONシリアライズ用）
+        recommendations_dict = [rec.to_dict() for rec in paged_recommendations]
         
         return jsonify({
             'status': 'success',
             'data': {
-                'recommendations': recommendations,
-                'total_available': len(all_recommendations),
+                'recommendations': recommendations_dict,
+                'pagination': {
+                    'page': page,
+                    'limit': limit,
+                    'total_items': total_items,
+                    'total_pages': total_pages
+                },
                 'filtered_by_priority': priority_filter,
                 'current_behavior_summary': current_behavior,
-                'user_personalized': user_profile is not None
+                'user_personalized': user_profile is not None,
+                'tts_enabled': tts_enabled
             },
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
         
     except ValueError as e:
@@ -497,7 +531,7 @@ def get_recommendations():
             'status': 'error',
             'error': f'Invalid parameter: {str(e)}',
             'code': 'VALIDATION_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 400
     except Exception as e:
         logger.error(f"Error getting recommendations: {e}", exc_info=True)
@@ -505,7 +539,7 @@ def get_recommendations():
             'status': 'error',
             'error': 'Failed to generate recommendations',
             'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 
@@ -627,19 +661,28 @@ def _generate_daily_summary(insights_data: Dict[str, Any], logs: list) -> Dict[s
         except Exception:
             productivity_score = 0
     
+    # 推奨事項をRecommendationSchema形式に標準化
+    recommendations = insights_data.get('recommendations', [])
+    if recommendations and not isinstance(recommendations[0], RecommendationSchema):
+        # 古い形式からの変換が必要
+        recommendations = standardize_recommendations(recommendations)
+    
+    # 辞書形式に変換
+    recommendation_dicts = [rec.to_dict() for rec in recommendations] if recommendations else []
+    
     return {
         'total_active_time': f"{len(logs) * 0.5:.1f} minutes",
         'productivity_score': productivity_score,
         'average_focus': avg_focus,
         'key_insights_count': len(insights_data.get('key_insights', [])),
-        'recommendations_count': len(insights_data.get('recommendations', [])),
+        'recommendations_count': len(recommendations),
         'overall_assessment': _assess_daily_performance(insights_data),
         # フロントエンド期待値対応
         'insights': {
             'focus_score': avg_focus,
             'productivity_score': productivity_score,
             'key_findings': insights_data.get('key_insights', []),
-            'improvement_areas': insights_data.get('recommendations', [])
+            'improvement_areas': recommendation_dicts
         }
     }
 
@@ -678,4 +721,20 @@ def _assess_daily_performance(insights_data: Dict[str, Any]) -> str:
     elif productivity_score >= 0.3:
         return 'average'
     else:
-        return 'needs_improvement' 
+        return 'needs_improvement'
+
+
+def _generate_deterministic_hash(text: str) -> str:
+    """
+    文字列から一貫性のあるハッシュ値を生成する
+    
+    Args:
+        text (str): ハッシュ化する文字列
+        
+    Returns:
+        str: SHA-256ハッシュの最初の16文字（64文字の16進数表現の先頭部分）
+    """
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()[:16]
+
+
+# _evaluate_data_freshness関数は.analysis_helpersモジュールからインポートして使用

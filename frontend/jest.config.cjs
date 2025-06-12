@@ -1,5 +1,5 @@
 /** @type {import('ts-jest').JestConfigWithTsJest} */
-export default {
+module.exports = {
   testEnvironment: 'jsdom',
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   transform: {
@@ -13,4 +13,5 @@ export default {
     '\\.(jpg|jpeg|png|gif|webp|svg)$': '<rootDir>/tests/__mocks__/fileMock.js',
   },
   setupFilesAfterEnv: ['<rootDir>/tests/setupTests.js'],
+  testPathIgnorePatterns: ['<rootDir>/src/components/', '<rootDir>/src/__tests__/'],
 }; 

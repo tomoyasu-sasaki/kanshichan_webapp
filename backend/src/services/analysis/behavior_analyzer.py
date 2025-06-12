@@ -12,6 +12,7 @@ import logging
 
 from models.behavior_log import BehaviorLog
 from models.analysis_result import AnalysisResult
+from models.recommendation import RecommendationSchema
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -394,43 +395,47 @@ class BehaviorAnalyzer:
         
         return insights
     
-    def _generate_recommendations(self, insights: List[str]) -> List[Dict[str, Any]]:
+    def _generate_recommendations(self, insights: List[str]) -> List[RecommendationSchema]:
         """インサイトから推奨事項を生成"""
         recommendations = []
         
         for insight in insights:
             if "集中力の向上が必要" in insight:
-                recommendations.append({
-                    'type': 'focus_improvement',
-                    'priority': 'high',
-                    'message': '短時間の集中タスクから始めて、徐々に集中時間を延ばしましょう',
-                    'action': 'focus_training'
-                })
+                recommendations.append(RecommendationSchema(
+                    type='focus_improvement',
+                    priority='high',
+                    message='短時間の集中タスクから始めて、徐々に集中時間を延ばしましょう',
+                    action='focus_training',
+                    source='behavior_analysis'
+                ))
             
             elif "スマートフォンの使用" in insight:
-                recommendations.append({
-                    'type': 'distraction_management',
-                    'priority': 'medium',
-                    'message': 'スマートフォンを手の届かない場所に置くか、通知をオフにしてみてください',
-                    'action': 'device_management'
-                })
+                recommendations.append(RecommendationSchema(
+                    type='distraction_management',
+                    priority='medium',
+                    message='スマートフォンを手の届かない場所に置くか、通知をオフにしてみてください',
+                    action='device_management',
+                    source='behavior_analysis'
+                ))
             
             elif "集中力が低下傾向" in insight:
-                recommendations.append({
-                    'type': 'trend_reversal',
-                    'priority': 'high',
-                    'message': '定期的な休憩と環境の見直しを検討しましょう',
-                    'action': 'break_scheduling'
-                })
+                recommendations.append(RecommendationSchema(
+                    type='trend_reversal',
+                    priority='high',
+                    message='定期的な休憩と環境の見直しを検討しましょう',
+                    action='break_scheduling',
+                    source='behavior_analysis'
+                ))
         
         # デフォルト推奨事項
         if not recommendations:
-            recommendations.append({
-                'type': 'general',
-                'priority': 'low',
-                'message': '現在の作業ペースを維持しながら、更なる改善を目指しましょう',
-                'action': 'continue_current'
-            })
+            recommendations.append(RecommendationSchema(
+                type='general',
+                priority='low',
+                message='現在の作業ペースを維持しながら、更なる改善を目指しましょう',
+                action='continue_current',
+                source='behavior_analysis'
+            ))
         
         return recommendations
     

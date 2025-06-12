@@ -7,7 +7,7 @@ Prediction Analysis API Routes - 予測・パーソナライゼーション分�
 
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 
 from models.behavior_log import BehaviorLog
@@ -60,7 +60,7 @@ def get_predictions():
                 'status': 'error',
                 'error': f'Invalid metrics: {", ".join(invalid_metrics)}. Valid metrics: {", ".join(valid_metrics)}',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         if horizon < 5 or horizon > 1440:  # 5分〜24時間
@@ -68,7 +68,7 @@ def get_predictions():
                 'status': 'error',
                 'error': 'Horizon must be between 5 and 1440 minutes',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         # パターン認識エンジン取得
@@ -78,7 +78,7 @@ def get_predictions():
                 'status': 'error',
                 'error': 'Pattern recognizer not available',
                 'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
         # 予測に必要な十分なデータを取得
@@ -93,7 +93,7 @@ def get_predictions():
                     'available_logs': len(logs),
                     'required_logs': 30
                 },
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             })
         
         # 予測実行
@@ -113,7 +113,7 @@ def get_predictions():
         return jsonify({
             'status': 'success',
             'data': result_data,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
         
     except ValueError as e:
@@ -121,7 +121,7 @@ def get_predictions():
             'status': 'error',
             'error': 'Invalid parameter format',
             'code': 'VALIDATION_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 400
     except Exception as e:
         logger.error(f"Error getting predictions: {e}", exc_info=True)
@@ -129,7 +129,7 @@ def get_predictions():
             'status': 'error',
             'error': 'Failed to generate predictions',
             'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 
@@ -159,7 +159,7 @@ def get_personalized_recommendations():
                 'status': 'error',
                 'error': 'user_id is required',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         valid_context_types = ['time_based', 'behavior_based', 'environment_based']
@@ -168,7 +168,7 @@ def get_personalized_recommendations():
                 'status': 'error',
                 'error': f'Invalid context_type. Must be one of: {", ".join(valid_context_types)}',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         if max_recommendations < 1 or max_recommendations > 10:
@@ -176,7 +176,7 @@ def get_personalized_recommendations():
                 'status': 'error',
                 'error': 'max_recommendations must be between 1 and 10',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         # パーソナライゼーションエンジン取得
@@ -186,7 +186,7 @@ def get_personalized_recommendations():
                 'status': 'error',
                 'error': 'Personalization engine not available',
                 'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
         # 行動ログ取得
@@ -195,7 +195,7 @@ def get_personalized_recommendations():
         # コンテキスト構築
         current_context = {
             'type': context_type,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'environment': request.args.to_dict()
         }
         
@@ -216,14 +216,14 @@ def get_personalized_recommendations():
             'context_analysis': {
                 'context_type': context_type,
                 'data_points': len(logs),
-                'generation_timestamp': datetime.utcnow().isoformat()
+                'generation_timestamp': datetime.now(timezone.utc).isoformat()
             }
         }
         
         return jsonify({
             'status': 'success',
             'data': result_data,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
         
     except ValueError as e:
@@ -231,7 +231,7 @@ def get_personalized_recommendations():
             'status': 'error',
             'error': 'Invalid parameter format',
             'code': 'VALIDATION_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 400
     except Exception as e:
         logger.error(f"Error getting personalized recommendations: {e}", exc_info=True)
@@ -239,7 +239,7 @@ def get_personalized_recommendations():
             'status': 'error',
             'error': 'Failed to generate personalized recommendations',
             'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 
@@ -266,7 +266,7 @@ def get_user_profile():
                 'status': 'error',
                 'error': 'user_id is required',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         # ユーザープロファイルビルダー取得
@@ -276,7 +276,7 @@ def get_user_profile():
                 'status': 'error',
                 'error': 'User profile builder not available',
                 'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
         # 行動ログ取得
@@ -304,7 +304,7 @@ def get_user_profile():
         return jsonify({
             'status': 'success',
             'data': result_data,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
         
     except Exception as e:
@@ -313,7 +313,7 @@ def get_user_profile():
             'status': 'error',
             'error': 'Failed to get user profile',
             'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 
@@ -345,7 +345,7 @@ def submit_recommendation_feedback():
                 'status': 'error',
                 'error': 'Request body is required',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         # 必須フィールド検証
@@ -356,7 +356,7 @@ def submit_recommendation_feedback():
                     'status': 'error',
                     'error': f'Required field missing: {field}',
                     'code': 'VALIDATION_ERROR',
-                    'timestamp': datetime.utcnow().isoformat()
+                    'timestamp': datetime.now(timezone.utc).isoformat()
                 }), 400
         
         # パーソナライゼーションエンジン取得
@@ -366,7 +366,7 @@ def submit_recommendation_feedback():
                 'status': 'error',
                 'error': 'Personalization engine not available',
                 'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
         # フィードバック更新
@@ -384,14 +384,14 @@ def submit_recommendation_feedback():
                     'user_id': data['user_id'],
                     'recommendation_id': data['recommendation_id']
                 },
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             })
         else:
             return jsonify({
                 'status': 'error',
                 'error': 'Failed to process feedback',
                 'code': 'PROCESSING_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
     except Exception as e:
@@ -400,7 +400,7 @@ def submit_recommendation_feedback():
             'status': 'error',
             'error': 'Failed to submit feedback',
             'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 
@@ -427,7 +427,7 @@ def get_adaptive_learning_status():
                 'status': 'error',
                 'error': 'user_id is required',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         if time_window_days < 1 or time_window_days > 365:
@@ -435,7 +435,7 @@ def get_adaptive_learning_status():
                 'status': 'error',
                 'error': 'time_window_days must be between 1 and 365',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         # 適応学習システム取得
@@ -445,7 +445,7 @@ def get_adaptive_learning_status():
                 'status': 'error',
                 'error': 'Adaptive learning system not available',
                 'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
         # 学習効果測定
@@ -478,7 +478,7 @@ def get_adaptive_learning_status():
         return jsonify({
             'status': 'success',
             'data': result_data,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
         
     except ValueError as e:
@@ -486,7 +486,7 @@ def get_adaptive_learning_status():
             'status': 'error',
             'error': 'Invalid parameter format',
             'code': 'VALIDATION_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 400
     except Exception as e:
         logger.error(f"Error getting adaptive learning status: {e}", exc_info=True)
@@ -494,7 +494,7 @@ def get_adaptive_learning_status():
             'status': 'error',
             'error': 'Failed to get adaptive learning status',
             'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 

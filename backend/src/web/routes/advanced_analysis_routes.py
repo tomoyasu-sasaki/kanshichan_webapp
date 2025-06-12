@@ -1,13 +1,13 @@
 """
-Advanced Analysis API Routes - 高度行動分析API
+Advanced Analysis API Routes - 高度分析API
 
-高度な行動分析機能のAPIエンドポイント群
-パターン認識、集中度詳細分析、健康評価、生産性スコアを提供
+より高度な行動分析機能のAPIエンドポイント群
+パターン認識、詳細分析、健康評価などを提供
 """
 
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 
 from models.behavior_log import BehaviorLog
@@ -51,23 +51,20 @@ def get_advanced_patterns():
         pattern_type = request.args.get('pattern_type', 'all')
         
         # バリデーション
-        valid_timeframes = ['hourly', 'daily', 'weekly', 'monthly']
-        valid_pattern_types = ['cyclical', 'trending', 'seasonal', 'all']
-        
-        if timeframe not in valid_timeframes:
+        if timeframe not in ['hourly', 'daily', 'weekly', 'monthly']:
             return jsonify({
                 'status': 'error',
-                'error': f'Invalid timeframe. Must be one of: {", ".join(valid_timeframes)}',
+                'error': 'Invalid timeframe. Must be one of: hourly, daily, weekly, monthly',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
-        if pattern_type not in valid_pattern_types:
+        if pattern_type not in ['cyclical', 'trending', 'seasonal', 'all']:
             return jsonify({
                 'status': 'error',
-                'error': f'Invalid pattern_type. Must be one of: {", ".join(valid_pattern_types)}',
+                'error': 'Invalid pattern_type. Must be one of: cyclical, trending, seasonal, all',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         # 高度分析エンジン取得
@@ -79,7 +76,7 @@ def get_advanced_patterns():
                 'status': 'error',
                 'error': 'Advanced analysis services not available',
                 'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
         # 期間に応じたデータ取得
@@ -96,7 +93,7 @@ def get_advanced_patterns():
                     'pattern_type': pattern_type,
                     'logs_count': 0
                 },
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             })
         
         # 時系列パターン分析
@@ -129,7 +126,7 @@ def get_advanced_patterns():
         return jsonify({
             'status': 'success',
             'data': result_data,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
         
     except Exception as e:
@@ -138,7 +135,7 @@ def get_advanced_patterns():
             'status': 'error',
             'error': 'Failed to analyze advanced patterns',
             'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 
@@ -168,7 +165,7 @@ def get_focus_deep_dive():
                 'status': 'error',
                 'error': 'Hours must be between 1 and 720',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         # 高度分析エンジン取得
@@ -178,7 +175,7 @@ def get_focus_deep_dive():
                 'status': 'error',
                 'error': 'Advanced behavior analyzer not available',
                 'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
         # データ取得
@@ -192,7 +189,7 @@ def get_focus_deep_dive():
                     'hours': hours,
                     'logs_count': 0
                 },
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             })
         
         # 集中度詳細分析実行
@@ -214,7 +211,7 @@ def get_focus_deep_dive():
         return jsonify({
             'status': 'success',
             'data': result_data,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
         
     except ValueError as e:
@@ -222,7 +219,7 @@ def get_focus_deep_dive():
             'status': 'error',
             'error': 'Invalid parameter format',
             'code': 'VALIDATION_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 400
     except Exception as e:
         logger.error(f"Error getting focus deep dive: {e}", exc_info=True)
@@ -230,7 +227,7 @@ def get_focus_deep_dive():
             'status': 'error',
             'error': 'Failed to analyze focus details',
             'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 
@@ -260,7 +257,7 @@ def get_health_assessment():
                 'status': 'error',
                 'error': 'Hours must be between 1 and 720',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         # 高度分析エンジン取得
@@ -270,7 +267,7 @@ def get_health_assessment():
                 'status': 'error',
                 'error': 'Advanced behavior analyzer not available',
                 'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
         # データ取得
@@ -284,7 +281,7 @@ def get_health_assessment():
                     'hours': hours,
                     'logs_count': 0
                 },
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             })
         
         # 健康評価分析実行
@@ -306,7 +303,7 @@ def get_health_assessment():
         return jsonify({
             'status': 'success',
             'data': result_data,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
         
     except ValueError as e:
@@ -314,7 +311,7 @@ def get_health_assessment():
             'status': 'error',
             'error': 'Invalid parameter format',
             'code': 'VALIDATION_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 400
     except Exception as e:
         logger.error(f"Error getting health assessment: {e}", exc_info=True)
@@ -322,7 +319,7 @@ def get_health_assessment():
             'status': 'error',
             'error': 'Failed to perform health assessment',
             'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 
@@ -352,7 +349,7 @@ def get_productivity_score():
                 'status': 'error',
                 'error': 'Hours must be between 1 and 720',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         # 高度分析エンジン取得
@@ -362,7 +359,7 @@ def get_productivity_score():
                 'status': 'error',
                 'error': 'Advanced behavior analyzer not available',
                 'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
         # データ取得
@@ -376,7 +373,7 @@ def get_productivity_score():
                     'hours': hours,
                     'logs_count': 0
                 },
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             })
         
         # 活動パターン分析実行
@@ -398,7 +395,7 @@ def get_productivity_score():
         return jsonify({
             'status': 'success',
             'data': result_data,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
         
     except ValueError as e:
@@ -406,7 +403,7 @@ def get_productivity_score():
             'status': 'error',
             'error': 'Invalid parameter format',
             'code': 'VALIDATION_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 400
     except Exception as e:
         logger.error(f"Error getting productivity score: {e}", exc_info=True)
@@ -414,7 +411,7 @@ def get_productivity_score():
             'status': 'error',
             'error': 'Failed to calculate productivity score',
             'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 

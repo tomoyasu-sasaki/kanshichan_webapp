@@ -696,6 +696,23 @@
     "file_hash": "6d004cb0a08f711cb4ec4a65bca1239b",
     "display_name": null
   },
+  "6dc33f927c7bcb0a": {
+    "file_path": "/Users/tmys-sasaki/Projects/Private/KanshiChan/backend/voice_data/cache/6dc33f927c7bcb0a_tts_output_20250612_135822_779.wav.gz",
+    "original_filename": "tts_output_20250612_135822_779.wav",
+    "file_size": 3243813,
+    "duration_seconds": 19.87628117913832,
+    "sample_rate": 44100,
+    "channels": 1,
+    "created_at": "2025-06-12T14:08:59.287424",
+    "audio_format": "wav",
+    "compressed": true,
+    "voice_sample_for": null,
+    "text_content": "ユーザーさん、こんにちは！ 分析結果から、今日は「medium」レベルの集中力で学習に取り組まれたことがわかりました。がんばっていますね！ この調子を保つためには、短い休憩を挟むことをお勧めします。",
+    "emotion": "custom",
+    "language": "ja",
+    "file_hash": "5236c4a2b2a706da9c6e86eadf9ffad2",
+    "display_name": null
+  },
   "f177162593351c18": {
     "file_path": "/Users/tmys-sasaki/Projects/Private/KanshiChan/backend/voice_data/cache/f177162593351c18_tts_output_20250612_102407_500.wav.gz",
     "original_filename": "tts_output_20250612_102407_500.wav",
