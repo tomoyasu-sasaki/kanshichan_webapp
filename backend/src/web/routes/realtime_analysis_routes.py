@@ -8,7 +8,7 @@ Realtime Analysis API Routes - リアルタイム分析API
 import asyncio
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 
 from utils.logger import setup_logger
@@ -56,7 +56,7 @@ def submit_realtime_data():
                 'status': 'error',
                 'error': 'No JSON data provided',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         # 必須フィールドチェック
@@ -68,7 +68,7 @@ def submit_realtime_data():
                 'status': 'error',
                 'error': 'user_id is required',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         if not analysis_data:
@@ -76,7 +76,7 @@ def submit_realtime_data():
                 'status': 'error',
                 'error': 'data is required',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         # リアルタイム分析器取得
@@ -86,7 +86,7 @@ def submit_realtime_data():
                 'status': 'error',
                 'error': 'Real-time analyzer not available',
                 'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
         # タイムスタンプ処理
@@ -100,7 +100,7 @@ def submit_realtime_data():
                     'status': 'error',
                     'error': 'Invalid timestamp format',
                     'code': 'VALIDATION_ERROR',
-                    'timestamp': datetime.utcnow().isoformat()
+                    'timestamp': datetime.now(timezone.utc).isoformat()
                 }), 400
         
         analysis_data['user_id'] = user_id
@@ -123,11 +123,11 @@ def submit_realtime_data():
             'status': 'success',
             'data': {
                 'user_id': user_id,
-                'processed_at': datetime.utcnow().isoformat(),
+                'processed_at': datetime.now(timezone.utc).isoformat(),
                 'extracted_features': features,
                 'data_quality': features.get('data_quality', 0.0)
             },
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
         
     except Exception as e:
@@ -136,7 +136,7 @@ def submit_realtime_data():
             'status': 'error',
             'error': 'Failed to process realtime data',
             'code': 'PROCESSING_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 
@@ -162,7 +162,7 @@ def get_streaming_status():
                 'status': 'error',
                 'error': 'Streaming processor not available',
                 'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
         # リアルタイム分析器取得
@@ -188,7 +188,7 @@ def get_streaming_status():
         # レスポンス構築
         response_data = {
             'streaming_status': stream_status,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
         
         if realtime_metrics:
@@ -210,7 +210,7 @@ def get_streaming_status():
         return jsonify({
             'status': 'success',
             'data': response_data,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
         
     except Exception as e:
@@ -219,7 +219,7 @@ def get_streaming_status():
             'status': 'error',
             'error': 'Failed to get streaming status',
             'code': 'STATUS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 
@@ -241,6 +241,15 @@ def get_active_alerts():
         level_filter = request.args.get('level')
         limit = int(request.args.get('limit', 50))
         
+        # バリデーション
+        if level_filter and level_filter not in ['high', 'medium', 'low']:
+            return jsonify({
+                'status': 'error',
+                'error': 'Invalid alert level. Must be one of: high, medium, low',
+                'code': 'VALIDATION_ERROR',
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            }), 400
+        
         # アラートシステム取得
         alert_system = _get_alert_system()
         if not alert_system:
@@ -248,7 +257,7 @@ def get_active_alerts():
                 'status': 'error',
                 'error': 'Alert system not available',
                 'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
         # アラート統計取得
@@ -287,7 +296,7 @@ def get_active_alerts():
                     'limit': limit
                 }
             },
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
         
     except Exception as e:
@@ -296,7 +305,7 @@ def get_active_alerts():
             'status': 'error',
             'error': 'Failed to get active alerts',
             'code': 'ALERTS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 
@@ -318,12 +327,13 @@ def get_performance_report():
         hours = int(request.args.get('hours', 24))
         report_format = request.args.get('format', 'summary')
         
-        if hours < 1 or hours > 168:  # 最大1週間
+        # バリデーション
+        if hours < 1 or hours > 24:
             return jsonify({
                 'status': 'error',
-                'error': 'Hours must be between 1 and 168',
+                'error': 'Hours must be between 1 and 24',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         if report_format not in ['summary', 'detailed']:
@@ -331,7 +341,7 @@ def get_performance_report():
                 'status': 'error',
                 'error': 'Format must be summary or detailed',
                 'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 400
         
         # パフォーマンス監視取得
@@ -341,7 +351,7 @@ def get_performance_report():
                 'status': 'error',
                 'error': 'Performance monitor not available',
                 'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }), 500
         
         # レポート生成
@@ -357,7 +367,7 @@ def get_performance_report():
             'report_parameters': {
                 'period_hours': hours,
                 'format': report_format,
-                'generated_at': datetime.utcnow().isoformat()
+                'generated_at': datetime.now(timezone.utc).isoformat()
             }
         }
         
@@ -390,7 +400,7 @@ def get_performance_report():
         return jsonify({
             'status': 'success',
             'data': response_data,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
         
     except Exception as e:
@@ -399,7 +409,7 @@ def get_performance_report():
             'status': 'error',
             'error': 'Failed to generate performance report',
             'code': 'REPORT_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 
