@@ -582,14 +582,50 @@ def get_voice_settings():
         voice_settings = {
             'success': True,
             'voice_settings': {
+                # 基本パラメータ
                 'voiceMode': config_manager.get('tts.default_voice_mode', 'tts'),
                 'defaultEmotion': config_manager.get('tts.default_emotion', 'neutral'),
                 'defaultLanguage': config_manager.get('tts.default_language', 'ja'),
                 'voiceSpeed': config_manager.get('tts.default_voice_speed', 1.0),
                 'voicePitch': config_manager.get('tts.default_voice_pitch', 1.0),
-                'voiceSampleId': config_manager.get('tts.default_voice_sample_id', None),
                 'voiceVolume': config_manager.get('tts.default_voice_volume', 0.7),
-                'fastMode': config_manager.get('tts.default_fast_mode', False)
+                'fastMode': config_manager.get('tts.default_fast_mode', False),
+                'voiceSampleId': config_manager.get('tts.default_voice_sample_id', None),
+                
+                # 音質パラメータ
+                'maxFrequency': config_manager.get('tts.default_max_frequency', 24000),
+                'audioQuality': config_manager.get('tts.default_audio_quality', 4.0),
+                'vqScore': config_manager.get('tts.default_vq_score', 0.78),
+                
+                # 感情プリセット
+                'useEmotionPreset': config_manager.get('tts.default_use_emotion_preset', True),
+                
+                # 感情強度8軸
+                'emotionHappiness': config_manager.get('tts.default_emotion_happiness', 0.0),
+                'emotionSadness': config_manager.get('tts.default_emotion_sadness', 0.0),
+                'emotionDisgust': config_manager.get('tts.default_emotion_disgust', 0.0),
+                'emotionFear': config_manager.get('tts.default_emotion_fear', 0.0),
+                'emotionSurprise': config_manager.get('tts.default_emotion_surprise', 0.0),
+                'emotionAnger': config_manager.get('tts.default_emotion_anger', 0.0),
+                'emotionOther': config_manager.get('tts.default_emotion_other', 0.0),
+                'emotionNeutral': config_manager.get('tts.default_emotion_neutral', 1.0),
+                
+                # 生成パラメータ
+                'cfgScale': config_manager.get('tts.default_cfg_scale', 0.8),
+                'minP': config_manager.get('tts.default_min_p', 0.0),
+                'seed': config_manager.get('tts.default_seed', 0),
+                'useSeed': config_manager.get('tts.default_use_seed', False),
+                
+                # オーディオスタイル
+                'audioPrefix': config_manager.get('tts.default_audio_prefix', None),
+                'useBreathStyle': config_manager.get('tts.default_use_breath_style', False),
+                'useWhisperStyle': config_manager.get('tts.default_use_whisper_style', False),
+                'styleIntensity': config_manager.get('tts.default_style_intensity', 0.5),
+                
+                # 処理オプション
+                'useNoiseReduction': config_manager.get('tts.default_use_noise_reduction', True),
+                'useStreamingPlayback': config_manager.get('tts.default_use_streaming_playback', False),
+                'speakerNoised': config_manager.get('tts.default_speaker_noised', False)
             }
         }
         
@@ -626,12 +662,48 @@ def save_voice_settings():
         voice_mode = data.get('voiceMode', 'tts')
         config_manager.set('tts.default_voice_mode', voice_mode)
         
+        # 基本パラメータ
         config_manager.set('tts.default_emotion', data.get('defaultEmotion', 'neutral'))
         config_manager.set('tts.default_language', data.get('defaultLanguage', 'ja'))
         config_manager.set('tts.default_voice_speed', float(data.get('voiceSpeed', 1.0)))
         config_manager.set('tts.default_voice_pitch', float(data.get('voicePitch', 1.0)))
         config_manager.set('tts.default_voice_volume', float(data.get('voiceVolume', 0.7)))
         config_manager.set('tts.default_fast_mode', bool(data.get('fastMode', False)))
+        
+        # 音質パラメータ
+        config_manager.set('tts.default_max_frequency', int(data.get('maxFrequency', 24000)))
+        config_manager.set('tts.default_audio_quality', float(data.get('audioQuality', 4.0)))
+        config_manager.set('tts.default_vq_score', float(data.get('vqScore', 0.78)))
+        
+        # 感情プリセット
+        config_manager.set('tts.default_use_emotion_preset', bool(data.get('useEmotionPreset', True)))
+        
+        # 感情強度8軸
+        config_manager.set('tts.default_emotion_happiness', float(data.get('emotionHappiness', 0.0)))
+        config_manager.set('tts.default_emotion_sadness', float(data.get('emotionSadness', 0.0)))
+        config_manager.set('tts.default_emotion_disgust', float(data.get('emotionDisgust', 0.0)))
+        config_manager.set('tts.default_emotion_fear', float(data.get('emotionFear', 0.0)))
+        config_manager.set('tts.default_emotion_surprise', float(data.get('emotionSurprise', 0.0)))
+        config_manager.set('tts.default_emotion_anger', float(data.get('emotionAnger', 0.0)))
+        config_manager.set('tts.default_emotion_other', float(data.get('emotionOther', 0.0)))
+        config_manager.set('tts.default_emotion_neutral', float(data.get('emotionNeutral', 1.0)))
+        
+        # 生成パラメータ
+        config_manager.set('tts.default_cfg_scale', float(data.get('cfgScale', 0.8)))
+        config_manager.set('tts.default_min_p', float(data.get('minP', 0.0)))
+        config_manager.set('tts.default_seed', int(data.get('seed', 0)))
+        config_manager.set('tts.default_use_seed', bool(data.get('useSeed', False)))
+        
+        # オーディオスタイル
+        config_manager.set('tts.default_audio_prefix', data.get('audioPrefix'))
+        config_manager.set('tts.default_use_breath_style', bool(data.get('useBreathStyle', False)))
+        config_manager.set('tts.default_use_whisper_style', bool(data.get('useWhisperStyle', False)))
+        config_manager.set('tts.default_style_intensity', float(data.get('styleIntensity', 0.5)))
+        
+        # 処理オプション
+        config_manager.set('tts.default_use_noise_reduction', bool(data.get('useNoiseReduction', True)))
+        config_manager.set('tts.default_use_streaming_playback', bool(data.get('useStreamingPlayback', False)))
+        config_manager.set('tts.default_speaker_noised', bool(data.get('speakerNoised', False)))
         
         # ボイスクローンの場合はサンプルファイルも保存
         if voice_mode == 'voiceClone' and data.get('voiceSampleId'):

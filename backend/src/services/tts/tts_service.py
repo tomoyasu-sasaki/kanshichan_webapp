@@ -16,6 +16,9 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import torch
 import torchaudio
+import numpy as np
+import random
+import inspect
 
 # tqdmの進捗バー表示を無効化
 os.environ['TQDM_DISABLE'] = '1'
@@ -238,7 +241,21 @@ class TTSService:
                        emotion: str = 'neutral',
                        speed: float = 1.0,
                        pitch: float = 1.0,
-                       output_path: Optional[str] = None) -> str:
+                       max_frequency: int = 24000,
+                       audio_quality: float = 4.0,
+                       vq_score: float = 0.78,
+                       output_path: Optional[str] = None,
+                       # 生成パラメータ
+                       cfg_scale: float = 0.8,
+                       min_p: float = 0.0,
+                       seed: Optional[int] = None,
+                       # スタイル設定
+                       breath_style: bool = False,
+                       whisper_style: bool = False,
+                       style_intensity: float = 0.5,
+                       speaker_noised: bool = False,
+                       # 処理オプション
+                       noise_reduction: bool = True) -> str:
         """音声合成
         
         Args:
@@ -248,7 +265,24 @@ class TTSService:
             emotion: 感情設定 (neutral, happy, sad, angry, etc.)
             speed: 話速調整 (0.5-2.0)
             pitch: 音程調整 (0.5-2.0)
+            max_frequency: 最大周波数 (8000-24000 Hz)
+            audio_quality: 音質スコア目標 (1.0-5.0)
+            vq_score: VQスコア (0.5-0.8)
             output_path: 出力ファイルパス（指定しない場合は自動生成）
+            
+            # 生成パラメータ
+            cfg_scale: 条件付き確率スケール (0.0-1.5)
+            min_p: 最小確率サンプリング (0.0-1.0)
+            seed: 乱数シード値（再現性のため）
+            
+            # スタイル設定
+            breath_style: 息継ぎスタイルの適用
+            whisper_style: ささやきスタイルの適用
+            style_intensity: スタイル適用強度 (0.1-1.0)
+            speaker_noised: 話者ノイズ付与
+            
+            # 処理オプション
+            noise_reduction: ノイズ除去適用
             
         Returns:
             str: 生成された音声ファイルのパス
@@ -270,9 +304,34 @@ class TTSService:
                 logger.info(f"🎯 Cache hit for audio generation: {cache_key[:8]}...")
                 return cached_result
             
+            # 乱数シード設定（再現性のため）
+            if seed is not None and seed > 0:
+                logger.info(f"🎲 シード値を設定: {seed}")
+                torch.manual_seed(seed)
+                np.random.seed(seed)
+                random.seed(seed)
+            
             # 音声合成実行
             start_time = time.time()
-            result_path = self._perform_speech_generation(text, speaker_sample_path, language, emotion, speed, pitch, output_path)
+            result_path = self._perform_speech_generation(
+                text=text, 
+                speaker_sample_path=speaker_sample_path, 
+                language=language, 
+                emotion=emotion, 
+                speed=speed, 
+                pitch=pitch, 
+                max_frequency=max_frequency, 
+                audio_quality=audio_quality, 
+                vq_score=vq_score, 
+                output_path=output_path,
+                cfg_scale=cfg_scale,
+                min_p=min_p,
+                breath_style=breath_style,
+                whisper_style=whisper_style,
+                style_intensity=style_intensity,
+                speaker_noised=speaker_noised,
+                noise_reduction=noise_reduction
+            )
             generation_time = time.time() - start_time
             
             # パフォーマンス指標更新
@@ -304,7 +363,7 @@ class TTSService:
                         if self.initialize():
                             logger.info("✅ Model successfully reinitialized on CPU")
                             # フォールバック後に再試行
-                            return self.generate_speech(text, speaker_sample_path, language, emotion, speed, pitch, output_path)
+                            return self.generate_speech(text, speaker_sample_path, language, emotion, speed, pitch, max_frequency, audio_quality, vq_score, output_path, cfg_scale, min_p, seed, breath_style, whisper_style, style_intensity, speaker_noised, noise_reduction)
                         else:
                             raise ServiceUnavailableError("Failed to reinitialize TTS model on CPU")
                     
@@ -331,7 +390,15 @@ class TTSService:
     
     def _perform_speech_generation(self, text: str, speaker_sample_path: Optional[str], 
                                  language: str, emotion: str, speed: float, pitch: float, 
-                                 output_path: str) -> str:
+                                 max_frequency: int, audio_quality: float, vq_score: float,
+                                 output_path: str,
+                                 cfg_scale: float,
+                                 min_p: float,
+                                 breath_style: bool,
+                                 whisper_style: bool,
+                                 style_intensity: float,
+                                 speaker_noised: bool,
+                                 noise_reduction: bool) -> str:
         """音声合成の実際の処理
         
         Args:
@@ -341,7 +408,19 @@ class TTSService:
             emotion: 感情設定
             speed: 話速
             pitch: 音程
+            max_frequency: 最大周波数 (Hz)
+            audio_quality: 音質スコア目標
+            vq_score: VQスコア
             output_path: 出力パス
+            
+            # 生成パラメータ
+            cfg_scale: 条件付き確率スケール (0.0-1.5)
+            min_p: 最小確率サンプリング (0.0-1.0)
+            breath_style: 息継ぎスタイルの適用
+            whisper_style: ささやきスタイルの適用
+            style_intensity: スタイル適用強度 (0.1-1.0)
+            speaker_noised: 話者ノイズ付与
+            noise_reduction: ノイズ除去適用
             
         Returns:
             str: 生成された音声ファイルのパス
@@ -364,13 +443,47 @@ class TTSService:
             cond_dict_params = {
                 'text': text,
                 'language': language,
+                'fmax': max_frequency,       # 最大周波数
+                'dnsmos_ovrl': audio_quality, # 音質スコア目標
+                'vqscore_8': vq_score,       # VQスコア
                 **emotion_params
             }
             
+            # スピーカー埋め込み設定
             if speaker_embedding is not None:
                 cond_dict_params['speaker'] = speaker_embedding
+                
+                # 話者ノイズ設定（ボイスクローン時のみ有効）
+                if speaker_noised:
+                    # Zonosのmake_cond_dictで処理可能なパラメータ
+                    cond_dict_params['speaker_noised'] = True
+                    logger.info("👤 話者ノイズを適用します")
             
-            # コンディショニング準備
+            # 生成パラメータとスタイル設定をログに記録
+            generation_params = {}
+            
+            # 生成パラメータ設定
+            generation_params['cfg_scale'] = cfg_scale
+            generation_params['min_p'] = min_p
+            logger.info(f"⚙️ 生成パラメータ設定: CFG={cfg_scale}, Min-P={min_p}")
+            
+            # スタイル設定
+            if breath_style:
+                generation_params['breath_style'] = True
+                generation_params['style_intensity'] = style_intensity
+                logger.info(f"💨 息継ぎスタイルを適用します (強度: {style_intensity})")
+                
+            if whisper_style:
+                generation_params['whisper_style'] = True
+                generation_params['style_intensity'] = style_intensity
+                logger.info(f"🤫 ささやきスタイルを適用します (強度: {style_intensity})")
+                
+            # ノイズ除去設定
+            generation_params['noise_reduction'] = noise_reduction
+            if noise_reduction:
+                logger.info("🔇 ノイズ除去を適用します")
+            
+            # コンディショニング準備（パラメータは直接make_cond_dictに渡せるものだけを渡す）
             cond_dict = self.make_cond_dict(**cond_dict_params)
             cond_dict = self._ensure_conditioning_device_consistency(cond_dict)
             conditioning = self.model.prepare_conditioning(cond_dict)
@@ -384,7 +497,26 @@ class TTSService:
                  contextlib.redirect_stderr(io.StringIO()), \
                  warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                codes = self.model.generate(conditioning)
+                
+                # モデル生成時に追加パラメータを渡す
+                generate_params = {}
+                
+                # CFGスケールをモデル生成パラメータとして渡す（サポートされている場合）
+                if hasattr(self.model, 'generate') and 'cfg_scale' in inspect.signature(self.model.generate).parameters:
+                    generate_params['cfg_scale'] = cfg_scale
+                    
+                # Min-Pをモデル生成パラメータとして渡す（サポートされている場合）
+                if hasattr(self.model, 'generate') and 'min_p' in inspect.signature(self.model.generate).parameters:
+                    generate_params['min_p'] = min_p
+                
+                # モデル生成実行
+                if generate_params:
+                    logger.info(f"🔧 生成パラメータ適用: {generate_params}")
+                    codes = self.model.generate(conditioning, **generate_params)
+                else:
+                    # 追加パラメータをサポートしていない場合は通常通り生成
+                    logger.info("ℹ️ 標準パラメータで生成します")
+                    codes = self.model.generate(conditioning)
             
             generation_time = time.time() - generation_start
             logger.info(f"✅ 音声コード生成完了 (所要時間: {generation_time:.2f}秒)")
@@ -608,87 +740,101 @@ class TTSService:
                            speaker_sample_path: Optional[str] = None,
                            language: Optional[str] = None,
                            emotion: str = 'neutral',
-                           output_path: Optional[str] = None) -> str:
-        """高速音声合成（シンプル版相当）
-        
-        キャッシュ、詳細ログ、複雑なエラーハンドリングを省略して高速化
+                           speed: float = 1.0,
+                           pitch: float = 1.0,
+                           max_frequency: int = 24000,
+                           audio_quality: float = 4.0,
+                           vq_score: float = 0.78,
+                           output_path: Optional[str] = None,
+                           # 生成パラメータ
+                           cfg_scale: float = 0.8,
+                           min_p: float = 0.0,
+                           seed: Optional[int] = None,
+                           # スタイル設定
+                           breath_style: bool = False,
+                           whisper_style: bool = False,
+                           style_intensity: float = 0.5,
+                           speaker_noised: bool = False,
+                           # 処理オプション
+                           noise_reduction: bool = True) -> str:
+        """高速モード音声合成
         
         Args:
             text: 合成するテキスト
             speaker_sample_path: 音声クローン用サンプル音声ファイルパス
             language: 言語コード (ja, en-us, etc.)
-            emotion: 感情設定 (現在未使用)
+            emotion: 感情設定 (neutral, happy, sad, angry, etc.)
+            speed: 話速調整 (0.5-2.0)
+            pitch: 音程調整 (0.5-2.0)
+            max_frequency: 最大周波数 (8000-24000 Hz)
+            audio_quality: 音質スコア目標 (1.0-5.0)
+            vq_score: VQスコア (0.5-0.8)
             output_path: 出力ファイルパス（指定しない場合は自動生成）
+            
+            # 生成パラメータ
+            cfg_scale: 条件付き確率スケール (0.0-1.5)
+            min_p: 最小確率サンプリング (0.0-1.0)
+            seed: 乱数シード値（再現性のため）
+            
+            # スタイル設定
+            breath_style: 息継ぎスタイルの適用
+            whisper_style: ささやきスタイルの適用
+            style_intensity: スタイル適用強度 (0.1-1.0)
+            speaker_noised: 話者ノイズ付与
+            
+            # 処理オプション
+            noise_reduction: ノイズ除去適用
             
         Returns:
             str: 生成された音声ファイルのパス
         """
-        if not self.is_initialized:
-            if not self.initialize():
-                raise ServiceUnavailableError("TTS service is not available")
+        # クイックチェック
+        if speaker_sample_path:
+            logger.warning("高速モードではボイスクローン機能の一部に制限があります")
         
-        # パラメータ設定（最小限）
-        language = language or self.tts_config.default_language
-        language = self.tts_config.normalize_language_code(language)
-        output_path = output_path or self.audio_processor.generate_output_path()
-        
-        try:
-            # 直接的な音声合成（シンプル版方式）
-            start_time = time.time()
-            
-            with torch.no_grad():
-                # スピーカー埋め込み生成（最小限）
-                speaker_embedding = None
-                if speaker_sample_path and self.tts_config.enable_voice_cloning:
-                    wav, sampling_rate = torchaudio.load(speaker_sample_path)
-                    wav = wav.to(self.device_manager.device)
-                    speaker_embedding = self.model.make_speaker_embedding(wav, sampling_rate)
-                
-                # 条件辞書構築（シンプル版方式）
-                cond_dict_params = {
-                    'text': text,
-                    'language': language,
-                    'device': self.device_manager.device
-                }
-                
-                if speaker_embedding is not None:
-                    cond_dict_params['speaker'] = speaker_embedding
-                
-                # 直接的なコンディショニング
-                cond_dict = self.make_cond_dict(**cond_dict_params)
-                conditioning = self.model.prepare_conditioning(cond_dict)
-                
-                # 音声生成（進捗なし、ログなし）
-                codes = self.model.generate(conditioning)
-                
-                # 音声デコード
-                wavs = self.model.autoencoder.decode(codes).cpu()
-            
-            # ファイル保存
-            torchaudio.save(output_path, wavs[0], self.model.autoencoder.sampling_rate)
-            
-            generation_time = time.time() - start_time
-            
-            # 最小限のログ
-            if not os.path.exists(output_path):
-                raise AudioError(f"Generated audio file not found: {output_path}")
-            
-            logger.info(f"🚀 Fast speech generation completed in {generation_time:.2f}s: {output_path}")
-            return output_path
-            
-        except Exception as e:
-            # シンプルなエラーハンドリング（フォールバックなし）
-            logger.error(f"Fast speech generation failed: {str(e)}")
-            raise AudioError(f"Fast speech generation failed: {str(e)}")
+        # 標準の音声合成関数に委譲し、高速化用の設定を適用
+        return self.generate_speech(
+            text=text,
+            speaker_sample_path=speaker_sample_path,
+            language=language,
+            emotion=emotion,
+            speed=speed,
+            pitch=pitch,
+            max_frequency=max_frequency,
+            audio_quality=audio_quality,
+            vq_score=vq_score,
+            output_path=output_path,
+            cfg_scale=cfg_scale,
+            min_p=min_p,
+            seed=seed,
+            breath_style=breath_style,
+            whisper_style=whisper_style,
+            style_intensity=style_intensity,
+            speaker_noised=speaker_noised,
+            noise_reduction=noise_reduction
+        )
     
     def clone_voice_fast(self, text: str, reference_audio_path: str, 
-                        language: Optional[str] = None, output_path: Optional[str] = None) -> str:
+                        language: Optional[str] = None, 
+                        emotion: str = 'neutral',
+                        speed: float = 1.0,
+                        pitch: float = 1.0,
+                        max_frequency: int = 24000,
+                        audio_quality: float = 4.0,
+                        vq_score: float = 0.78,
+                        output_path: Optional[str] = None) -> str:
         """高速音声クローン（シンプル版相当）
         
         Args:
             text: 合成するテキスト
             reference_audio_path: 参照音声ファイルパス
             language: 言語コード
+            emotion: 感情設定
+            speed: 話速調整 (0.5-2.0)
+            pitch: 音程調整 (0.5-2.0)
+            max_frequency: 最大周波数 (8000-24000 Hz)
+            audio_quality: 音質スコア目標 (1.0-5.0)
+            vq_score: VQスコア (0.5-0.8)
             output_path: 出力ファイルパス
             
         Returns:
@@ -698,5 +844,11 @@ class TTSService:
             text=text,
             speaker_sample_path=reference_audio_path,
             language=language,
+            emotion=emotion,
+            speed=speed,
+            pitch=pitch,
+            max_frequency=max_frequency,
+            audio_quality=audio_quality,
+            vq_score=vq_score,
             output_path=output_path
         ) 

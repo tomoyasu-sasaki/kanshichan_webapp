@@ -59,7 +59,7 @@ def synthesize_speech():
         {
             "text": "合成するテキスト",
             "language": "ja",  # optional, default: "ja"
-            "emotion": "neutral",  # optional, default: "neutral" 
+            "emotion": "neutral",  # optional, default: "neutral"
             "speed": 1.0,  # optional, default: 1.0
             "pitch": 1.0,  # optional, default: 1.0
             "speaker_sample_id": "file_id",  # optional, for voice cloning
@@ -67,6 +67,18 @@ def synthesize_speech():
             "save_to_cache": true,  # optional, default: true
             "stream_to_clients": false,  # optional, WebSocket配信するか
             "target_clients": []  # optional, 特定クライアントID配信
+            
+            # 以下、新規パラメータ
+            "cfg_scale": 0.8,  # optional, 条件付き確率スケール
+            "min_p": 0.0,  # optional, 最小確率サンプリング
+            "seed": 1234,  # optional, 乱数シード値
+            "audio_prefix": "えっと、",  # optional, 音声プレフィックス
+            "breath_style": true,  # optional, 息継ぎスタイル
+            "whisper_style": false,  # optional, ささやきスタイル
+            "style_intensity": 0.5,  # optional, スタイル強度
+            "noise_reduction": true,  # optional, ノイズ除去
+            "stream_playback": false,  # optional, ストリーミング再生
+            "speaker_noised": false,  # optional, 話者ノイズ付与
         }
     
     Returns:
@@ -89,8 +101,25 @@ def synthesize_speech():
         speaker_sample_id = data.get('speaker_sample_id')
         return_url = data.get('return_url', False)
         save_to_cache = data.get('save_to_cache', True)
-        stream_to_clients = data.get('stream_to_clients', False)  # 新機能
-        target_clients = data.get('target_clients', [])  # 新機能
+        stream_to_clients = data.get('stream_to_clients', False)
+        target_clients = data.get('target_clients', [])
+        
+        # 音質パラメータを取得
+        max_frequency = int(data.get('max_frequency', 24000))  # fmax: 最大周波数
+        audio_quality = float(data.get('audio_quality', 4.0))  # dnsmos_ovrl: 音質スコア
+        vq_score = float(data.get('vq_score', 0.78))          # vqscore_8: VQスコア
+        
+        # 新規パラメータを取得
+        cfg_scale = float(data.get('cfg_scale', 0.8))
+        min_p = float(data.get('min_p', 0.0))
+        seed = int(data.get('seed', 0)) if data.get('seed') is not None else None
+        audio_prefix = data.get('audio_prefix')
+        breath_style = data.get('breath_style', False)
+        whisper_style = data.get('whisper_style', False)
+        style_intensity = float(data.get('style_intensity', 0.5))
+        noise_reduction = data.get('noise_reduction', True)
+        stream_playback = data.get('stream_playback', False)
+        speaker_noised = data.get('speaker_noised', False)
         
         # 音声モードの明示的な指定をチェック
         tts_mode = data.get('tts_mode', False)
@@ -101,6 +130,12 @@ def synthesize_speech():
             raise ValidationError("Text is required")
         if len(text) > 1000:
             raise ValidationError("Text is too long (max 1000 characters)")
+
+        # オーディオプレフィックスの処理
+        if audio_prefix and audio_prefix.strip():
+            # 空白を除去して先頭に追加
+            text = f"{audio_prefix.strip()} {text}"
+            logger.info(f"Added audio prefix: '{audio_prefix.strip()}'")
 
         # 音声ID生成
         audio_id = str(uuid.uuid4())
@@ -172,13 +207,51 @@ def synthesize_speech():
         # 標準出力/エラー出力も抑制してtqdmの表示を完全に防ぐ
         with contextlib.redirect_stdout(io.StringIO()), \
              contextlib.redirect_stderr(io.StringIO()):
+            
+            # 追加パラメータの設定
+            advanced_params = {}
+            
+            # CFGスケールとMin-P（新規パラメータ）
+            advanced_params['cfg_scale'] = cfg_scale
+            advanced_params['min_p'] = min_p
+            
+            # スタイル設定
+            if breath_style:
+                advanced_params['breath_style'] = breath_style
+                advanced_params['style_intensity'] = style_intensity
+                
+            if whisper_style:
+                advanced_params['whisper_style'] = whisper_style
+                advanced_params['style_intensity'] = style_intensity
+            
+            # 話者ノイズ設定
+            if speaker_sample_path:
+                if speaker_noised:
+                    style_params = {'speaker_noised': True}
+                else:
+                    style_params = {}
+            else:
+                style_params = {}
+            
+            # 音声処理オプション
+            advanced_params['noise_reduction'] = noise_reduction
+            
+            # シード設定
+            if seed:
+                advanced_params['seed'] = int(seed)
+            
             output_path = tts_service.generate_speech(
                 text=text,
                 speaker_sample_path=speaker_sample_path,
                 language=language,
                 emotion=emotion,
                 speed=speed,
-                pitch=pitch
+                pitch=pitch,
+                max_frequency=max_frequency,
+                audio_quality=audio_quality,
+                vq_score=vq_score,
+                **style_params,
+                **advanced_params
             )
 
         # TTS完了通知
@@ -308,26 +381,33 @@ def synthesize_speech():
 
 @tts_synthesis_bp.route('/synthesize-fast', methods=['POST'])
 def synthesize_speech_fast():
-    """高速テキスト音声合成（シンプル版相当の性能）
+    """高速版テキスト音声合成
     
     Request Body:
         {
             "text": "合成するテキスト",
             "language": "ja",  # optional, default: "ja"
+            "emotion": "neutral",  # optional, default: "neutral"
+            "speed": 1.0,  # optional, default: 1.0
+            "pitch": 1.0,  # optional, default: 1.0
             "speaker_sample_id": "file_id",  # optional, for voice cloning
             "return_url": true,  # optional, default: false
-            "stream_to_clients": false  # optional, WebSocket配信するか
+            
+            # 以下、新規パラメータ
+            "cfg_scale": 0.8,  # optional, 条件付き確率スケール
+            "min_p": 0.0,  # optional, 最小確率サンプリング
+            "seed": 1234,  # optional, 乱数シード値
+            "audio_prefix": "えっと、",  # optional, 音声プレフィックス
+            "breath_style": true,  # optional, 息継ぎスタイル
+            "whisper_style": false,  # optional, ささやきスタイル
+            "style_intensity": 0.5,  # optional, スタイル強度
+            "noise_reduction": true,  # optional, ノイズ除去
+            "stream_playback": false,  # optional, ストリーミング再生
+            "speaker_noised": false,  # optional, 話者ノイズ付与
         }
     
     Returns:
-        JSON response with audio file information or binary audio data
-        
-    Note:
-        高速化のため以下の機能を省略:
-        - キャッシュ処理
-        - 詳細ログ
-        - 品質評価
-        - 複雑なエラーハンドリング
+        Binary audio data
     """
     if not tts_service or not voice_manager:
         return jsonify({
@@ -336,58 +416,119 @@ def synthesize_speech_fast():
         }), 503
     
     try:
-        # リクエストデータ取得（最小限）
+        # リクエストデータ取得（シンプル版）
         data = request.get_json()
         text = data.get('text', '').strip()
         language = data.get('language', 'ja')
+        emotion = data.get('emotion', 'neutral')
+        speed = float(data.get('speed', 1.0))
+        pitch = float(data.get('pitch', 1.0))
         speaker_sample_id = data.get('speaker_sample_id')
         return_url = data.get('return_url', False)
-        stream_to_clients = data.get('stream_to_clients', False)
         
-        # 基本バリデーション
+        # 音質パラメータを取得
+        max_frequency = int(data.get('max_frequency', 24000))  # fmax: 最大周波数
+        audio_quality = float(data.get('audio_quality', 4.0))  # dnsmos_ovrl: 音質スコア
+        vq_score = float(data.get('vq_score', 0.78))          # vqscore_8: VQスコア
+        
+        # 新規パラメータを取得
+        cfg_scale = float(data.get('cfg_scale', 0.8))
+        min_p = float(data.get('min_p', 0.0))
+        seed = int(data.get('seed', 0)) if data.get('seed') is not None else None
+        audio_prefix = data.get('audio_prefix')
+        breath_style = data.get('breath_style', False)
+        whisper_style = data.get('whisper_style', False)
+        style_intensity = float(data.get('style_intensity', 0.5))
+        noise_reduction = data.get('noise_reduction', True)
+        stream_playback = data.get('stream_playback', False)
+        speaker_noised = data.get('speaker_noised', False)
+
+        # バリデーション（最小限）
         if not text:
             raise ValidationError("Text is required")
         if len(text) > 1000:
             raise ValidationError("Text is too long (max 1000 characters)")
 
-        # 音声ID生成
-        audio_id = str(uuid.uuid4())
-        
-        # 音声クローン用のサンプル音声パス取得（簡素化）
+        # オーディオプレフィックスの処理
+        if audio_prefix and audio_prefix.strip():
+            # 空白を除去して先頭に追加
+            text = f"{audio_prefix.strip()} {text}"
+            logger.info(f"Added audio prefix: '{audio_prefix.strip()}'")
+
+        # 音声クローン用のサンプル音声パス取得
         speaker_sample_path = None
         if speaker_sample_id:
             if speaker_sample_id == 'default_sample':
+                # デフォルト音声サンプル（sample.wav）を使用
                 default_sample_path = get_backend_path() / 'voice_data/voice_samples/sample.wav'
                 if default_sample_path.exists():
                     speaker_sample_path = str(default_sample_path)
+                    logger.info("Using default voice sample: sample.wav")
+                else:
+                    logger.warning("Default sample.wav not found, proceeding without voice cloning")
             else:
                 try:
                     speaker_sample_path, _ = voice_manager.get_audio_file(speaker_sample_id)
-                except Exception:
-                    # エラー時は無音声クローンで続行
+                    logger.info(f"Using voice sample: {speaker_sample_id}")
+                except Exception as e:
+                    logger.warning(f"Voice sample error: {e}, proceeding without voice cloning")
                     speaker_sample_path = None
 
-        # 高速音声合成実行
-        logger.info(f"🚀 Fast synthesis: '{text[:50]}...' (language: {language})")
+        # 音声合成実行（高速モード）
+        logger.info(f"Fast synthesizing speech: '{text[:30]}...' (emotion: {emotion})")
         
-        # 進捗バー完全無効化
+        # API実行時の進捗バー無効化を確実にする
         ensure_tqdm_disabled()
         
+        # 標準出力/エラー出力も抑制してtqdmの表示を完全に防ぐ
         with contextlib.redirect_stdout(io.StringIO()), \
              contextlib.redirect_stderr(io.StringIO()):
+            
+            # 追加パラメータの設定
+            advanced_params = {}
+            
+            # CFGスケールとMin-P（新規パラメータ）
+            advanced_params['cfg_scale'] = cfg_scale
+            advanced_params['min_p'] = min_p
+            
+            # スタイル設定
+            if breath_style:
+                advanced_params['breath_style'] = breath_style
+                advanced_params['style_intensity'] = style_intensity
+                
+            if whisper_style:
+                advanced_params['whisper_style'] = whisper_style
+                advanced_params['style_intensity'] = style_intensity
+            
+            # 話者ノイズ設定
             if speaker_sample_path:
-                # 高速音声クローン
-                output_path = tts_service.clone_voice_fast(
-                    text=text,
-                    reference_audio_path=speaker_sample_path,
-                    language=language
-                )
+                if speaker_noised:
+                    style_params = {'speaker_noised': True}
+                else:
+                    style_params = {}
             else:
-                # 高速音声合成
-                output_path = tts_service.generate_speech_fast(
-                    text=text,
-                    language=language
-                )
+                style_params = {}
+            
+            # 音声処理オプション
+            advanced_params['noise_reduction'] = noise_reduction
+            
+            # シード設定
+            if seed:
+                advanced_params['seed'] = int(seed)
+                
+            output_path = tts_service.generate_speech_fast(
+                text=text,
+                speaker_sample_path=speaker_sample_path,
+                language=language,
+                emotion=emotion,
+                speed=speed,
+                pitch=pitch,
+                max_frequency=max_frequency,
+                audio_quality=audio_quality,
+                vq_score=vq_score,
+                **style_params,
+                **advanced_params
+            )
 
         # ファイル管理（最小限）
         file_id = voice_manager.save_audio_file(
@@ -397,6 +538,9 @@ def synthesize_speech_fast():
                 'audio_id': audio_id,
                 'text_content': text,
                 'language': language,
+                'emotion': emotion,
+                'speed': speed,
+                'pitch': pitch,
                 'fast_mode': True,
                 'synthesis_timestamp': datetime.now().isoformat()
             }
@@ -409,6 +553,9 @@ def synthesize_speech_fast():
                 'file_id': file_id,
                 'text_content': text,
                 'language': language,
+                'emotion': emotion,
+                'speed': speed,
+                'pitch': pitch,
                 'fast_mode': True,
                 'voice_cloned': speaker_sample_path is not None,
                 'synthesis_timestamp': datetime.now().isoformat()
@@ -427,7 +574,15 @@ def synthesize_speech_fast():
                 'streamed': stream_to_clients,
                 'text_content': text,
                 'language': language,
-                'voice_cloned': speaker_sample_path is not None
+                'emotion': emotion,
+                'speed': speed,
+                'pitch': pitch,
+                'voice_cloned': speaker_sample_path is not None,
+                'quality_params': {
+                    'max_frequency': max_frequency,
+                    'audio_quality': audio_quality,
+                    'vq_score': vq_score
+                }
             }
             logger.info(f"✅ Fast synthesis completed: {audio_id}")
             return jsonify(response)
@@ -584,13 +739,53 @@ def synthesize_advanced_speech():
         # 標準出力/エラー出力も抑制してtqdmの表示を完全に防ぐ
         with contextlib.redirect_stdout(io.StringIO()), \
              contextlib.redirect_stderr(io.StringIO()):
+            
+            # 追加パラメータの設定
+            advanced_params = {}
+            
+            # CFGスケールとMin-P（新規パラメータ）
+            advanced_params['cfg_scale'] = cfg_scale
+            advanced_params['min_p'] = min_p
+            
+            # スタイル設定
+            if breath_style:
+                advanced_params['breath_style'] = breath_style
+                advanced_params['style_intensity'] = style_intensity
+                
+            if whisper_style:
+                advanced_params['whisper_style'] = whisper_style
+                advanced_params['style_intensity'] = style_intensity
+            
+            # 話者ノイズ設定
+            if speaker_sample_path:
+                speaker_noised = data.get('speaker_noised', False)
+                if speaker_noised:
+                    style_params = {'speaker_noised': True}
+                else:
+                    style_params = {}
+            else:
+                style_params = {}
+            
+            # 音声処理オプション
+            advanced_params['noise_reduction'] = noise_reduction
+            
+            # シード設定
+            seed = data.get('seed')
+            if seed:
+                advanced_params['seed'] = int(seed)
+            
             output_path = tts_service.generate_speech(
                 text=text,
                 speaker_sample_path=speaker_sample_path,
                 language=language,
                 emotion=emotion,
                 speed=speed,
-                pitch=pitch
+                pitch=pitch,
+                max_frequency=max_frequency,
+                audio_quality=audio_quality,
+                vq_score=vq_score,
+                **style_params,
+                **advanced_params
             )
         
         # 音声ファイル保存
