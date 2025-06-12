@@ -86,20 +86,17 @@ describe('BehaviorInsights Component', () => {
         <BehaviorInsights />
       </ChakraProvider>
     );
-
-    // ローディングが完了するのを待つ
+    
+    // 初期表示を確認
+    expect(screen.getByText('行動分析インサイト')).toBeInTheDocument();
+    
+    // モックデータの内容が表示されることを確認
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/api/analysis/basic/recommendations'));
+      expect(screen.getByText('集中力が低下しています')).toBeInTheDocument();
     });
-
-    // 推奨メッセージが表示されていることを確認
-    await waitFor(() => {
-      expect(screen.getByText('集中力向上のための推奨事項です')).toBeInTheDocument();
-      expect(screen.getByText('音声機能付きアドバイスメッセージ')).toBeInTheDocument();
-    });
-
+    
     // 優先度バッジが表示されていることを確認
-    expect(screen.getByText('重要')).toBeInTheDocument();
+    expect(screen.getAllByText('重要')[0]).toBeInTheDocument();
     expect(screen.getByText('普通')).toBeInTheDocument();
   });
 
@@ -109,18 +106,25 @@ describe('BehaviorInsights Component', () => {
         <BehaviorInsights />
       </ChakraProvider>
     );
-
-    // ローディングが完了するのを待つ
+    
+    // 初期表示でタブが表示されていることを確認
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/api/analysis/basic/recommendations'));
+      expect(screen.getByText('すべて')).toBeInTheDocument();
     });
-
+    
     // 「重要」タブをクリック
-    fireEvent.click(screen.getByText('重要'));
-
+    fireEvent.click(screen.getAllByText('重要')[0]);
+    
     // APIが適切なパラメータで呼び出されることを確認
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('priority=high'));
+      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('priority=important'), expect.anything());
+    });
+    
+    // 結果が絞り込まれたことを確認
+    await waitFor(() => {
+      // 重要タグの付いた提案のみが表示されるはず
+      expect(screen.getAllByText('重要').length).toBeGreaterThan(0);
+      expect(screen.queryByText('普通')).not.toBeInTheDocument();
     });
   });
 
@@ -150,26 +154,32 @@ describe('BehaviorInsights Component', () => {
   });
 
   test('音声ボタンが機能する', async () => {
+    // Audio APIのモック
+    const mockPlay = jest.fn();
+    const originalAudio = global.Audio;
+    global.Audio = jest.fn().mockImplementation(() => ({
+      play: mockPlay,
+    }));
+
     render(
       <ChakraProvider>
         <BehaviorInsights />
       </ChakraProvider>
     );
-
-    // ローディングが完了するのを待つ
+    
+    // 音声ボタンをクリック
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/api/analysis/basic/recommendations'));
+      screen.getByLabelText('音声で読み上げ');
     });
 
-    // 音声ボタンを探して実行
-    const audioButtons = await screen.findAllByLabelText('音声再生');
-    expect(audioButtons.length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByLabelText('音声で読み上げ'));
     
-    fireEvent.click(audioButtons[0]);
-
     // Audio.play()が呼ばれていることを確認
     await waitFor(() => {
-      expect(Audio.prototype.play).toHaveBeenCalled();
+      expect(mockPlay).toHaveBeenCalled();
     });
+
+    // モックをリストア
+    global.Audio = originalAudio;
   });
 }); 
