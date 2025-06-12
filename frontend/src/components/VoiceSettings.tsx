@@ -760,13 +760,23 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
   // デフォルト音声に設定
   const saveAsDefaultVoice = useCallback(async () => {
     try {
+      // voiceSampleIdがある場合にパスも追加
+      const settingsToSave = { ...settings };
+      
+      // バックエンドがパスを自動的に解決するため、
+      // voiceSamplePathは送信しない（ID情報のみを送る）
+      if (settings.voiceMode === 'voiceClone' && !settings.voiceSampleId) {
+        // 音声サンプルがないけどボイスクローンモードの場合はデフォルトサンプルを使用
+        settingsToSave.voiceSampleId = 'default_sample';
+      }
+      
       const response = await fetch('/api/tts/voice-settings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          ...settings,
+          ...settingsToSave,
           setAsDefault: true
         }),
       });
