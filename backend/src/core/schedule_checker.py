@@ -1,4 +1,5 @@
 import time
+import os
 from datetime import datetime, timedelta
 from typing import Set, Optional, Dict, Any
 from utils.logger import setup_logger
@@ -7,7 +8,7 @@ from services.automation.schedule_manager import ScheduleManager
 from web.websocket import socketio
 from utils.exceptions import (
     ScheduleError, ScheduleExecutionError, NetworkError,
-    AlertError, wrap_exception
+    AlertError, AudioError, wrap_exception
 )
 
 logger = setup_logger(__name__)
@@ -74,8 +75,32 @@ class ScheduleChecker:
             if schedule_time == current_time:
                 logger.info(f"Schedule triggered: {schedule}")
                 
-                # アラート音を再生（AlertManagerを使用）
-                if self.alert_manager:
+                # 音声ファイルが設定されている場合は再生
+                voice_file = schedule.get("voice_file")
+                voice_played = False
+                
+                if voice_file and os.path.exists(voice_file):
+                    try:
+                        from services.tts.sound_service import SoundService
+                        sound_service = SoundService()
+                        logger.info(f"Playing schedule voice file: {voice_file}")
+                        sound_service.play_sound(voice_file)
+                        voice_played = True
+                    except Exception as e:
+                        sound_error = wrap_exception(
+                            e, AudioError,
+                            "Error playing schedule voice file",
+                            details={
+                                'voice_file': voice_file,
+                                'schedule_content': schedule.get('content'),
+                                'schedule_time': schedule_time
+                            }
+                        )
+                        logger.error(f"Schedule voice playback error: {sound_error.to_dict()}")
+                        voice_played = False
+                
+                # アラート音を再生（音声ファイルが無いか再生に失敗した場合のみ）
+                if not voice_played and self.alert_manager:
                     try:
                         self.alert_manager.alert_service.trigger_alert(
                             f"スケジュール通知: {schedule.get('content')}"

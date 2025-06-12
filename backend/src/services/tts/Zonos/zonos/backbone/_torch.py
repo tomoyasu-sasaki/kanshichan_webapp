@@ -62,9 +62,26 @@ class TorchZonosBackbone(nn.Module):
         self.norm_f = nn.LayerNorm(config.d_model, eps=config.norm_epsilon)
 
     def allocate_inference_cache(self, batch_size: int, max_seqlen: int, dtype: torch.dtype = torch.bfloat16):
-        # TODO: This function should be pure
+        """
+        推論キャッシュを確保し、必要な周波数行列を生成します。
+        
+        Args:
+            batch_size: バッチサイズ
+            max_seqlen: 最大シーケンス長
+            dtype: テンソルのデータ型
+            
+        Returns:
+            dict: レイヤーごとの推論キャッシュを格納した辞書
+        """
+        # 周波数行列を生成（self.freqs_cisを変更せず新しい値を計算）
         head_dim = self.config.d_model // self.config.attn_cfg["num_heads"]
-        self.freqs_cis = precompute_freqs_cis(16384, head_dim)
+        freqs_cis = precompute_freqs_cis(16384, head_dim)
+        
+        # 元のself.freqs_cisを変更せずに一時的な値として使用
+        if not hasattr(self, 'freqs_cis'):
+            self.freqs_cis = freqs_cis
+            
+        # 各レイヤーの推論キャッシュを生成
         return {
             i: layer.allocate_inference_cache(batch_size, max_seqlen, dtype=dtype)
             for i, layer in enumerate(self.layers)

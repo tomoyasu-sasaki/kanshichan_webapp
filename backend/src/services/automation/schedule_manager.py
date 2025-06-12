@@ -7,7 +7,7 @@ from utils.config_manager import ConfigManager
 from utils.exceptions import (
     ScheduleError, ScheduleValidationError, ScheduleExecutionError,
     JSONParsingError, FileOperationError, FileReadError, FileWriteError,
-    ValidationError, wrap_exception
+    ValidationError, AudioError, wrap_exception
 )
 
 logger = setup_logger(__name__)
@@ -23,6 +23,10 @@ class ScheduleManager:
         self.config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config')
         self.schedules_file = os.path.join(self.config_dir, 'schedules.json')
         self.schedules: List[Dict[str, str]] = []
+        # 音声ファイル保存用ディレクトリ
+        backend_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        self.voice_data_dir = os.path.join(backend_root, 'voice_data', 'schedules')
+        os.makedirs(self.voice_data_dir, exist_ok=True)
         # 起動時にスケジュールを読み込む
         self.load_schedules()
         logger.info("ScheduleManager initialized.")
@@ -105,6 +109,64 @@ class ScheduleManager:
         """
         return self.schedules
 
+    def create_voice_file(self, schedule_id: str, content: str) -> Optional[str]:
+        """
+        スケジュールの通知音声ファイルを生成する
+        Args:
+            schedule_id (str): スケジュールID
+            content (str): スケジュール内容
+        Returns:
+            Optional[str]: 生成された音声ファイルのパス、失敗時はNone
+        """
+        try:
+            from web.routes.tts_helpers import tts_service
+            
+            if not tts_service or not tts_service.is_initialized:
+                logger.warning("TTSサービスが初期化されていないため、音声ファイルを生成できません")
+                return None
+            
+            # 音声ファイルパス
+            voice_file_path = os.path.join(self.voice_data_dir, f"{schedule_id}.wav")
+            
+            # 音声合成テキスト
+            voice_text = f"{content}の時間です。"
+            
+            # デフォルト設定の取得
+            default_language = self.config_manager.get('tts.default_language', 'ja')
+            default_emotion = self.config_manager.get('tts.default_emotion', 'neutral')
+            default_speed = self.config_manager.get('tts.default_voice_speed', 1.0)
+            default_pitch = self.config_manager.get('tts.default_voice_pitch', 1.0)
+            
+            # サンプル音声ファイルパス
+            default_voice_sample = self.config_manager.get('tts.default_voice_sample_path', None)
+            
+            # 音声合成実行
+            logger.info(f"スケジュール通知用音声ファイル生成中: {voice_text}")
+            voice_file = tts_service.generate_speech(
+                text=voice_text,
+                language=default_language,
+                emotion=default_emotion,
+                speed=default_speed,
+                pitch=default_pitch,
+                speaker_sample_path=default_voice_sample,
+                output_path=voice_file_path
+            )
+            
+            logger.info(f"スケジュール通知用音声ファイル生成完了: {voice_file}")
+            return voice_file
+        except Exception as e:
+            tts_error = wrap_exception(
+                e, AudioError,
+                "Failed to generate voice file for schedule",
+                details={
+                    'schedule_id': schedule_id,
+                    'content': content,
+                    'voice_data_dir': self.voice_data_dir
+                }
+            )
+            logger.error(f"Schedule voice generation error: {tts_error.to_dict()}")
+            return None
+
     def add_schedule(self, time: str, content: str) -> Optional[Dict[str, str]]:
         """
         新しいスケジュールを追加する
@@ -150,6 +212,11 @@ class ScheduleManager:
             'content': content
         }
         
+        # 音声ファイルの生成
+        voice_file = self.create_voice_file(schedule_id, content)
+        if voice_file:
+            new_schedule['voice_file'] = voice_file
+        
         # スケジュールリストに追加して保存
         self.schedules.append(new_schedule)
         if self.save_schedules():
@@ -179,6 +246,19 @@ class ScheduleManager:
         
         # 該当するスケジュールを探す
         original_length = len(self.schedules)
+        schedule_to_delete = next((s for s in self.schedules if s.get('id') == schedule_id), None)
+        
+        # 音声ファイルの削除
+        if schedule_to_delete and 'voice_file' in schedule_to_delete:
+            voice_file = schedule_to_delete['voice_file']
+            try:
+                if os.path.exists(voice_file):
+                    os.remove(voice_file)
+                    logger.info(f"Deleted schedule voice file: {voice_file}")
+            except Exception as e:
+                logger.warning(f"Failed to delete schedule voice file {voice_file}: {e}")
+        
+        # スケジュールの削除
         self.schedules = [s for s in self.schedules if s.get('id') != schedule_id]
         
         # スケジュールが見つからなかった場合

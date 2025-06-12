@@ -26,7 +26,19 @@ import {
   Tooltip,
   Switch,
   AlertTitle,
-  AlertDescription
+  AlertDescription,
+  Accordion,
+  AccordionItem,
+  AccordionButton,
+  AccordionPanel,
+  AccordionIcon,
+  Divider,
+  NumberInput,
+  NumberInputField,
+  NumberInputStepper,
+  NumberIncrementStepper,
+  NumberDecrementStepper,
+  Spacer
 } from '@chakra-ui/react';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { FaPlay, FaStop, FaUpload, FaVolumeUp } from 'react-icons/fa';
@@ -44,6 +56,36 @@ interface VoiceSettings {
   voiceSampleId: string | null;
   voiceVolume: number;
   fastMode: boolean;
+  maxFrequency: number;
+  audioQuality: number;
+  vqScore: number;
+  // 感情強度8軸
+  emotionHappiness: number;
+  emotionSadness: number;
+  emotionDisgust: number;
+  emotionFear: number;
+  emotionSurprise: number;
+  emotionAnger: number;
+  emotionOther: number;
+  emotionNeutral: number;
+  useEmotionPreset: boolean; // プリセット使用フラグ
+  
+  // 生成パラメータ
+  cfgScale: number; // 条件付き確率スケール
+  minP: number; // 最小確率サンプリング
+  seed: number; // 乱数シード
+  useSeed: boolean; // シード使用有無
+
+  // オーディオスタイル
+  audioPrefix: string | null; // 音声プレフィックス
+  useBreathStyle: boolean; // 息継ぎスタイル
+  useWhisperStyle: boolean; // ささやきスタイル
+  styleIntensity: number; // スタイル強度
+  
+  // 処理オプション
+  useNoiseReduction: boolean; // ノイズ除去
+  useStreamingPlayback: boolean; // ストリーミング再生
+  speakerNoised: boolean; // 話者ノイズ追加
 }
 
 interface AudioFile {
@@ -56,6 +98,38 @@ interface AudioFile {
     language?: string;
     upload_timestamp?: string;
   };
+}
+
+interface TTSRequestBody {
+  text: string;
+  language: string;
+  return_url: boolean;
+  emotion: string;
+  speed: number;
+  pitch: number;
+  max_frequency: number;
+  audio_quality: number;
+  vq_score: number;
+  emotion_vector?: number[];
+  speaker_sample_id?: string;
+  voice_clone_mode?: boolean;
+  tts_mode?: boolean;
+  
+  // 生成パラメータ
+  cfg_scale?: number;
+  min_p?: number;
+  seed?: number;
+  
+  // オーディオスタイル
+  audio_prefix?: string;
+  breath_style?: boolean;
+  whisper_style?: boolean;
+  style_intensity?: number;
+  
+  // 処理オプション
+  noise_reduction?: boolean;
+  stream_playback?: boolean;
+  speaker_noised?: boolean;
 }
 
 interface TTSStatus {
@@ -73,28 +147,14 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
 }) => {
   // 感情名の英語から日本語へのマッピング
   const emotionTranslations: Record<string, string> = {
-    'anger': '怒り',
-    'angry': '怒った',
-    'annoyed': 'イライラした',
-    'assertive': '断定的',
-    'calm': '穏やか',
-    'cheerful': '陽気',
-    'confident': '自信のある',
-    'disgust': '嫌悪',
-    'excited': '興奮した',
-    'fear': '恐怖',
-    'fearful': '恐れた',
     'happiness': '幸福',
-    'happy': '嬉しい',
-    'joy': '喜び',
-    'melancholy': '憂鬱',
-    'neutral': '普通',
-    'peaceful': '平和な',
-    'sad': '悲しい',
     'sadness': '悲しみ',
+    'disgust': '嫌悪',
+    'fear': '恐怖',
     'surprise': '驚き',
-    'surprised': '驚いた',
-    'worried': '心配した'
+    'anger': '怒り',
+    'other': 'その他',
+    'neutral': '普通',
   };
 
   // 音声設定状態
@@ -106,7 +166,37 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
     voicePitch: 1.0,
     voiceSampleId: null,
     voiceVolume: 0.7,
-    fastMode: false
+    fastMode: false,
+    maxFrequency: 24000,   // デフォルトは最大値 24000Hz
+    audioQuality: 4.0,     // デフォルトは良好な音質 4.0/5.0
+    vqScore: 0.78,         // デフォルトは高品質 0.78
+    // 感情強度8軸
+    emotionHappiness: 0.0,
+    emotionSadness: 0.0,
+    emotionDisgust: 0.0,
+    emotionFear: 0.0,
+    emotionSurprise: 0.0,
+    emotionAnger: 0.0,
+    emotionOther: 0.0,
+    emotionNeutral: 1.0,   // デフォルトは「普通」を最大に
+    useEmotionPreset: true, // 初期値はプリセット使用
+    
+    // 生成パラメータ
+    cfgScale: 0.8, // 条件付き確率スケール
+    minP: 0.0, // 最小確率サンプリング
+    seed: 0, // 乱数シード
+    useSeed: false, // シード使用有無
+
+    // オーディオスタイル
+    audioPrefix: null, // 音声プレフィックス
+    useBreathStyle: false, // 息継ぎスタイル
+    useWhisperStyle: false, // ささやきスタイル
+    styleIntensity: 0.5, // スタイル強度
+    
+    // 処理オプション
+    useNoiseReduction: true, // ノイズ除去
+    useStreamingPlayback: false, // ストリーミング再生
+    speakerNoised: false, // 話者ノイズ追加
   });
 
   // UI状態
@@ -115,8 +205,9 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
   const [loadingTTSStatus, setLoadingTTSStatus] = useState(true);
   const [testText, setTestText] = useState('これは音声設定のテストです。設定した感情とトーンで再生されます。');
   const [sampleName, setSampleName] = useState(''); // 新しい音声サンプル名
-  const [selectedFile, setSelectedFile] = useState<File | null>(null); // 選択されたファイル
-  const [deleting, setDeleting] = useState<string | null>(null); // 削除中のファイルID
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedStyleFile, setSelectedStyleFile] = useState<File | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   
   // TTS情報
   const [ttsStatus, setTtsStatus] = useState<TTSStatus | null>(null);
@@ -124,6 +215,7 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const styleFileInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
 
   // TTSサービス状態を取得
@@ -194,6 +286,7 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
   useEffect(() => {
     fetchTTSStatus();
     fetchAudioFiles();
+    loadDefaultVoiceSettings(); // デフォルト設定を読み込む
   }, [fetchTTSStatus, fetchAudioFiles]);
 
   // 設定変更の通知
@@ -369,20 +462,75 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
     const startTime = performance.now();
 
     try {
-      // API呼び出し（高速モード対応）
       const apiEndpoint = settings.fastMode ? '/api/tts/synthesize-fast' : '/api/tts/synthesize';
       
-      const baseRequestBody = {
+      // 基本リクエストボディ
+      const baseRequestBody: TTSRequestBody = {
         text: testText,
         language: settings.defaultLanguage,
+        speed: settings.voiceSpeed,
+        pitch: settings.voicePitch,
         return_url: false,
+        max_frequency: settings.maxFrequency,
+        audio_quality: settings.audioQuality,
+        vq_score: settings.vqScore,
+        emotion: settings.defaultEmotion // 初期値として設定（後で上書きされる可能性あり）
       };
+      
+      // 感情ベクトル準備
+      if (settings.useEmotionPreset) {
+        // プリセット感情
+        baseRequestBody.emotion = settings.defaultEmotion;
+      } else {
+        // カスタム感情ベクトル
+        baseRequestBody.emotion_vector = [
+          settings.emotionHappiness,
+          settings.emotionSadness,
+          settings.emotionDisgust,
+          settings.emotionFear,
+          settings.emotionSurprise,
+          settings.emotionAnger,
+          settings.emotionOther,
+          settings.emotionNeutral
+        ];
+        // カスタム感情使用時は emotion を 'custom' に設定
+        baseRequestBody.emotion = 'custom';
+      }
+      
+      // 生成パラメータ
+      baseRequestBody.cfg_scale = settings.cfgScale;
+      baseRequestBody.min_p = settings.minP;
+      
+      // シード値
+      if (settings.useSeed) {
+        baseRequestBody.seed = settings.seed;
+      }
+      
+      // オーディオスタイル
+      if (settings.audioPrefix) {
+        baseRequestBody.audio_prefix = settings.audioPrefix;
+      }
+      
+      if (settings.useBreathStyle) {
+        baseRequestBody.breath_style = true;
+        baseRequestBody.style_intensity = settings.styleIntensity;
+      }
+      
+      if (settings.useWhisperStyle) {
+        baseRequestBody.whisper_style = true;
+        baseRequestBody.style_intensity = settings.styleIntensity;
+      }
+      
+      // 処理オプション
+      baseRequestBody.noise_reduction = settings.useNoiseReduction;
+      baseRequestBody.stream_playback = settings.useStreamingPlayback;
 
       const requestBody = settings.voiceMode === 'voiceClone'
         ? {
             ...baseRequestBody,
-        speaker_sample_id: settings.voiceSampleId || 'default_sample',
-            voice_clone_mode: true // バックエンドへの明示的な指示
+            speaker_sample_id: settings.voiceSampleId || 'default_sample',
+            voice_clone_mode: true, // バックエンドへの明示的な指示
+            speaker_noised: settings.speakerNoised // 話者ノイズ設定
           }
         : {
             ...baseRequestBody,
@@ -555,9 +703,25 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
     });
   }, [testText, settings, toast]);
 
-  // 感情選択ハンドラ
-  const handleEmotionChange = useCallback((emotion: string) => {
-    setSettings(prev => ({ ...prev, defaultEmotion: emotion }));
+  // 感情プリセット選択ハンドラ
+  const handleEmotionPresetChange = useCallback((emotion: string) => {
+    // プリセット選択時に該当する感情を1.0、それ以外を0.0に設定
+    const emotionValues = {
+      emotionHappiness: emotion === 'happiness' ? 1.0 : 0.0,
+      emotionSadness: emotion === 'sadness' ? 1.0 : 0.0,
+      emotionDisgust: emotion === 'disgust' ? 1.0 : 0.0,
+      emotionFear: emotion === 'fear' ? 1.0 : 0.0,
+      emotionSurprise: emotion === 'surprise' ? 1.0 : 0.0,
+      emotionAnger: emotion === 'anger' ? 1.0 : 0.0,
+      emotionOther: emotion === 'other' ? 1.0 : 0.0,
+      emotionNeutral: emotion === 'neutral' ? 1.0 : 0.0,
+    };
+
+    setSettings(prev => ({ 
+      ...prev, 
+      defaultEmotion: emotion,
+      ...emotionValues
+    }));
   }, []);
 
   // 言語選択ハンドラ
@@ -572,6 +736,92 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
       voiceSampleId: sampleId === 'none' ? null : sampleId 
     }));
   }, []);
+
+  // デフォルト音声設定を読み込む
+  const loadDefaultVoiceSettings = useCallback(async () => {
+    try {
+      const response = await fetch('/api/tts/voice-settings');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.voice_settings) {
+          // デフォルト設定を反映
+          setSettings(prevSettings => ({
+            ...prevSettings,
+            ...data.voice_settings
+          }));
+          console.log('Default voice settings loaded', data.voice_settings);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load default voice settings:', error);
+    }
+  }, []);
+
+  // デフォルト音声に設定
+  const saveAsDefaultVoice = useCallback(async () => {
+    try {
+      // voiceSampleIdがある場合にパスも追加
+      const settingsToSave = { ...settings };
+      
+      // バックエンドがパスを自動的に解決するため、
+      // voiceSamplePathは送信しない（ID情報のみを送る）
+      if (settings.voiceMode === 'voiceClone' && !settings.voiceSampleId) {
+        // 音声サンプルがないけどボイスクローンモードの場合はデフォルトサンプルを使用
+        settingsToSave.voiceSampleId = 'default_sample';
+      }
+      
+      const response = await fetch('/api/tts/voice-settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...settingsToSave,
+          setAsDefault: true
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          toast({
+            title: '設定完了',
+            description: 'デフォルト音声設定として保存しました',
+            status: 'success',
+            duration: 3000,
+            isClosable: true,
+          });
+        } else {
+          throw new Error(data.message || 'デフォルト設定の保存に失敗しました');
+        }
+      } else {
+        throw new Error('デフォルト設定の保存に失敗しました');
+      }
+    } catch (error) {
+      console.error('Failed to save default voice settings:', error);
+      toast({
+        title: '保存エラー',
+        description: error instanceof Error ? error.message : '設定の保存に失敗しました',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  }, [settings, toast]);
+
+  const handleStyleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      setSelectedStyleFile(file);
+      toast({
+        title: 'スタイルファイル選択',
+        description: `${file.name} が選択されました`,
+        status: 'info',
+        duration: 2000,
+        isClosable: true,
+      });
+    }
+  };
 
   return (
     <Box width="100%" maxWidth="800px" mx="auto">
@@ -659,19 +909,197 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
 
               {/* 感情設定 */}
               <FormControl>
-                <FormLabel>デフォルト感情</FormLabel>
-                <Select
-                  value={settings.defaultEmotion}
-                  onChange={(e) => handleEmotionChange(e.target.value)}
-                >
-                  {ttsStatus?.available_emotions?.map((emotion) => (
-                    <option key={emotion} value={emotion}>
-                      {emotionTranslations[emotion] || emotion}
-                    </option>
-                  )) || (
-                    <option value="neutral">neutral</option>
+                <FormLabel>感情設定</FormLabel>
+                <VStack spacing={2} align="stretch">
+                  <HStack>
+                    <FormLabel htmlFor="useEmotionPreset" mb={0} fontSize="sm">
+                      初期値プリセットを使用
+                    </FormLabel>
+                    <Switch 
+                      id="useEmotionPreset"
+                      isChecked={settings.useEmotionPreset}
+                      onChange={(e) => setSettings(prev => ({ 
+                        ...prev, 
+                        useEmotionPreset: e.target.checked 
+                      }))}
+                    />
+                  </HStack>
+                  
+                  {settings.useEmotionPreset ? (
+                    // プリセット選択モード
+                    <Select
+                      value={settings.defaultEmotion}
+                      onChange={(e) => handleEmotionPresetChange(e.target.value)}
+                    >
+                      {ttsStatus?.available_emotions?.map((emotion) => (
+                        <option key={emotion} value={emotion}>
+                          {emotionTranslations[emotion] || emotion}
+                        </option>
+                      )) || (
+                        <option value="neutral">普通</option>
+                      )}
+                    </Select>
+                  ) : (
+                    // 感情強度8軸スライダー
+                    <Accordion allowToggle defaultIndex={[0]}>
+                      <AccordionItem>
+                        <AccordionButton>
+                          <Box as="span" flex='1' textAlign='left'>
+                            感情強度調整（8軸）
+                          </Box>
+                          <AccordionIcon />
+                        </AccordionButton>
+                        <AccordionPanel pb={4}>
+                          <VStack spacing={3} align="stretch">
+                            {/* 幸福 */}
+                            <FormControl>
+                              <FormLabel fontSize="sm">幸福: {settings.emotionHappiness.toFixed(2)}</FormLabel>
+                              <Slider
+                                value={settings.emotionHappiness}
+                                onChange={(value) => setSettings(prev => ({ ...prev, emotionHappiness: value }))}
+                                min={0}
+                                max={1}
+                                step={0.05}
+                                colorScheme="yellow"
+                              >
+                                <SliderTrack>
+                                  <SliderFilledTrack />
+                                </SliderTrack>
+                                <SliderThumb />
+                              </Slider>
+                            </FormControl>
+
+                            {/* 悲しみ */}
+                            <FormControl>
+                              <FormLabel fontSize="sm">悲しみ: {settings.emotionSadness.toFixed(2)}</FormLabel>
+                              <Slider
+                                value={settings.emotionSadness}
+                                onChange={(value) => setSettings(prev => ({ ...prev, emotionSadness: value }))}
+                                min={0}
+                                max={1}
+                                step={0.05}
+                                colorScheme="blue"
+                              >
+                                <SliderTrack>
+                                  <SliderFilledTrack />
+                                </SliderTrack>
+                                <SliderThumb />
+                              </Slider>
+                            </FormControl>
+
+                            {/* 嫌悪 */}
+                            <FormControl>
+                              <FormLabel fontSize="sm">嫌悪: {settings.emotionDisgust.toFixed(2)}</FormLabel>
+                              <Slider
+                                value={settings.emotionDisgust}
+                                onChange={(value) => setSettings(prev => ({ ...prev, emotionDisgust: value }))}
+                                min={0}
+                                max={1}
+                                step={0.05}
+                                colorScheme="purple"
+                              >
+                                <SliderTrack>
+                                  <SliderFilledTrack />
+                                </SliderTrack>
+                                <SliderThumb />
+                              </Slider>
+                            </FormControl>
+
+                            {/* 恐怖 */}
+                            <FormControl>
+                              <FormLabel fontSize="sm">恐怖: {settings.emotionFear.toFixed(2)}</FormLabel>
+                              <Slider
+                                value={settings.emotionFear}
+                                onChange={(value) => setSettings(prev => ({ ...prev, emotionFear: value }))}
+                                min={0}
+                                max={1}
+                                step={0.05}
+                                colorScheme="cyan"
+                              >
+                                <SliderTrack>
+                                  <SliderFilledTrack />
+                                </SliderTrack>
+                                <SliderThumb />
+                              </Slider>
+                            </FormControl>
+
+                            {/* 驚き */}
+                            <FormControl>
+                              <FormLabel fontSize="sm">驚き: {settings.emotionSurprise.toFixed(2)}</FormLabel>
+                              <Slider
+                                value={settings.emotionSurprise}
+                                onChange={(value) => setSettings(prev => ({ ...prev, emotionSurprise: value }))}
+                                min={0}
+                                max={1}
+                                step={0.05}
+                                colorScheme="green"
+                              >
+                                <SliderTrack>
+                                  <SliderFilledTrack />
+                                </SliderTrack>
+                                <SliderThumb />
+                              </Slider>
+                            </FormControl>
+
+                            {/* 怒り */}
+                            <FormControl>
+                              <FormLabel fontSize="sm">怒り: {settings.emotionAnger.toFixed(2)}</FormLabel>
+                              <Slider
+                                value={settings.emotionAnger}
+                                onChange={(value) => setSettings(prev => ({ ...prev, emotionAnger: value }))}
+                                min={0}
+                                max={1}
+                                step={0.05}
+                                colorScheme="red"
+                              >
+                                <SliderTrack>
+                                  <SliderFilledTrack />
+                                </SliderTrack>
+                                <SliderThumb />
+                              </Slider>
+                            </FormControl>
+
+                            {/* その他 */}
+                            <FormControl>
+                              <FormLabel fontSize="sm">その他: {settings.emotionOther.toFixed(2)}</FormLabel>
+                              <Slider
+                                value={settings.emotionOther}
+                                onChange={(value) => setSettings(prev => ({ ...prev, emotionOther: value }))}
+                                min={0}
+                                max={1}
+                                step={0.05}
+                                colorScheme="orange"
+                              >
+                                <SliderTrack>
+                                  <SliderFilledTrack />
+                                </SliderTrack>
+                                <SliderThumb />
+                              </Slider>
+                            </FormControl>
+
+                            {/* 普通 */}
+                            <FormControl>
+                              <FormLabel fontSize="sm">普通: {settings.emotionNeutral.toFixed(2)}</FormLabel>
+                              <Slider
+                                value={settings.emotionNeutral}
+                                onChange={(value) => setSettings(prev => ({ ...prev, emotionNeutral: value }))}
+                                min={0}
+                                max={1}
+                                step={0.05}
+                                colorScheme="gray"
+                              >
+                                <SliderTrack>
+                                  <SliderFilledTrack />
+                                </SliderTrack>
+                                <SliderThumb />
+                              </Slider>
+                            </FormControl>
+                          </VStack>
+                        </AccordionPanel>
+                      </AccordionItem>
+                    </Accordion>
                   )}
-                </Select>
+                </VStack>
               </FormControl>
 
               {/* 言語設定 */}
@@ -741,6 +1169,349 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
                   <SliderThumb />
                 </Slider>
               </FormControl>
+
+              {/* 音質詳細設定（アコーディオン） */}
+              <Accordion allowToggle mt={2}>
+                <AccordionItem>
+                  <AccordionButton>
+                    <Box as="span" flex='1' textAlign='left'>
+                      音質詳細設定
+                    </Box>
+                    <AccordionIcon />
+                  </AccordionButton>
+                  <AccordionPanel pb={4}>
+                    <VStack spacing={4} align="stretch">
+                      {/* 最大周波数調整 */}
+                      <FormControl>
+                        <FormLabel>最大周波数: {settings.maxFrequency}Hz</FormLabel>
+                        <Slider
+                          value={settings.maxFrequency}
+                          onChange={(value) => setSettings(prev => ({ ...prev, maxFrequency: value }))}
+                          min={8000}
+                          max={24000}
+                          step={1000}
+                        >
+                          <SliderTrack>
+                            <SliderFilledTrack />
+                          </SliderTrack>
+                          <SliderThumb />
+                        </Slider>
+                        <Text fontSize="xs" color="gray.500">
+                          低い値=柔らかい音質、高い値=クリアな音質（デフォルト:24000）
+                        </Text>
+                      </FormControl>
+
+                      {/* 音質スコア調整 */}
+                      <FormControl>
+                        <FormLabel>音質スコア: {settings.audioQuality.toFixed(1)}</FormLabel>
+                        <Slider
+                          value={settings.audioQuality}
+                          onChange={(value) => setSettings(prev => ({ ...prev, audioQuality: value }))}
+                          min={1.0}
+                          max={5.0}
+                          step={0.1}
+                        >
+                          <SliderTrack>
+                            <SliderFilledTrack />
+                          </SliderTrack>
+                          <SliderThumb />
+                        </Slider>
+                        <Text fontSize="xs" color="gray.500">
+                          音声の明瞭さと自然さのバランス（デフォルト:4.0）
+                        </Text>
+                      </FormControl>
+
+                      {/* VQスコア調整 */}
+                      <FormControl>
+                        <FormLabel>VQスコア: {settings.vqScore.toFixed(2)}</FormLabel>
+                        <Slider
+                          value={settings.vqScore}
+                          onChange={(value) => setSettings(prev => ({ ...prev, vqScore: value }))}
+                          min={0.5}
+                          max={0.8}
+                          step={0.01}
+                        >
+                          <SliderTrack>
+                            <SliderFilledTrack />
+                          </SliderTrack>
+                          <SliderThumb />
+                        </Slider>
+                        <Text fontSize="xs" color="gray.500">
+                          音声の音響品質（デフォルト:0.78）
+                        </Text>
+                      </FormControl>
+                    </VStack>
+                  </AccordionPanel>
+                </AccordionItem>
+              </Accordion>
+
+              {/* 生成パラメータ設定（アコーディオン） */}
+              <Accordion allowToggle mt={2}>
+                <AccordionItem>
+                  <AccordionButton>
+                    <Box as="span" flex='1' textAlign='left'>
+                      生成パラメータ設定
+                    </Box>
+                    <AccordionIcon />
+                  </AccordionButton>
+                  <AccordionPanel pb={4}>
+                    <VStack spacing={4} align="stretch">
+                      {/* CFGスケール調整 */}
+                      <FormControl>
+                        <FormLabel>CFGスケール: {settings.cfgScale.toFixed(2)}</FormLabel>
+                        <Slider
+                          value={settings.cfgScale}
+                          onChange={(value) => setSettings(prev => ({ ...prev, cfgScale: value }))}
+                          min={0.0}
+                          max={1.5}
+                          step={0.05}
+                        >
+                          <SliderTrack>
+                            <SliderFilledTrack />
+                          </SliderTrack>
+                          <SliderThumb />
+                        </Slider>
+                        <Text fontSize="xs" color="gray.500">
+                          低い値=自由度高、高い値=一貫性重視（デフォルト:0.8）
+                        </Text>
+                      </FormControl>
+
+                      {/* Min-P調整 */}
+                      <FormControl>
+                        <FormLabel>Min-P: {settings.minP.toFixed(2)}</FormLabel>
+                        <Slider
+                          value={settings.minP}
+                          onChange={(value) => setSettings(prev => ({ ...prev, minP: value }))}
+                          min={0.0}
+                          max={1.0}
+                          step={0.05}
+                        >
+                          <SliderTrack>
+                            <SliderFilledTrack />
+                          </SliderTrack>
+                          <SliderThumb />
+                        </Slider>
+                        <Text fontSize="xs" color="gray.500">
+                          最小確率サンプリング値（高いほど自然だが変化少）
+                        </Text>
+                      </FormControl>
+
+                      {/* シード設定 */}
+                      <FormControl>
+                        <HStack justify="space-between" align="center">
+                          <FormLabel mb={0}>乱数シード使用</FormLabel>
+                          <Switch
+                            isChecked={settings.useSeed}
+                            onChange={(e) => setSettings(prev => ({ ...prev, useSeed: e.target.checked }))}
+                          />
+                        </HStack>
+                        
+                        {settings.useSeed && (
+                          <HStack mt={2}>
+                            <NumberInput 
+                              value={settings.seed} 
+                              min={0} 
+                              max={2147483647}
+                              onChange={(_, value) => setSettings(prev => ({ ...prev, seed: value }))}
+                              size="sm"
+                              flex={1}
+                            >
+                              <NumberInputField />
+                              <NumberInputStepper>
+                                <NumberIncrementStepper />
+                                <NumberDecrementStepper />
+                              </NumberInputStepper>
+                            </NumberInput>
+                            <Button 
+                              size="sm"
+                              onClick={() => setSettings(prev => ({ 
+                                ...prev, 
+                                seed: Math.floor(Math.random() * 2147483647) 
+                              }))}
+                            >
+                              ランダム
+                            </Button>
+                          </HStack>
+                        )}
+                        <Text fontSize="xs" color="gray.500" mt={1}>
+                          同じシードで同じ内容を生成すると同じ結果になります
+                        </Text>
+                      </FormControl>
+                    </VStack>
+                  </AccordionPanel>
+                </AccordionItem>
+              </Accordion>
+
+              {/* オーディオスタイル設定（アコーディオン） */}
+              <Accordion allowToggle mt={2}>
+                <AccordionItem>
+                  <AccordionButton>
+                    <Box as="span" flex='1' textAlign='left'>
+                      オーディオスタイル設定
+                    </Box>
+                    <AccordionIcon />
+                  </AccordionButton>
+                  <AccordionPanel pb={4}>
+                    <VStack spacing={4} align="stretch">
+                      {/* オーディオプレフィックス */}
+                      <FormControl>
+                        <FormLabel>音声プレフィックス</FormLabel>
+                        <Input 
+                          placeholder="例: うーん、あのー、えっと" 
+                          size="sm"
+                          value={settings.audioPrefix || ''}
+                          onChange={(e) => setSettings(prev => ({ 
+                            ...prev, 
+                            audioPrefix: e.target.value || null 
+                          }))}
+                        />
+                        <Text fontSize="xs" color="gray.500" mt={1}>
+                          生成音声の先頭に付与するフレーズ
+                        </Text>
+                      </FormControl>
+
+                      {/* スタイルチェックボックス */}
+                      <VStack spacing={2} align="stretch">
+                        <FormControl display="flex" alignItems="center">
+                          <FormLabel htmlFor="useBreathStyle" mb="0" fontSize="sm">
+                            息継ぎスタイル
+                          </FormLabel>
+                          <Spacer />
+                          <Switch 
+                            id="useBreathStyle"
+                            colorScheme="blue"
+                            isChecked={settings.useBreathStyle}
+                            onChange={(e) => setSettings(prev => ({ 
+                              ...prev, 
+                              useBreathStyle: e.target.checked 
+                            }))}
+                          />
+                        </FormControl>
+
+                        <FormControl display="flex" alignItems="center">
+                          <FormLabel htmlFor="useWhisperStyle" mb="0" fontSize="sm">
+                            ささやきスタイル (Whisper風)
+                          </FormLabel>
+                          <Spacer />
+                          <Switch 
+                            id="useWhisperStyle"
+                            colorScheme="blue"
+                            isChecked={settings.useWhisperStyle}
+                            onChange={(e) => setSettings(prev => ({ 
+                              ...prev, 
+                              useWhisperStyle: e.target.checked 
+                            }))}
+                          />
+                        </FormControl>
+                      </VStack>
+
+                      {/* スタイル強度 */}
+                      {(settings.useBreathStyle || settings.useWhisperStyle) && (
+                        <FormControl>
+                          <FormLabel>スタイル強度: {settings.styleIntensity.toFixed(2)}</FormLabel>
+                          <Slider
+                            value={settings.styleIntensity}
+                            onChange={(value) => setSettings(prev => ({ ...prev, styleIntensity: value }))}
+                            min={0.1}
+                            max={1.0}
+                            step={0.05}
+                          >
+                            <SliderTrack>
+                              <SliderFilledTrack />
+                            </SliderTrack>
+                            <SliderThumb />
+                          </Slider>
+                          <Text fontSize="xs" color="gray.500">
+                            スタイルの適用強度（高いほど特徴的）
+                          </Text>
+                        </FormControl>
+                      )}
+
+                      {/* スタイルファイルアップロード */}
+                      <FormControl>
+                        <FormLabel>スタイル参照ファイル</FormLabel>
+                        <HStack>
+                          <Input
+                            type="file"
+                            accept="audio/*"
+                            onChange={handleStyleFileUpload}
+                            size="sm"
+                            display="none"
+                            ref={styleFileInputRef}
+                          />
+                          <Button
+                            onClick={() => styleFileInputRef.current?.click()}
+                            size="sm"
+                            leftIcon={<FaUpload />}
+                          >
+                            ファイル選択
+                          </Button>
+                          <Text 
+                            fontSize="sm" 
+                            color={selectedStyleFile ? "green.500" : "gray.500"}
+                          >
+                            {selectedStyleFile ? selectedStyleFile.name : '未選択'}
+                          </Text>
+                        </HStack>
+                        <Text fontSize="xs" color="gray.500" mt={1}>
+                          特定のスタイルを参照するオーディオファイル
+                        </Text>
+                      </FormControl>
+                    </VStack>
+                  </AccordionPanel>
+                </AccordionItem>
+              </Accordion>
+
+              {/* 処理オプション設定 */}
+              <FormControl mt={4}>
+                <FormLabel>処理オプション</FormLabel>
+                <VStack spacing={2} align="stretch">
+                  <FormControl display="flex" alignItems="center">
+                    <FormLabel htmlFor="useNoiseReduction" mb="0" fontSize="sm">
+                      ノイズ除去
+                    </FormLabel>
+                    <Spacer />
+                    <Switch 
+                      id="useNoiseReduction"
+                      colorScheme="blue"
+                      isChecked={settings.useNoiseReduction}
+                      onChange={(e) => setSettings(prev => ({ 
+                        ...prev, 
+                        useNoiseReduction: e.target.checked 
+                      }))}
+                    />
+                  </FormControl>
+
+                  <FormControl display="flex" alignItems="center">
+                    <FormLabel htmlFor="useStreamingPlayback" mb="0" fontSize="sm">
+                      ストリーミング再生
+                    </FormLabel>
+                    <Spacer />
+                    <Switch 
+                      id="useStreamingPlayback"
+                      colorScheme="blue"
+                      isChecked={settings.useStreamingPlayback}
+                      onChange={(e) => setSettings(prev => ({ 
+                        ...prev, 
+                        useStreamingPlayback: e.target.checked 
+                      }))}
+                    />
+                  </FormControl>
+                </VStack>
+                <Text fontSize="xs" color="gray.500" mt={1}>
+                  ストリーミング再生: リアルタイムで音声を再生します
+                </Text>
+              </FormControl>
+
+              {/* デフォルト設定ボタン */}
+              <Button
+                colorScheme="teal"
+                leftIcon={<FaVolumeUp />}
+                onClick={saveAsDefaultVoice}
+                mt={4}
+              >
+                デフォルト音声に設定する
+              </Button>
             </VStack>
           </CardBody>
         </Card>
@@ -944,6 +1715,25 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
               <HStack justify="space-between">
                 <Text>音量:</Text>
                 <Badge>{Math.round(settings.voiceVolume * 100)}%</Badge>
+              </HStack>
+              <HStack justify="space-between">
+                <Text>高速モード:</Text>
+                <Badge colorScheme={settings.fastMode ? 'green' : 'gray'}>
+                  {settings.fastMode ? 'ON' : 'OFF'}
+                </Badge>
+              </HStack>
+              <Divider my={1} />
+              <HStack justify="space-between">
+                <Text>最大周波数:</Text>
+                <Badge>{settings.maxFrequency}Hz</Badge>
+              </HStack>
+              <HStack justify="space-between">
+                <Text>音質スコア:</Text>
+                <Badge>{settings.audioQuality.toFixed(1)}</Badge>
+              </HStack>
+              <HStack justify="space-between">
+                <Text>VQスコア:</Text>
+                <Badge>{settings.vqScore.toFixed(2)}</Badge>
               </HStack>
               {settings.voiceMode === 'voiceClone' && (
               <HStack justify="space-between">
