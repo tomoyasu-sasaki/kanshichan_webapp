@@ -1,3 +1,8 @@
+## 補足
+- **High**: サービス停止や致命的バグにつながる恐れがあるもの。最優先で対応。  
+- **Medium**: 保守性・拡張性向上に寄与。High 完了後に着手。  
+- **Low**: 品質向上や自動化など。上位タスク後に順次対応。  
+- 進捗列のチェックボックス (☐ → ✅) を更新しながら管理してください。
 # 📡 監視ちゃん (KanshiChan) - AIベースの作業集中支援ツール
 
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)

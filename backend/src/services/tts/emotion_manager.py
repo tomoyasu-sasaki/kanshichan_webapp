@@ -114,7 +114,7 @@ class EmotionManager:
         """カスタム感情ベクトルを作成
         
         Args:
-            happiness: 幸せ度 (0.0-1.0)
+            happiness: 幸福度 (0.0-1.0)
             sadness: 悲しみ度 (0.0-1.0)
             disgust: 嫌悪度 (0.0-1.0)
             fear: 恐怖度 (0.0-1.0)

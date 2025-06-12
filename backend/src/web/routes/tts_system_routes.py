@@ -557,4 +557,335 @@ def restart_services():
             'error': 'internal_error',
             'message': 'Failed to restart services',
             'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+@tts_system_bp.route('/voice-settings', methods=['GET'])
+def get_voice_settings():
+    """音声設定情報を取得
+    
+    Returns:
+        JSON response with voice settings
+    """
+    try:
+        # ConfigManagerは再ロードせず、現在のアプリケーション設定から取得
+        from flask import current_app
+        config_manager = current_app.config.get('config_manager')
+        
+        if not config_manager:
+            return jsonify({
+                'success': False,
+                'error': 'config_not_available',
+                'message': 'Configuration manager is not available'
+            }), 500
+        
+        voice_settings = {
+            'success': True,
+            'voice_settings': {
+                # 基本パラメータ
+                'voiceMode': config_manager.get('tts.default_voice_mode', 'tts'),
+                'defaultEmotion': config_manager.get('tts.default_emotion', 'neutral'),
+                'defaultLanguage': config_manager.get('tts.default_language', 'ja'),
+                'voiceSpeed': config_manager.get('tts.default_voice_speed', 1.0),
+                'voicePitch': config_manager.get('tts.default_voice_pitch', 1.0),
+                'voiceVolume': config_manager.get('tts.default_voice_volume', 0.7),
+                'fastMode': config_manager.get('tts.default_fast_mode', False),
+                'voiceSampleId': config_manager.get('tts.default_voice_sample_id', None),
+                
+                # 音質パラメータ
+                'maxFrequency': config_manager.get('tts.default_max_frequency', 24000),
+                'audioQuality': config_manager.get('tts.default_audio_quality', 4.0),
+                'vqScore': config_manager.get('tts.default_vq_score', 0.78),
+                
+                # 感情プリセット
+                'useEmotionPreset': config_manager.get('tts.default_use_emotion_preset', True),
+                
+                # 感情強度8軸
+                'emotionHappiness': config_manager.get('tts.default_emotion_happiness', 0.0),
+                'emotionSadness': config_manager.get('tts.default_emotion_sadness', 0.0),
+                'emotionDisgust': config_manager.get('tts.default_emotion_disgust', 0.0),
+                'emotionFear': config_manager.get('tts.default_emotion_fear', 0.0),
+                'emotionSurprise': config_manager.get('tts.default_emotion_surprise', 0.0),
+                'emotionAnger': config_manager.get('tts.default_emotion_anger', 0.0),
+                'emotionOther': config_manager.get('tts.default_emotion_other', 0.0),
+                'emotionNeutral': config_manager.get('tts.default_emotion_neutral', 1.0),
+                
+                # 生成パラメータ
+                'cfgScale': config_manager.get('tts.default_cfg_scale', 0.8),
+                'minP': config_manager.get('tts.default_min_p', 0.0),
+                'seed': config_manager.get('tts.default_seed', 0),
+                'useSeed': config_manager.get('tts.default_use_seed', False),
+                
+                # オーディオスタイル
+                'audioPrefix': config_manager.get('tts.default_audio_prefix', None),
+                'useBreathStyle': config_manager.get('tts.default_use_breath_style', False),
+                'useWhisperStyle': config_manager.get('tts.default_use_whisper_style', False),
+                'styleIntensity': config_manager.get('tts.default_style_intensity', 0.5),
+                
+                # 処理オプション
+                'useNoiseReduction': config_manager.get('tts.default_use_noise_reduction', True),
+                'useStreamingPlayback': config_manager.get('tts.default_use_streaming_playback', False),
+                'speakerNoised': config_manager.get('tts.default_speaker_noised', False)
+            }
+        }
+        
+        return jsonify(voice_settings)
+        
+    except Exception as e:
+        logger.error(f"Error getting voice settings: {e}")
+        return jsonify({
+            'error': 'internal_error',
+            'message': 'Failed to get voice settings'
+        }), 500
+
+
+@tts_system_bp.route('/voice-settings', methods=['POST'])
+def save_voice_settings():
+    """音声設定をデフォルト設定として保存する
+    
+    Returns:
+        JSON response with result
+    """
+    try:
+        data = request.json
+        from flask import current_app
+        config_manager = current_app.config.get('config_manager')
+        
+        if not config_manager:
+            return jsonify({
+                'success': False,
+                'error': 'config_not_available',
+                'message': 'Configuration manager is not available'
+            }), 500
+        
+        # 設定保存
+        voice_mode = data.get('voiceMode', 'tts')
+        config_manager.set('tts.default_voice_mode', voice_mode)
+        
+        # 基本パラメータ
+        config_manager.set('tts.default_emotion', data.get('defaultEmotion', 'neutral'))
+        config_manager.set('tts.default_language', data.get('defaultLanguage', 'ja'))
+        config_manager.set('tts.default_voice_speed', float(data.get('voiceSpeed', 1.0)))
+        config_manager.set('tts.default_voice_pitch', float(data.get('voicePitch', 1.0)))
+        config_manager.set('tts.default_voice_volume', float(data.get('voiceVolume', 0.7)))
+        config_manager.set('tts.default_fast_mode', bool(data.get('fastMode', False)))
+        
+        # 音質パラメータ
+        config_manager.set('tts.default_max_frequency', int(data.get('maxFrequency', 24000)))
+        config_manager.set('tts.default_audio_quality', float(data.get('audioQuality', 4.0)))
+        config_manager.set('tts.default_vq_score', float(data.get('vqScore', 0.78)))
+        
+        # 感情プリセット
+        config_manager.set('tts.default_use_emotion_preset', bool(data.get('useEmotionPreset', True)))
+        
+        # 感情強度8軸
+        config_manager.set('tts.default_emotion_happiness', float(data.get('emotionHappiness', 0.0)))
+        config_manager.set('tts.default_emotion_sadness', float(data.get('emotionSadness', 0.0)))
+        config_manager.set('tts.default_emotion_disgust', float(data.get('emotionDisgust', 0.0)))
+        config_manager.set('tts.default_emotion_fear', float(data.get('emotionFear', 0.0)))
+        config_manager.set('tts.default_emotion_surprise', float(data.get('emotionSurprise', 0.0)))
+        config_manager.set('tts.default_emotion_anger', float(data.get('emotionAnger', 0.0)))
+        config_manager.set('tts.default_emotion_other', float(data.get('emotionOther', 0.0)))
+        config_manager.set('tts.default_emotion_neutral', float(data.get('emotionNeutral', 1.0)))
+        
+        # 生成パラメータ
+        config_manager.set('tts.default_cfg_scale', float(data.get('cfgScale', 0.8)))
+        config_manager.set('tts.default_min_p', float(data.get('minP', 0.0)))
+        config_manager.set('tts.default_seed', int(data.get('seed', 0)))
+        config_manager.set('tts.default_use_seed', bool(data.get('useSeed', False)))
+        
+        # オーディオスタイル
+        config_manager.set('tts.default_audio_prefix', data.get('audioPrefix'))
+        config_manager.set('tts.default_use_breath_style', bool(data.get('useBreathStyle', False)))
+        config_manager.set('tts.default_use_whisper_style', bool(data.get('useWhisperStyle', False)))
+        config_manager.set('tts.default_style_intensity', float(data.get('styleIntensity', 0.5)))
+        
+        # 処理オプション
+        config_manager.set('tts.default_use_noise_reduction', bool(data.get('useNoiseReduction', True)))
+        config_manager.set('tts.default_use_streaming_playback', bool(data.get('useStreamingPlayback', False)))
+        config_manager.set('tts.default_speaker_noised', bool(data.get('speakerNoised', False)))
+        
+        # ボイスクローンの場合はサンプルファイルも保存
+        if voice_mode == 'voiceClone' and data.get('voiceSampleId'):
+            sample_id = data.get('voiceSampleId')
+            config_manager.set('tts.default_voice_sample_id', sample_id)
+            
+            # サンプルIDからパスを解決
+            if sample_id == 'default_sample':
+                # デフォルトサンプルの場合
+                default_sample_path = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+                    'voice_data', 'voice_samples', 'sample.wav'
+                )
+                if os.path.exists(default_sample_path):
+                    config_manager.set('tts.default_voice_sample_path', default_sample_path)
+                    logger.info(f"Default voice sample path set to: {default_sample_path}")
+                else:
+                    logger.warning(f"Default voice sample not found at {default_sample_path}")
+            else:
+                # IDを使用してボイスマネージャーからパスを取得
+                try:
+                    if voice_manager:
+                        sample_path, _ = voice_manager.get_audio_file(sample_id)
+                        if sample_path and os.path.exists(sample_path):
+                            config_manager.set('tts.default_voice_sample_path', sample_path)
+                            logger.info(f"Voice sample path set to: {sample_path} for ID: {sample_id}")
+                        else:
+                            logger.warning(f"Voice sample path not found for ID: {sample_id}")
+                    else:
+                        logger.warning("Voice manager not available for resolving sample path")
+                except Exception as e:
+                    logger.warning(f"Failed to resolve voice sample path for ID {sample_id}: {e}")
+        
+        # 設定ファイル保存
+        config_manager.save()
+        
+        logger.info("Voice settings saved as default")
+        return jsonify({
+            'success': True,
+            'message': 'Voice settings saved as default'
+        })
+    except Exception as e:
+        logger.error(f"Error saving voice settings: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'save_failed',
+            'message': str(e)
+        }), 500
+
+
+@tts_system_bp.route('/schedule', methods=['POST'])
+def add_schedule():
+    """スケジュール通知を追加する
+    
+    Returns:
+        JSON response with result
+    """
+    try:
+        data = request.json
+        
+        # 入力チェック
+        if not data or 'time' not in data or 'content' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'invalid_parameters',
+                'message': 'Time and content are required'
+            }), 400
+        
+        from flask import current_app
+        schedule_manager = current_app.config.get('schedule_manager')
+        
+        if not schedule_manager:
+            return jsonify({
+                'success': False,
+                'error': 'service_not_available',
+                'message': 'Schedule manager is not available'
+            }), 500
+        
+        # スケジュール追加（音声ファイル生成を含む）
+        new_schedule = schedule_manager.add_schedule(
+            time=data['time'],
+            content=data['content']
+        )
+        
+        if not new_schedule:
+            return jsonify({
+                'success': False,
+                'error': 'schedule_add_failed',
+                'message': 'Failed to add schedule'
+            }), 500
+            
+        voice_file = new_schedule.get('voice_file', None)
+        voice_file_created = voice_file is not None
+        
+        return jsonify({
+            'success': True,
+            'message': 'Schedule added successfully',
+            'schedule': new_schedule,
+            'voice_file_created': voice_file_created
+        })
+    except Exception as e:
+        logger.error(f"Error adding schedule: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'unexpected_error',
+            'message': str(e)
+        }), 500
+
+
+@tts_system_bp.route('/schedule/<schedule_id>', methods=['DELETE'])
+def delete_schedule(schedule_id):
+    """スケジュール通知を削除する
+    
+    Args:
+        schedule_id: 削除するスケジュールID
+        
+    Returns:
+        JSON response with result
+    """
+    try:
+        from flask import current_app
+        schedule_manager = current_app.config.get('schedule_manager')
+        
+        if not schedule_manager:
+            return jsonify({
+                'success': False,
+                'error': 'service_not_available',
+                'message': 'Schedule manager is not available'
+            }), 500
+        
+        # スケジュール削除（関連する音声ファイルも削除される）
+        result = schedule_manager.delete_schedule(schedule_id)
+        
+        if not result:
+            return jsonify({
+                'success': False,
+                'error': 'schedule_delete_failed',
+                'message': 'Failed to delete schedule or schedule not found'
+            }), 404
+            
+        return jsonify({
+            'success': True,
+            'message': 'Schedule deleted successfully'
+        })
+    except Exception as e:
+        logger.error(f"Error deleting schedule: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'unexpected_error',
+            'message': str(e)
+        }), 500
+
+
+@tts_system_bp.route('/schedules', methods=['GET'])
+def get_schedules():
+    """全てのスケジュール通知を取得する
+    
+    Returns:
+        JSON response with schedules
+    """
+    try:
+        from flask import current_app
+        schedule_manager = current_app.config.get('schedule_manager')
+        
+        if not schedule_manager:
+            return jsonify({
+                'success': False,
+                'error': 'service_not_available',
+                'message': 'Schedule manager is not available'
+            }), 500
+        
+        # スケジュール一覧取得
+        schedules = schedule_manager.get_schedules()
+        
+        return jsonify({
+            'success': True,
+            'schedules': schedules
+        })
+    except Exception as e:
+        logger.error(f"Error getting schedules: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'unexpected_error',
+            'message': str(e)
         }), 500 

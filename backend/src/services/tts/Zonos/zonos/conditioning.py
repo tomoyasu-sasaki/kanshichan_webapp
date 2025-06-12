@@ -39,7 +39,26 @@ class Conditioner(nn.Module):
             self.uncond_vector = nn.Parameter(torch.zeros(output_dim))
 
     def apply_cond(self, *inputs: Any) -> torch.Tensor:
-        raise NotImplementedError()
+        """
+        抽象メソッド：条件付け入力に対する変換を適用する
+        
+        このメソッドは派生クラスでオーバーライドする必要があります。
+        デフォルトでは入力が一つのテンソルの場合、そのまま返します。
+        
+        Args:
+            *inputs: 条件付けに使用する入力値
+            
+        Returns:
+            torch.Tensor: 条件付け後のテンソル
+            
+        Raises:
+            NotImplementedError: 複数入力で派生クラスが実装していない場合
+        """
+        # 単一のテンソル入力の場合はそのまま返す
+        if len(inputs) == 1 and isinstance(inputs[0], torch.Tensor):
+            return inputs[0]
+        # それ以外の場合は派生クラスでの実装が必要
+        raise NotImplementedError(f"{self.__class__.__name__} must implement apply_cond method for the given inputs")
 
     def forward(self, inputs: tuple[Any, ...] | None) -> torch.Tensor:
         if inputs is None:
@@ -142,7 +161,7 @@ def normalize_numbers(text: str) -> str:
 PAD_ID, UNK_ID, BOS_ID, EOS_ID = 0, 1, 2, 3
 SPECIAL_TOKEN_IDS = [PAD_ID, UNK_ID, BOS_ID, EOS_ID]
 
-_punctuation = ';:,.!?¡¿—…"«»“”() *~-/\\&'
+_punctuation = ';:,.!?¡¿—…"«»""() *~-/\\&'
 _letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 _letters_ipa = (
     "ɑɐɒæɓʙβɔɕçɗɖðʤəɘɚɛɜɝɞɟʄɡɠɢʛɦɧħɥʜɨɪʝɭɬɫɮʟɱɯɰŋɳɲɴøɵɸθœɶʘɹɺɾɻʀʁɽʂʃʈʧʉʊʋⱱʌɣɤʍχʎʏʑʐʒʔʡʕʢǀǁǂǃˈˌːˑʼʴʰʱʲʷˠˤ˞↓↑→↗↘'̩'ᵻ"

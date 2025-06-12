@@ -25,7 +25,7 @@ from .analysis_helpers import (
 logger = setup_logger(__name__)
 
 # Blueprint定義
-realtime_analysis_bp = Blueprint('realtime_analysis', __name__, url_prefix='/api/analysis')
+realtime_analysis_bp = Blueprint('realtime_analysis', __name__, url_prefix='/api/analysis/realtime')
 
 
 @realtime_analysis_bp.route('/realtime-stream', methods=['POST'])

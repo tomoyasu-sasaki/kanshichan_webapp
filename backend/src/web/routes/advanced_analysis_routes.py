@@ -19,11 +19,15 @@ from .analysis_helpers import (
     generate_contextual_recommendations,
     calculate_data_quality_metrics
 )
+from services.analysis.service_loader import (
+    get_advanced_behavior_analyzer,
+    get_pattern_recognizer
+)
 
 logger = setup_logger(__name__)
 
 # Blueprint定義
-advanced_analysis_bp = Blueprint('advanced_analysis', __name__, url_prefix='/api/analysis')
+advanced_analysis_bp = Blueprint('advanced_analysis', __name__, url_prefix='/api/analysis/advanced')
 
 
 @advanced_analysis_bp.route('/advanced-patterns', methods=['GET'])
@@ -417,63 +421,13 @@ def get_productivity_score():
 # ========== ヘルパー関数 ==========
 
 def _get_advanced_behavior_analyzer() -> Optional[Any]:
-    """高度行動分析器インスタンス取得（シングルトンパターン）
-    
-    AdvancedBehaviorAnalyzerのインスタンスを作成し、設定を適用します。
-    複雑な行動パターンの詳細分析に使用されます。
-    
-    Returns:
-        Optional[Any]: AdvancedBehaviorAnalyzerインスタンス、またはエラー時はNone
-        
-    Note:
-        設定はFlaskのcurrent_app.configから取得されます。
-        初期化に失敗した場合はログに記録し、Noneを返します。
-        インスタンスはFlaskアプリケーションコンテキストにキャッシュされます。
-    """
-    # インスタンスがすでにFlaskアプリケーションコンテキストに存在するか確認
-    if 'advanced_behavior_analyzer' in current_app.config:
-        return current_app.config['advanced_behavior_analyzer']
-    
-    try:
-        from services.ai_ml.advanced_behavior_analyzer import AdvancedBehaviorAnalyzer
-        config = current_app.config.get('config_manager').get_all()
-        analyzer = AdvancedBehaviorAnalyzer(config)
-        # キャッシュに保存
-        current_app.config['advanced_behavior_analyzer'] = analyzer
-        return analyzer
-    except Exception as e:
-        logger.error(f"Error creating AdvancedBehaviorAnalyzer: {e}")
-    return None
+    """AdvancedBehaviorAnalyzerインスタンスを取得（service_loader経由）"""
+    return get_advanced_behavior_analyzer()
 
 
 def _get_pattern_recognizer() -> Optional[Any]:
-    """パターン認識エンジンインスタンス取得（シングルトンパターン）
-    
-    PatternRecognizerのインスタンスを作成し、設定を適用します。
-    行動データからの複雑なパターン認識に使用されます。
-    
-    Returns:
-        Optional[Any]: PatternRecognizerインスタンス、またはエラー時はNone
-        
-    Note:
-        設定はFlaskのcurrent_app.configから取得されます。
-        初期化に失敗した場合はログに記録し、Noneを返します。
-        インスタンスはFlaskアプリケーションコンテキストにキャッシュされます。
-    """
-    # インスタンスがすでにFlaskアプリケーションコンテキストに存在するか確認
-    if 'pattern_recognizer' in current_app.config:
-        return current_app.config['pattern_recognizer']
-    
-    try:
-        from services.ai_ml.pattern_recognition import PatternRecognizer
-        config = current_app.config.get('config_manager').get_all()
-        recognizer = PatternRecognizer(config)
-        # キャッシュに保存
-        current_app.config['pattern_recognizer'] = recognizer
-        return recognizer
-    except Exception as e:
-        logger.error(f"Error creating PatternRecognizer: {e}")
-    return None
+    """PatternRecognizerインスタンスを取得（service_loader経由）"""
+    return get_pattern_recognizer()
 
 
 def _filter_patterns_by_type(pattern_analysis: Dict[str, Any], pattern_type: str) -> Dict[str, Any]:

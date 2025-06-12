@@ -23,11 +23,12 @@ from .analysis_helpers import (
     generate_contextual_recommendations,
     calculate_data_quality_metrics
 )
+from services.analysis.service_loader import get_advanced_behavior_analyzer
 
 logger = setup_logger(__name__)
 
 # Blueprint定義
-basic_analysis_bp = Blueprint('basic_analysis', __name__, url_prefix='/api/analysis')
+basic_analysis_bp = Blueprint('basic_analysis', __name__, url_prefix='/api/analysis/basic')
 
 
 @basic_analysis_bp.route('/status', methods=['GET'])
@@ -566,37 +567,8 @@ def _get_advice_generator() -> Optional[AdviceGenerator]:
 
 
 def _get_advanced_behavior_analyzer() -> Optional[Any]:
-    """AdvancedBehaviorAnalyzerインスタンス取得（シングルトンパターン）"""
-    # インスタンスがすでにFlaskアプリケーションコンテキストに存在するか確認
-    if 'advanced_behavior_analyzer' in current_app.config:
-        return current_app.config['advanced_behavior_analyzer']
-    
-    try:
-        from services.ai_ml.advanced_behavior_analyzer import AdvancedBehaviorAnalyzer
-        
-        config_manager = current_app.config.get('config_manager')
-        if not config_manager:
-            logger.warning("ConfigManager not available for AdvancedBehaviorAnalyzer")
-            return None
-        
-        # 設定取得
-        config = config_manager.get_all() if hasattr(config_manager, 'get_all') else {}
-        logger.debug("Creating AdvancedBehaviorAnalyzer instance...")
-        
-        # AdvancedBehaviorAnalyzerのインスタンス作成
-        advanced_analyzer = AdvancedBehaviorAnalyzer(config)
-        logger.info("AdvancedBehaviorAnalyzer initialized successfully")
-        
-        # キャッシュに保存
-        current_app.config['advanced_behavior_analyzer'] = advanced_analyzer
-        return advanced_analyzer
-        
-    except ImportError as e:
-        logger.error(f"Failed to import AdvancedBehaviorAnalyzer: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Failed to initialize AdvancedBehaviorAnalyzer: {e}", exc_info=True)
-        return None
+    """AdvancedBehaviorAnalyzerインスタンスを取得（service_loader経由）"""
+    return get_advanced_behavior_analyzer()
 
 
 def _generate_trend_summary(focus_analysis: Dict[str, Any], timeframe: str) -> Dict[str, Any]:

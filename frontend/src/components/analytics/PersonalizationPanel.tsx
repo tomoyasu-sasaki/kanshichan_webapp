@@ -105,23 +105,23 @@ export const PersonalizationPanel: React.FC<PersonalizationPanelProps> = ({
   const { isOpen, onOpen, onClose } = useDisclosure();
 
   // Data fetching functions
-  const fetchPersonalizationData = useCallback(async () => {
+  const fetchUserData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
 
       // Fetch user profile
-      const profileResponse = await fetch(`/api/analysis/user-profile?user_id=${userId}`);
+      const profileResponse = await fetch(`/api/analysis/basic/user-profile?user_id=${userId}`);
       if (!profileResponse.ok) throw new Error('Failed to fetch user profile');
       const profileData = await profileResponse.json();
 
       // Fetch personalized recommendations
-      const recommendationsResponse = await fetch(`/api/analysis/personalized-recommendations?user_id=${userId}&limit=10`);
+      const recommendationsResponse = await fetch(`/api/analysis/advanced/personalized-recommendations?user_id=${userId}&limit=10`);
       if (!recommendationsResponse.ok) throw new Error('Failed to fetch recommendations');
       const recommendationsData = await recommendationsResponse.json();
 
       // Fetch adaptive learning status
-      const learningResponse = await fetch(`/api/analysis/adaptive-learning-status?user_id=${userId}`);
+      const learningResponse = await fetch(`/api/analysis/advanced/adaptive-learning-status?user_id=${userId}`);
       if (!learningResponse.ok) throw new Error('Failed to fetch learning status');
       const learningData = await learningResponse.json();
 
@@ -146,19 +146,17 @@ export const PersonalizationPanel: React.FC<PersonalizationPanelProps> = ({
   }, [userId, toast]);
 
   // Submit feedback
-  const submitFeedback = async (recommendationId: string, rating: number, text: string) => {
+  const submitFeedback = async (recommendationId: string, isHelpful: boolean) => {
     try {
-      const response = await fetch('/api/analysis/recommendation-feedback', {
+      const response = await fetch('/api/analysis/basic/recommendation-feedback', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          user_id: userId,
           recommendation_id: recommendationId,
-          satisfaction_score: rating,
-          feedback_text: text,
-          timestamp: new Date().toISOString()
+          is_helpful: isHelpful,
+          user_id: userId,
         }),
       });
 
@@ -178,7 +176,7 @@ export const PersonalizationPanel: React.FC<PersonalizationPanelProps> = ({
       onClose();
 
       // Refresh data
-      fetchPersonalizationData();
+      fetchUserData();
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
@@ -205,7 +203,7 @@ export const PersonalizationPanel: React.FC<PersonalizationPanelProps> = ({
       });
 
       // Track execution
-      await submitFeedback(recommendation.recommendation_id, 4, 'Recommendation executed via panel');
+      await submitFeedback(recommendation.recommendation_id, true);
 
     } catch (err) {
       console.error('Failed to execute recommendation:', err);
@@ -221,8 +219,8 @@ export const PersonalizationPanel: React.FC<PersonalizationPanelProps> = ({
 
   // Initial data fetch
   useEffect(() => {
-    fetchPersonalizationData();
-  }, [fetchPersonalizationData]);
+    fetchUserData();
+  }, [fetchUserData]);
 
   // Render user profile card
   const renderUserProfile = () => {
@@ -456,7 +454,7 @@ export const PersonalizationPanel: React.FC<PersonalizationPanelProps> = ({
           <Heading size="lg">パーソナライゼーション</Heading>
           <Button
             leftIcon={<Icon as={FiSettings} />}
-            onClick={fetchPersonalizationData}
+            onClick={fetchUserData}
             isLoading={isLoading}
             size="sm"
           >
@@ -542,7 +540,7 @@ export const PersonalizationPanel: React.FC<PersonalizationPanelProps> = ({
                 colorScheme="blue"
                 onClick={() => {
                   if (selectedRecommendation) {
-                    submitFeedback(selectedRecommendation.recommendation_id, feedbackRating, feedbackText);
+                    submitFeedback(selectedRecommendation.recommendation_id, feedbackRating > 3);
                   }
                 }}
               >
