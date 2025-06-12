@@ -707,8 +707,35 @@ def save_voice_settings():
         
         # ボイスクローンの場合はサンプルファイルも保存
         if voice_mode == 'voiceClone' and data.get('voiceSampleId'):
-            config_manager.set('tts.default_voice_sample_id', data.get('voiceSampleId'))
-            config_manager.set('tts.default_voice_sample_path', data.get('voiceSamplePath'))
+            sample_id = data.get('voiceSampleId')
+            config_manager.set('tts.default_voice_sample_id', sample_id)
+            
+            # サンプルIDからパスを解決
+            if sample_id == 'default_sample':
+                # デフォルトサンプルの場合
+                default_sample_path = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+                    'voice_data', 'voice_samples', 'sample.wav'
+                )
+                if os.path.exists(default_sample_path):
+                    config_manager.set('tts.default_voice_sample_path', default_sample_path)
+                    logger.info(f"Default voice sample path set to: {default_sample_path}")
+                else:
+                    logger.warning(f"Default voice sample not found at {default_sample_path}")
+            else:
+                # IDを使用してボイスマネージャーからパスを取得
+                try:
+                    if voice_manager:
+                        sample_path, _ = voice_manager.get_audio_file(sample_id)
+                        if sample_path and os.path.exists(sample_path):
+                            config_manager.set('tts.default_voice_sample_path', sample_path)
+                            logger.info(f"Voice sample path set to: {sample_path} for ID: {sample_id}")
+                        else:
+                            logger.warning(f"Voice sample path not found for ID: {sample_id}")
+                    else:
+                        logger.warning("Voice manager not available for resolving sample path")
+                except Exception as e:
+                    logger.warning(f"Failed to resolve voice sample path for ID {sample_id}: {e}")
         
         # 設定ファイル保存
         config_manager.save()
