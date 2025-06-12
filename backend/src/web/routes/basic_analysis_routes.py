@@ -23,7 +23,8 @@ from .analysis_helpers import (
     calculate_behavior_score,
     detect_behavioral_patterns,
     generate_contextual_recommendations,
-    calculate_data_quality_metrics
+    calculate_data_quality_metrics,
+    _evaluate_data_freshness
 )
 from services.analysis.service_loader import get_advanced_behavior_analyzer
 
@@ -731,27 +732,9 @@ def _generate_deterministic_hash(text: str) -> str:
         text (str): ハッシュ化する文字列
         
     Returns:
-        str: SHA-256ハッシュの最初の16文字（32バイト中8バイト）
+        str: SHA-256ハッシュの最初の16文字（64文字の16進数表現の先頭部分）
     """
     return hashlib.sha256(text.encode('utf-8')).hexdigest()[:16]
 
 
-def _evaluate_data_freshness(logs: list) -> float:
-    """データ新鮮度評価"""
-    try:
-        if not logs:
-            return 0.0
-        
-        latest_log = max(logs, key=lambda x: x.timestamp)
-        time_diff = (datetime.now(timezone.utc) - latest_log.timestamp.replace(tzinfo=None)).total_seconds()
-        
-        # 5分以内なら完全に新鮮、30分以上なら新鮮度0
-        if time_diff <= 300:  # 5分
-            return 1.0
-        elif time_diff >= 1800:  # 30分
-            return 0.0
-        else:
-            return 1.0 - (time_diff - 300) / (1800 - 300)
-            
-    except Exception:
-        return 0.5 
+# _evaluate_data_freshness関数は.analysis_helpersモジュールからインポートして使用
