@@ -197,7 +197,23 @@ export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProp
         console.log('WebSocket connected to backend');
       });
 
-      socket.on('behavior_data', (data: any) => {
+      interface BehaviorDataEvent {
+        focus_trends?: Array<{
+          timestamp: string;
+          focus_level?: number;
+        }>;
+        current_status?: {
+          posture_score?: number;
+          smartphone_detected?: boolean;
+        };
+      }
+
+      interface StatusEvent {
+        behavior_data?: BehaviorDataEvent;
+        analysis_results?: string[];
+      }
+
+      socket.on('behavior_data', (data: BehaviorDataEvent) => {
         try {
           console.log('Received behavior_data:', data);
           // 行動データの更新
@@ -216,11 +232,11 @@ export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProp
             }
           }
         } catch (err) {
-          console.error('Behavior data processing error:', err);
+          console.error('Behavior data processing error:', err instanceof Error ? err.message : String(err));
         }
       });
 
-      socket.on('analysis_results', (data: any) => {
+      socket.on('analysis_results', (data: string[]) => {
         try {
           console.log('Received analysis_results:', data);
           // 分析結果の更新
@@ -236,11 +252,11 @@ export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProp
             setBehaviorPatterns(newPatterns);
           }
         } catch (err) {
-          console.error('Analysis results processing error:', err);
+          console.error('Analysis results processing error:', err instanceof Error ? err.message : String(err));
         }
       });
 
-      socket.on('status', (data: any) => {
+      socket.on('status', (data: StatusEvent) => {
         try {
           console.log('Received status:', data);
           // 統合ステータスの更新
@@ -250,7 +266,7 @@ export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProp
             socket?.emit('analysis_results', data.analysis_results);
           }
         } catch (err) {
-          console.error('Status processing error:', err);
+          console.error('Status processing error:', err instanceof Error ? err.message : String(err));
         }
       });
 
@@ -258,7 +274,7 @@ export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProp
         console.log('WebSocket disconnected');
       });
 
-      socket.on('error', (error: any) => {
+      socket.on('error', (error: Error | string) => {
         console.error('Socket.IO error:', error);
         toast({
           title: 'リアルタイム接続エラー',

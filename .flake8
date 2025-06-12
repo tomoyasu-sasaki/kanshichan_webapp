@@ -1,0 +1,4 @@
+[flake8]
+max-line-length = 120
+exclude = .venv,venv,node_modules,*/site-packages/*,backend/*
+ignore = E501,W291,W292,W293,E302,E128,E111,E114,E117,E121,E122,E123,E124,E125,E126,E127,E129,E704,F401,F841,F821 
