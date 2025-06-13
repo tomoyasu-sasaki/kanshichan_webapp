@@ -46,16 +46,16 @@
 ## Phase 3: システム監視とセキュリティ強化 (3日間)
 
 ### Section 3.1: システムメトリクスAPIの実装
-- [ ] `requirements.txt` に `psutil` を追加する。
-- [ ] `monitor_routes.py` に `/api/monitor/system-metrics` エンドポイントを追加する。
-- [ ] `psutil` を利用してCPU, メモリ, GPU使用率を取得するロジックを実装する。
-- [ ] WebSocketで `system_metrics` イベントを定期的にブロードキャストする機能を追加する。
+- [x] `requirements.txt` に `psutil` を追加する。
+- [x] `monitor_routes.py` に `/api/monitor/system-metrics` エンドポイントを追加する。
+- [x] `psutil` を利用してCPU, メモリ, GPU使用率を取得するロジックを実装する。
+- [x] WebSocketで `system_metrics` イベントを定期的にブロードキャストする機能を追加する。
 
 ### Section 3.2: セキュリティ対策の導入
-- [ ] `requirements.txt` に `flask-wtf` と `flask-limiter` を追加する。
-- [ ] Flaskアプリに `flask_wtf.csrf.CSRFProtect` を導入する。
-- [ ] `flask-limiter` を用いて主要なAPIエンドポイントにレート制限 (例: 100回/分) を適用する。
-- [ ] `flask-cors` の設定を `cors_allowed_origins="*"` から環境変数で指定されたオリジンのみを許可するように変更する。
+- [x] `requirements.txt` に `flask-wtf` と `flask-limiter` を追加する。
+- [x] Flaskアプリに `flask_wtf.csrf.CSRFProtect` を導入する。
+- [x] `flask-limiter` を用いて主要なAPIエンドポイントにレート制限 (例: 100回/分) を適用する。
+- [x] `flask-cors` の設定を `cors_allowed_origins="*"` から環境変数で指定されたオリジンのみを許可するように変更する。
 
 ---
 
