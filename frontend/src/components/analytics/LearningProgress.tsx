@@ -118,7 +118,7 @@ export const LearningProgress: React.FC<LearningProgressProps> = ({
       setError(null);
 
       // Fetch adaptive learning status
-      const learningResponse = await fetch(`/api/analysis/advanced/adaptive-learning-status?user_id=${userId}`);
+      const learningResponse = await fetch(`/api/analysis/adaptive-learning-status?user_id=${userId}`);
       if (!learningResponse.ok) throw new Error('Failed to fetch learning status');
       const learningData = await learningResponse.json();
 

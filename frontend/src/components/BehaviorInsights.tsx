@@ -247,7 +247,7 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
       const apiTimeframe = timeframeMapping[selectedTimeframe] || "daily";
 
       const response = await fetch(
-        `/api/analysis/basic/trends?timeframe=${apiTimeframe}`,
+        `/api/analysis/trends?timeframe=${apiTimeframe}`,
       );
       if (response.ok) {
         const data = await response.json();
@@ -291,7 +291,7 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
         "BehaviorInsights",
       );
 
-      const response = await fetch("/api/analysis/basic/insights");
+      const response = await fetch("/api/analysis/insights");
       if (response.ok) {
         const data = await response.json();
         if (data.status === "success") {
@@ -361,7 +361,7 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
         );
 
         // URLパラメータを構築
-        let url = "/api/analysis/basic/recommendations";
+        let url = "/api/analysis/recommendations";
         const params = new URLSearchParams();
 
         if (priority !== "all") {

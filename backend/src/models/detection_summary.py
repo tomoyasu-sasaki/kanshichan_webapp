@@ -43,7 +43,7 @@ class DetectionSummary(BaseModel):
     object_stats = Column(JSON, nullable=False)
     
     # 追加メタデータ
-    metadata = Column(JSON, nullable=True)
+    extra_metadata = Column(JSON, nullable=True)
     
     # 関連付け
     logs = relationship("DetectionLog", back_populates="summary")
@@ -83,7 +83,7 @@ class DetectionSummary(BaseModel):
             total_frames=total_frames,
             total_detections=total_detections,
             object_stats=object_stats,
-            metadata=metadata
+            extra_metadata=metadata
         )
     
     @classmethod

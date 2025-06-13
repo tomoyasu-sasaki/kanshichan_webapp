@@ -111,17 +111,17 @@ export const PersonalizationPanel: React.FC<PersonalizationPanelProps> = ({
       setError(null);
 
       // Fetch user profile
-      const profileResponse = await fetch(`/api/analysis/basic/user-profile?user_id=${userId}`);
+      const profileResponse = await fetch(`/api/analysis/user-profile?user_id=${userId}`);
       if (!profileResponse.ok) throw new Error('Failed to fetch user profile');
       const profileData = await profileResponse.json();
 
       // Fetch personalized recommendations
-      const recommendationsResponse = await fetch(`/api/analysis/advanced/personalized-recommendations?user_id=${userId}&limit=10`);
+      const recommendationsResponse = await fetch(`/api/analysis/personalized-recommendations?user_id=${userId}&limit=10`);
       if (!recommendationsResponse.ok) throw new Error('Failed to fetch recommendations');
       const recommendationsData = await recommendationsResponse.json();
 
       // Fetch adaptive learning status
-      const learningResponse = await fetch(`/api/analysis/advanced/adaptive-learning-status?user_id=${userId}`);
+      const learningResponse = await fetch(`/api/analysis/adaptive-learning-status?user_id=${userId}`);
       if (!learningResponse.ok) throw new Error('Failed to fetch learning status');
       const learningData = await learningResponse.json();
 
@@ -148,7 +148,7 @@ export const PersonalizationPanel: React.FC<PersonalizationPanelProps> = ({
   // Submit feedback
   const submitFeedback = async (recommendationId: string, isHelpful: boolean) => {
     try {
-      const response = await fetch('/api/analysis/basic/recommendation-feedback', {
+      const response = await fetch('/api/analysis/recommendation-feedback', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

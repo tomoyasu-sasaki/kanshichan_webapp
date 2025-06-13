@@ -103,13 +103,13 @@ export const PredictiveInsights: React.FC<PredictiveInsightsProps> = ({
 
       // Fetch predictions
       const predictionsResponse = await fetch(
-        `/api/analysis/prediction/predictions?user_id=${userId}&metrics=focus_score,productivity_score,fatigue_level,posture_score&horizon_hours=${selectedHorizon}`
+        `/api/analysis/predictions?user_id=${userId}&metrics=focus_score,productivity_score,fatigue_level,posture_score&horizon_hours=${selectedHorizon}`
       );
       if (!predictionsResponse.ok) throw new Error('Failed to fetch predictions');
       const predictionsData = await predictionsResponse.json();
 
       // Fetch advanced patterns for trend analysis
-      const patternsResponse = await fetch(`/api/analysis/advanced/advanced-patterns?user_id=${userId}&timeframe=week`);
+      const patternsResponse = await fetch(`/api/analysis/advanced-patterns?user_id=${userId}&timeframe=week`);
       if (!patternsResponse.ok) throw new Error('Failed to fetch patterns');
       const patternsData = await patternsResponse.json();
 

@@ -81,7 +81,7 @@ graph TD
 | **バックエンド** | `Python 3.9+`, `Flask`, `Flask-SocketIO`, `OpenCV`, `YOLOv8`, `MediaPipe`, `Zonos TTS`, `Ollama`             |
 | **フロントエンド** | `React 19`, `TypeScript 5.7+`, `Vite`, `Chakra UI`, `i18next`, `Socket.IO Client`, `Framer Motion`           |
 | **コード品質**   | `Black`, `Flake8`, `mypy` (Python), `ESLint`, `Prettier` (TypeScript)                                        |
-| **テスト**     | `pytest` (Backend), `Jest`, `React Testing Library` (Frontend)                                             |
+| **テスト**     | `pytest` (Backend), `Vitest`, `React Testing Library` (Frontend)                                             |
 | **CI/CD**      | `GitHub Actions`                                                                                           |
 | **規約管理**   | `YAML` で定義されたプロジェクト規約                                                                        |
 
