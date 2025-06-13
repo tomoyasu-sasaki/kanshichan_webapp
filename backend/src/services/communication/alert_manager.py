@@ -28,16 +28,16 @@ class AlertManager:
         self.alert_service = alert_service
         logger.info("AlertManager initialized.")
 
-    def trigger_absence_alert(self):
+    def trigger_absence_alert(self, absence_duration: float):
         """不在アラートの通知を AlertService に依頼する。"""
-        logger.debug("Received request to trigger absence alert. Delegating to AlertService.")
+        logger.debug(f"Received request to trigger absence alert (duration: {absence_duration}). Delegating to AlertService.")
         try:
-            self.alert_service.trigger_absence_alert()
+            self.alert_service.trigger_absence_alert(absence_duration)
         except Exception as e:
             absence_alert_error = wrap_exception(
                 e, AlertError,
                 "Error occurred while triggering absence alert via AlertService",
-                details={'alert_type': 'absence'}
+                details={'alert_type': 'absence', 'absence_duration': absence_duration}
             )
             logger.error(f"Absence alert error: {absence_alert_error.to_dict()}")
 

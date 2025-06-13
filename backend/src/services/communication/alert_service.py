@@ -16,8 +16,6 @@ class AlertService:
     """
     def __init__(self, config_manager: ConfigManager):
         self.config_manager = config_manager
-        # 設定からメッセージマッピングとアラート音声の設定を取得
-        self.message_sound_mapping = config_manager.get_message_sound_mapping()
         self.alert_sounds = config_manager.get_alert_sounds()
         
         logger.info("AlertService initialized with ConfigManager.")

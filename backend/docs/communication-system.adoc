@@ -24,7 +24,7 @@
 * **リアルタイム通信**: WebSocketベースの双方向通信
 * **智慧的通知**: 文脈に応じたアラート配信
 * **音声合成**: TTS技術による動的音声生成
-* **マルチチャネル配信**: LINE API、音声、画面通知の統合
+* **マルチチャネル配信**: 音声、画面通知の統合
 
 === 🏗️ システム構成概要
 
@@ -55,7 +55,6 @@ graph TB
     end
     
     subgraph "📱 外部連携"
-        LINE[LINE API]
         EMAIL[Email Service]
         PUSH[Push Notification]
     end
@@ -80,7 +79,6 @@ graph TB
     STREAM --> WS
     
     %% 外部連携
-    ND --> LINE
     ND --> EMAIL
     ND --> PUSH
     
@@ -100,7 +98,7 @@ graph TB
     class WS,REST,SB communication
     class AM,AS,ND alert
     class TTS,SOUND,STREAM audio
-    class LINE,EMAIL,PUSH external
+    class EMAIL,PUSH external
     class MONITOR,STATE,DETECTOR core
 ....
 
@@ -325,7 +323,6 @@ class AlertChannel(Enum):
     BROWSER_NOTIFICATION = "browser_notification"
     EMAIL = "email"
     WEBSOCKET = "websocket"
-    LINE_API = "line_api"
 ```
 
 **専用アラート処理**
@@ -337,7 +334,6 @@ class AlertService:
         """不在アラートをトリガー"""
         message = f"ユーザーが席を離れて {absence_duration:.0f} 秒が経過しました。"
         logger.warning(message)
-        self._send_line_notify(f"🚶‍♂️ 不在検知: {message}")
         
         # 不在アラート用の音声
         sound_file = self.alert_sounds.get("absence", "alert.wav")
@@ -347,7 +343,6 @@ class AlertService:
         """スマートフォン使用アラート"""
         message = f"ユーザーがスマートフォンを {usage_duration:.0f} 秒間使用しています。"
         logger.warning(message)
-        self._send_line_notify(f"📱 スマホ使用検知: {message}")
         
         sound_file = self.alert_sounds.get("smartphone", "alert.wav")
         self.sound_service.play_alert(sound_file)
@@ -362,7 +357,6 @@ sequenceDiagram
     participant ND as Notification Delivery
     participant TTS as TTS Service
     participant WS as WebSocket
-    participant LINE as LINE API
     participant EMAIL as Email Service
     
     AM->>ND: deliver_alert(alert, channels)
@@ -376,11 +370,6 @@ sequenceDiagram
     alt WebSocket Channel
         ND->>WS: broadcast_alert_notification()
         WS-->>Client: alert_event
-    end
-    
-    alt LINE API Channel
-        ND->>LINE: send_push_message()
-        LINE-->>User: LINE通知
     end
     
     alt Email Channel
@@ -531,67 +520,6 @@ class EmotionManager:
         
         return audio_data
 ```
-
-== 📱 外部API連携
-
-=== 📞 LINE API統合
-
-```python
-# backend/src/services/communication/line_service.py
-class LineService:
-    def __init__(self, config_manager: ConfigManager):
-        self.enabled = config_manager.get('line.enabled', False)
-        self.token = config_manager.get('line.token')
-        self.user_id = config_manager.get('line.user_id')
-        
-        if self.enabled and self.token:
-            configuration = Configuration(access_token=self.token)
-            self.api_client = ApiClient(configuration)
-            self.messaging_api = MessagingApi(self.api_client)
-
-    def send_message(self, message):
-        """LINE メッセージ送信"""
-        if not self.enabled or not self.messaging_api:
-            return
-            
-        try:
-            request = PushMessageRequest(
-                to=self.user_id,
-                messages=[TextMessage(text=message)]
-            )
-            self.messaging_api.push_message(request)
-            logger.info("LINE message sent successfully")
-        except Exception as e:
-            logger.error(f"LINE message sending error: {e}")
-```
-
-=== 📧 マルチチャネル通知
-
-[mermaid]
-....
-flowchart TD
-    START[アラート発生] --> EVAL[通知チャネル評価]
-    
-    EVAL --> URGENT{緊急度判定}
-    
-    URGENT -->|高| MULTI[複数チャネル同時配信]
-    URGENT -->|中| PREF[設定優先チャネル]
-    URGENT -->|低| LOG[ログ記録のみ]
-    
-    MULTI --> TTS_CH[TTS音声]
-    MULTI --> WS_CH[WebSocket]
-    MULTI --> LINE_CH[LINE通知]
-    
-    PREF --> SINGLE[単一チャネル配信]
-    
-    TTS_CH --> RESULT[配信結果記録]
-    WS_CH --> RESULT
-    LINE_CH --> RESULT
-    SINGLE --> RESULT
-    LOG --> RESULT
-    
-    RESULT --> END[処理完了]
-....
 
 == ⚙️ 設定管理と最適化
 
