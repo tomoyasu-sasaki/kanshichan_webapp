@@ -25,7 +25,7 @@ from services.analysis.service_loader import get_pattern_recognizer
 logger = setup_logger(__name__)
 
 # Blueprint定義
-prediction_analysis_bp = Blueprint('prediction_analysis', __name__, url_prefix='/api/analysis/prediction')
+prediction_analysis_bp = Blueprint('prediction_analysis', __name__, url_prefix='/api/analysis')
 
 
 @prediction_analysis_bp.route('/predictions', methods=['GET'])

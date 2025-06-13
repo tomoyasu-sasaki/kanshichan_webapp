@@ -31,7 +31,7 @@ from services.analysis.service_loader import get_advanced_behavior_analyzer
 logger = setup_logger(__name__)
 
 # Blueprint定義
-basic_analysis_bp = Blueprint('basic_analysis', __name__, url_prefix='/api/analysis/basic')
+basic_analysis_bp = Blueprint('basic_analysis', __name__, url_prefix='/api/analysis')
 
 
 @basic_analysis_bp.route('/status', methods=['GET'])
