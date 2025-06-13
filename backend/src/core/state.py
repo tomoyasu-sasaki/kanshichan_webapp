@@ -87,7 +87,7 @@ class StateManager:
             if absence_duration > self.absence_threshold:
                 logger.warning(f"Absence detected for {absence_duration:.0f} seconds (Threshold: {self.absence_threshold}s). Triggering alert.")
                 # AlertManager を介して AlertService のメソッドを呼ぶ
-                self.alert_manager.trigger_absence_alert()
+                self.alert_manager.trigger_absence_alert(absence_duration)
                 self.alert_triggered_absence = True
 
     def handle_smartphone_usage(self, smartphone_detected: bool):

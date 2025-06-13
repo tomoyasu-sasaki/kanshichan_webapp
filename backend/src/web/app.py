@@ -34,8 +34,6 @@ from utils.exceptions import (
     InitializationError, ConfigError, AudioError,
     FileNotFoundError, wrap_exception
 )
-# 古いインポートを削除
-# from config.message_settings import message_sound_mapping
 import os
 
 logger = setup_logger(__name__)

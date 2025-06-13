@@ -6,9 +6,6 @@ from utils.exceptions import (
     APIError, ConfigError, ValidationError, ScheduleError,
     InitializationError, wrap_exception, create_error_response
 )
-# 古いインポートを削除
-# from config.message_settings import message_sound_mapping
-# from config.display_settings import landmark_settings, detection_objects
 
 logger = setup_logger(__name__)
 api = Blueprint('api', __name__)

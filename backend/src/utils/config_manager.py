@@ -388,18 +388,6 @@ class ConfigManager:
         # ここでキーが存在しない場合などのデフォルト値を設定できます
         return objects
     
-    def get_message_sound_mapping(self) -> Dict[str, Any]:
-        """
-        メッセージと音声のマッピング設定を取得します。
-        以前は message_settings.py に定義されていた設定です。
-
-        Returns:
-            Dict[str, Any]: メッセージと音声のマッピング辞書。
-        """
-        mapping = self.get('message_sound_mapping', {})
-        # ここでキーが存在しない場合などのデフォルト値を設定できます
-        return mapping
-    
     def get_alert_sounds(self) -> Dict[str, Any]:
         """
         アラート種別ごとの音声設定を取得します。

@@ -1,0 +1,132 @@
+= 📝 KanshiChan 実装ギャップ分析レポート
+:author: AI Assistant
+:revdate: {docdate}
+:toc: left
+:toclevels: 3
+:numbered:
+
+== 1. 目的
+本ドキュメントは、既存の仕様書群 (backend/docs/*.adoc) と現在の実装 (backend/src/*) を比較し、実装されていない／仕様と相違のある機能を洗い出し、修正計画を提示することを目的とする。
+
+== 2. 比較サマリー
+[cols="3,2,3,2", options="header"]
+|===
+|領域 | 仕様上の期待 | 現状実装 | ギャップ/課題
+|通信・通知システム (communication-system.adoc) | * 複数チャネル(Email, Browser, WebSocket, TTS) でのアラート配信
+* Notification Delivery コンポーネントによるチャネル選択と失敗再送 | `AlertService` は `SoundService.play_alert()` のみ。Email等の送信メソッド `_send_email` など未実装。また、仕様書に旧要件のLINE連携が残存。 | • マルチチャネル未対応
+• 配信失敗時のリトライ・フォールバックなし
+• ドキュメントと要件の不一致 |
+|通信・通知システム | `AlertChannel` Enum 定義とチャネル選択ロジック | Enum・選択ロジックなし | Enum 未実装、チャネル固定 |
+|REST API (rest-api-reference.adoc) | `/api/analysis/status`, `/api/analysis/trends` 等 パス階層なしで提供 | 実装は `/api/analysis/basic/status`, `/api/analysis/basic/trends` など `basic` サブパス付き | パス不一致による互換性欠如 |
+|REST API | Advanced/Prediction/Realtime 各カテゴリで 4 エンドポイントずつ (計16) | 該当Blueprint存在、件数は充足。ただしレスポンススキーマが一部ドキュメントと差異 | スキーマ差異 (例: `system_status` → `overall_status`)|
+|WebSocket イベント (communication-system.adoc) | イベント名 `status_update`, `schedule_alert` など 6種 | 実装済みイベント: `status_update`, `schedule_alert`, `audio_stream`, `audio_notification`; `behavior_data`, `analysis_results` はブロードキャスト実装あり → **OK** | – |
+|TTS システム (communication-system.adoc) | EmotionManager による感情合成・VoiceClone など | `EmotionManager` クラス実装済、`VoiceClone` ルートあり → **OK** | – |
+|Monitoring Core (monitoring-core.adoc) | CPU/GPU 使用率を含む詳細モニタリング REST `/api/monitor/system-metrics` | `monitor_routes.py` には未実装 | システムメトリクス取得 API 欠如 |
+|Security Spec (security-specifications.adoc) | API 認証なし→**要不要検討**、CSRF 対策、CORS 制御設定 | Flask `CORS` 全許可、CSRF 対策なし | セキュリティ対策不足 |
+|AI/ML (ai-ml-specifications.adoc) | * DetectionSmoother (点滅抑制・補間)
+* AIOptimizer (動的フレームスキップ) | 平滑化・最適化ロジック未実装。`pattern_recognition`, `advice_generator` のみ | • 検出結果の不安定化
+• 高負荷時のパフォーマンス低下 |
+|データベース (database-schema.adoc) | `DETECTION_LOG`, `DETECTION_SUMMARY` 等、検出データ専用スキーマ | 検出データ専用モデル未実装 | • リアルタイム性能分析不可
+• 永続的な生データ欠損 |
+|===
+
+== 3. 詳細ギャップ一覧
+
+=== 3.1 通信・通知システム
+* `AlertService` にEmail送信など複数チャネルへの通知メソッドが不足
+** `_send_email(subject, body)` – SMTP 送信
+** `deliver_alert(alert_type: str, channels: list[AlertChannel])` – Notification Delivery 管理
+* `communication-system.adoc` に、現在では要件外となったLINE連携に関する記述が残存している。
+* `AlertChannel` Enum 未実装
+* 再送・失敗時フォールバック機構未実装
+
+=== 3.2 検出データ基盤の欠如 (AI/ML & DB)
+* **DetectionSmoother**: 仕様書 `ai-ml-specifications.adoc` に定義された、検出結果のチャタリング（点滅）を抑制し、欠損フレームを補間するための平滑化コンポーネントが未実装です。これにより、UI/UX上の表示が不安定になる可能性があります。
+* **AIOptimizer**: `ai-ml-specifications.adoc` で要求される、システムの負荷に応じて推論フレームレートを動的に調整する（フレームスキップ）機能が実装されていません。高負荷環境でのパフォーマンス低下が懸念されます。
+* **Detection Data Models**: `database-schema.adoc` で定義された `DETECTION_LOG` や `DETECTION_SUMMARY` 等のスキーマに対応するデータモデルが `backend/src/models` に存在しません。これにより、詳細なパフォーマンス分析や、検出ごとの生データを永続化する仕組みが欠落しています。
+
+=== 3.3 REST API パス不一致
+* 仕様: `/api/analysis/status` 等
+* 実装: `/api/analysis/basic/status`
+* 影響: フロントエンド / 公開API ドキュメントとの整合性欠如。
+
+=== 3.4 Monitoring System Metrics API
+* 仕様で要求される `/api/monitor/system-metrics` が未実装
+* CPU/GPU/メモリ使用率を返す必要あり (security-specifications.adoc §5.2)
+
+=== 3.5 セキュリティ対策
+* CSRF トークン未導入
+* CORS 許可範囲が `*`
+* API Rate Limiting 未実装
+
+== 4. 影響評価と優先度
+[cols="1,2,1", options="header"]
+|===
+|No | ギャップ | 優先度 (1-5)
+|1 | 通知マルチチャネル実装 (Email等) | 5
+|2 | ドキュメント上の不要機能(LINE)削除 | 4
+|3 | 検出安定化・最適化機能の欠如 (Smoother, Optimizer) | 5
+|4 | 検出データモデルと永続化の欠如 | 4
+|5 | REST API パス不一致 | 4
+|6 | System Metrics API 欠如 | 3
+|7 | セキュリティ対策不足 | 3
+|===
+
+== 5. 修正計画
+
+=== 5.1 通知マルチチャネルとドキュメント整理
+. **ドキュメント修正**: `communication-system.adoc` からLINE関連の記述をすべて削除する。
+. **Email通知実装**: `services/communication/alert_service.py` に `_send_email` 等を実装する。
+. **配信管理**: `services/communication/notification_delivery.py` を新規作成し、再送・チャネル選択を管理する。
+. `AlertChannel` Enum を `services/communication/enums.py` に定義する。
+. `AlertManager.trigger_*` に `channels` 引数を追加し、デフォルト設定は `ConfigManager` から取得する。
+. 2スプリントで実装 (ドキュメント修正含む)、テストカバレッジ 80%以上目標。
+
+=== 5.2 検出安定化・最適化機能 (AI/ML Core)
+. `core/detection_smoother.py` を新規作成し、信頼度ヒステリシス制御や移動平均フィルタを実装。
+. `core/ai_optimizer.py` を新規作成し、FPS監視に基づく動的フレームスキップ機構を実装。
+. `ObjectDetector` からこれらの新コンポーネントを利用するようリファクタリング。
+. 3スプリントを要する大規模改修。
+
+=== 5.3 検出データモデル (DB & Models)
+. `models/detection_log.py`, `models/detection_summary.py` を仕様に基づき作成。
+. `ObjectDetector` の推論結果を `DETECTION_LOG` として非同期でRedisに保存する処理を追加。
+
+=== 5.4 REST API パス統一
+. Blueprint の `url_prefix` を仕様に合わせ `/api/analysis` 直下に統合
+. 旧パスは非推奨扱いで 1 フェーズ後に削除、当面は 302 リダイレクトを設置
+
+=== 5.5 System Metrics API
+. `monitor_routes.py` にエンドポイント追加し、`psutil` でメトリクス取得
+. WebSocket でも `system_metrics` イベントを送信可能とする
+
+=== 5.6 セキュリティ強化
+. `flask-wtf` による CSRF Guard 導入
+. `flask-limiter` で Rate Limiting 実装 (100 req/min)
+. `flask-cors` の許可オリジンを環境変数 `ALLOWED_ORIGINS` に限定
+
+== 6. タイムライン
+[cols="1,2,2", options="header"]
+|===
+|Phase | 期間 | 主タスク
+|設計レビュー | 1 d | 修正設計のレビュー・承認 (AI Core含む)
+|実装 Sprint 1 | 5 d | 検出安定化・最適化機能 (AI Core)
+|実装 Sprint 2 | 3 d | 通知マルチチャネル実装 & ドキュメント(LINE)修正 & REST パス統一 & DBモデル
+|実装 Sprint 3 | 3 d | System Metrics API & セキュリティ強化
+|QA | 2 d | 単体 / 結合テスト
+|リリース準備 | 0.5 d | ドキュメント更新・本番環境設定
+|===
+
+== 7. リスクと緩和策
+* Email API トークン管理 → `.kanshichan/secrets.env` に分離し CI で注入
+* パス変更による FE 影響 → フロントエンドは環境変数でベースURLを扱うよう修正し Canary リリース
+* AI Core改修による性能劣化 → パフォーマンステストを必須とし、ベースラインを下回らないことをCIで保証
+
+== 8. 付録
+* 参照ドキュメント一覧
+** backend/docs/communication-system.adoc
+** backend/docs/rest-api-reference.adoc
+** backend/docs/monitoring-core.adoc
+** backend/docs/security-specifications.adoc
+** backend/docs/ai-ml-specifications.adoc
+** backend/docs/database-schema.adoc 
