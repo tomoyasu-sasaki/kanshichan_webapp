@@ -7,18 +7,18 @@
 ## Phase 1: AIコア機能の実装 (5日間)
 
 ### Section 1.1: 検出結果の安定化 (Detection Smoother)
-- [ ] `core/detection_smoother.py` を新規作成する。
-- [ ] 信頼度ヒステリシス制御 (`_should_accept_detection`) を実装する。
-- [ ] 検出バウンディングボックスの移動平均フィルタを実装する。
-- [ ] 欠損フレーム補間ロジック (`interpolate_missing_detections`) を実装する。
-- [ ] `ObjectDetector` に `DetectionSmoother` を統合する。
+- [x] `core/detection_smoother.py` を新規作成する。
+- [x] 信頼度ヒステリシス制御 (`_should_accept_detection`) を実装する。
+- [x] 検出バウンディングボックスの移動平均フィルタを実装する。
+- [x] 欠損フレーム補間ロジック (`interpolate_missing_detections`) を実装する。
+- [x] `ObjectDetector` に `DetectionSmoother` を統合する。
 
 ### Section 1.2: パフォーマンス最適化 (AI Optimizer)
-- [ ] `core/ai_optimizer.py` を新規作成する。
-- [ ] FPSカウンターを実装し、現在の推論速度を常時監視する。
-- [ ] 動的フレームスキップ機構 (`FrameSkipper`) を実装する。
-- [ ] `ObjectDetector` のメインループに `AIOptimizer` を統合する。
-- [ ] パフォーマンステストを作成し、ベースライン性能をCIで検証する。
+- [x] `core/ai_optimizer.py` を新規作成する。
+- [x] FPSカウンターを実装し、現在の推論速度を常時監視する。
+- [x] 動的フレームスキップ機構 (`FrameSkipper`) を実装する。
+- [x] `ObjectDetector` のメインループに `AIOptimizer` を統合する。
+- [x] パフォーマンステストを作成し、ベースライン性能をCIで検証する。
 
 ---
 
