@@ -271,19 +271,29 @@ class ObjectDetector:
             logger.info("YOLO initialized with NMS optimization settings")
             
         except Exception as e:
-            yolo_error = wrap_exception(
+            # KeyError / TypeError など入力フォーマット系は recoverable
+            data_error_classes = (KeyError, AttributeError, TypeError, ValueError)
+            critical = not isinstance(e, data_error_classes)
+
+            yolo_runtime_error = wrap_exception(
                 e, YOLOError,
-                "YOLO object detector initialization failed",
+                "YOLO object detection runtime error",
                 details={
-                    'model_path': str(model_path) if 'model_path' in locals() else 'unknown',
+                    'frame_shape': frame.shape if frame is not None else None,
+                    'model_available': hasattr(self, 'model'),
                     'device': str(self.device) if hasattr(self, 'device') else 'unknown',
-                    'torch_available': torch.cuda.is_available() if hasattr(torch, 'cuda') else False,
-                    'mps_available': torch.backends.mps.is_built() if hasattr(torch.backends, 'mps') else False
+                    'yolo_disabled': critical
                 }
             )
-            logger.error(f"YOLO initialization error: {yolo_error.to_dict()}")
-            self.use_yolo = False
-            logger.warning("YOLO object detector is disabled due to initialization error.")
+            logger.error(f"YOLO runtime error: {yolo_runtime_error.to_dict()}")
+
+            if critical:
+                # モデル破損など致命的な場合のみ無効化
+                self.use_yolo = False
+                logger.warning("Disabling YOLO due to critical runtime error.")
+            else:
+                # recoverable エラーの場合は次フレームで再試行
+                logger.warning("Recoverable YOLO data error; keeping YOLO enabled.")
 
     def detect_objects(self, frame: np.ndarray) -> Dict[str, Any]:
         """
@@ -311,11 +321,12 @@ class ObjectDetector:
                 
             # 結果格納用辞書
             results = {
-                'detections': [],
+                'detections': {},             # クラス名 → List[detection]
                 'timestamp': datetime.now().isoformat(),
                 'frame_id': id(frame),
                 'mediapipe_results': {},
-                'yolo_results': {}
+                'yolo_results': {},
+                'person_detected': False     # 人物検出フラグを明示的に初期化
             }
             
             # MediaPipe検出（有効な場合）

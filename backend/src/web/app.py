@@ -40,6 +40,7 @@ from utils.exceptions import (
     InitializationError, ConfigError, AudioError,
     FileNotFoundError, wrap_exception
 )
+from flask_wtf.csrf import CSRFError
 import os
 
 logger = setup_logger(__name__)
@@ -71,8 +72,20 @@ def create_app(config_manager: ConfigManager):
     
     # セキュリティ強化: CSRF保護を有効化
     csrf = CSRFProtect(app)
-    # WebSocketとファイルアップロード向けにCSRF保護を除外するルート
-    csrf.exempt('web.routes.tts_file_bp.upload_file')
+    # TTS 関連は大量のバイナリ POST を行うため CSRF を除外
+    csrf.exempt(api)                    # /api/* 全体
+    csrf.exempt(tts_file_bp)            # /api/tts/file/*
+    csrf.exempt(tts_synthesis_bp)       # /api/tts/synthesize* すべて
+    # スケジュール管理APIを除外（/api/schedules*）
+    for ep in [
+        'api.add_schedule',
+        'api.get_schedules',
+        'api.delete_schedule',
+        'tts_synthesis.synthesize_speech',
+        'tts_synthesis.synthesize_speech_fast',
+        'tts_synthesis.synthesize_advanced_speech'
+    ]:
+        csrf.exempt(ep)
     
     # セキュリティ強化: レート制限の設定
     limiter = Limiter(
@@ -106,35 +119,41 @@ def create_app(config_manager: ConfigManager):
     # 設定を取得
     config = config_manager.get_all()
     
+    # ---- テスト用の軽量化フラグ ----
+    TEST_MODE_DISABLE_TTS = os.environ.get('KANSHICHAN_ENABLE_TTS', '1') == '0'
+    TEST_MODE_DISABLE_AUDIO = os.environ.get('KANSHICHAN_ENABLE_AUDIO', '1') == '0'
+    TEST_MODE_DISABLE_METRICS = os.environ.get('KANSHICHAN_ENABLE_METRICS', '1') == '0'
+
     # WebSocket初期化
     try:
         init_websocket(app)
     except Exception as e:
         logger.error(f"❌ Failed to initialize WebSocket: {e}")
     
+    # Audio Streaming
+    if not TEST_MODE_DISABLE_AUDIO:
+        try:
+            init_audio_streaming()
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize audio streaming system: {e}")
+
     try:
-        init_audio_streaming()
-    except Exception as e:
-        logger.error(f"❌ Failed to initialize audio streaming system: {e}")
-        # 音声配信システムの初期化失敗は致命的ではないため継続
-        
-    try:
-        init_system_metrics_broadcast()
+        if not TEST_MODE_DISABLE_METRICS:
+            init_system_metrics_broadcast()
     except Exception as e:
         logger.error(f"❌ Failed to initialize system metrics broadcast: {e}")
-        # システムメトリクス配信の初期化失敗は致命的ではないため継続
     
     # TTS サービス初期化
-    try:
-        init_tts_services(config)
-    except Exception as e:
-        tts_init_error = wrap_exception(
-            e, InitializationError,
-            "Failed to initialize TTS services",
-            details={'config_keys': list(config.keys())}
-        )
-        logger.error(f"❌ TTS services initialization error: {tts_init_error.to_dict()}")
-        # TTSサービスの初期化失敗は致命的ではないため継続
+    if not TEST_MODE_DISABLE_TTS:
+        try:
+            init_tts_services(config)
+        except Exception as e:
+            tts_init_error = wrap_exception(
+                e, InitializationError,
+                "Failed to initialize TTS services",
+                details={'config_keys': list(config.keys())}
+            )
+            logger.error(f"❌ TTS services initialization error: {tts_init_error.to_dict()}")
     
     # Monitor サービス初期化
     try:
@@ -214,7 +233,7 @@ def create_app(config_manager: ConfigManager):
             return jsonify({"error": "Frontend not found"}), 404
             
     # CSRFエラーハンドラ
-    @app.errorhandler(CSRFProtect.error_handler)
+    @app.errorhandler(CSRFError)
     def handle_csrf_error(e):
         return jsonify({
             'status': 'error',

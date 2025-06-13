@@ -75,7 +75,7 @@ class DetectionSmoother:
                 # 移動平均フィルタ設定
                 'moving_average': {
                     'window_size': 5,  # 移動平均のウィンドウサイズ
-                    'weight_recent': 2.0,  # 最新フレームの重み（通常の2倍）
+                    'weight_recent': 6.0,  # 最新フレームの重み（最新を大きく重視）
                     'enabled': True,
                 },
                 
@@ -221,6 +221,14 @@ class DetectionSmoother:
                     if obj_key in smoothed_results['detections']:
                         del smoothed_results['detections'][obj_key]
         
+        # ----- 欠損キーに対する補間処理 -----
+        existing_keys = set(smoothed_results['detections'].keys())
+        for obj_key in list(self.last_detections.keys()):
+            if obj_key not in existing_keys:
+                interpolated = self._interpolate_missing_detections(obj_key)
+                if interpolated:
+                    smoothed_results['detections'][obj_key] = interpolated
+        
         return smoothed_results
     
     def _should_accept_detection(self, obj_key: str, detection: Dict[str, Any]) -> bool:
@@ -274,8 +282,8 @@ class DetectionSmoother:
         # 検出バッファを更新
         self.detection_buffers[obj_key].append(detection)
         
-        # バッファが空の場合は元の検出をそのまま返す
-        if not self.detection_buffers[obj_key]:
+        # まだ履歴が1件しかなければ平滑化せず元を返す
+        if len(self.detection_buffers[obj_key]) == 1:
             return detection
             
         # 最新のフレームに大きな重みを与える重み付き移動平均
@@ -316,7 +324,9 @@ class DetectionSmoother:
         smoothed_detection = deepcopy(detection)
         smoothed_detection['bbox'] = avg_bbox
         smoothed_detection['confidence'] = avg_confidence
-        smoothed_detection['smoothed'] = True
+        # 実際に平滑化が発生した（平均が元と異なる）場合のみフラグ付与
+        if buffer:
+            smoothed_detection['smoothed'] = True
         
         return smoothed_detection
     
@@ -380,59 +390,6 @@ class DetectionSmoother:
         """
         return deepcopy(self.settings)
     
-    def update_settings(self, new_settings: Dict[str, Any]) -> None:
-        """
-        設定を更新
-        
-        Args:
-            new_settings: 新しい設定
-        """
-        try:
-            # 既存の設定を更新（階層的）
-            for section, section_settings in new_settings.items():
-                if section in self.settings and isinstance(section_settings, dict):
-                    self.settings[section].update(section_settings)
-            
-            # 移動平均バッファサイズの更新
-            new_window_size = self.settings['moving_average']['window_size']
-            for obj_key in self.detection_buffers:
-                self.detection_buffers[obj_key] = deque(
-                    list(self.detection_buffers[obj_key])[-new_window_size:] 
-                    if self.detection_buffers[obj_key] else [], 
-                    maxlen=new_window_size
-                )
-                
-            logger.info("DetectionSmoother settings updated successfully")
-            
-        except Exception as e:
-            update_error = wrap_exception(
-                e, SmoothingError,
-                "Failed to update detection smoother settings",
-                details={'settings': new_settings}
-            )
-            logger.error(f"Settings update error: {update_error.to_dict()}")
-            raise update_error
-        
-    def _cleanup_expired_history(self) -> None:
-        """期限切れの検出履歴をクリーンアップ"""
-        cleanup_count = 0
-        
-        for obj_key in list(self.detection_history.keys()):
-            original_count = len(self.detection_history[obj_key])
-            self.detection_history[obj_key] = [
-                h for h in self.detection_history[obj_key] 
-                if not h.is_expired(self.max_history_age)
-            ]
-            cleanup_count += original_count - len(self.detection_history[obj_key])
-            
-            # 空のリストは削除
-            if not self.detection_history[obj_key]:
-                del self.detection_history[obj_key]
-                
-        if cleanup_count > 0:
-            self.smoothing_stats['expired_cleanups'] += cleanup_count
-            logger.debug(f"Cleaned up {cleanup_count} expired detection entries")
-            
     def get_smoothing_stats(self) -> Dict[str, Any]:
         """
         平滑化統計情報を取得
@@ -454,32 +411,34 @@ class DetectionSmoother:
         self.detection_history.clear()
         self.frame_counter = 0
         logger.info("Detection history reset")
-        
+    
     def update_settings(self, new_settings: Dict[str, Any]) -> None:
-        """
-        平滑化設定を動的更新
-        
-        Args:
-            new_settings: 新しい設定
-        """
+        """設定を階層的に更新し、関連バッファも追従させる"""
         try:
-            if 'max_history_age' in new_settings:
-                self.max_history_age = new_settings['max_history_age']
-            if 'position_smoothing_factor' in new_settings:
-                self.position_smoothing_factor = new_settings['position_smoothing_factor']
-            if 'confidence_hysteresis_low' in new_settings:
-                self.confidence_hysteresis_low = new_settings['confidence_hysteresis_low']
-            if 'confidence_hysteresis_high' in new_settings:
-                self.confidence_hysteresis_high = new_settings['confidence_hysteresis_high']
-            if 'max_interpolation_frames' in new_settings:
-                self.max_interpolation_frames = new_settings['max_interpolation_frames']
-                
+            # 階層マージ
+            for section, section_settings in new_settings.items():
+                if section in self.settings and isinstance(section_settings, dict):
+                    self.settings[section].update(section_settings)
+                else:
+                    # 新規セクションはそのまま上書き/追加
+                    self.settings[section] = section_settings
+
+            # 移動平均バッファの長さを更新
+            if 'moving_average' in new_settings and 'window_size' in new_settings['moving_average']:
+                new_window = self.settings['moving_average']['window_size']
+                for obj_key in self.detection_buffers:
+                    self.detection_buffers[obj_key] = deque(
+                        list(self.detection_buffers[obj_key])[-new_window:],
+                        maxlen=new_window,
+                    )
+
             logger.info(f"Detection smoothing settings updated: {new_settings}")
-            
         except Exception as e:
-            settings_error = wrap_exception(
-                e, ConfigError,
-                "Failed to update smoothing settings",
-                details={'rejected_settings': new_settings}
+            update_err = wrap_exception(
+                e,
+                ConfigError,
+                "Failed to update detection smoother settings",
+                details={"settings": new_settings},
             )
-            logger.error(f"Settings update error: {settings_error.to_dict()}") 
+            logger.error(f"Settings update error: {update_err.to_dict()}")
+            raise update_err 

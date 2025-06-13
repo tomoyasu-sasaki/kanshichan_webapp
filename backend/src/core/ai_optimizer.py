@@ -82,45 +82,100 @@ class PerformanceMonitor:
 
 
 class FrameSkipper:
-    """フレームスキップ機能"""
+    """
+    動的フレームスキップ機構
     
-    def __init__(self, config_manager: Optional[ConfigManager] = None):
-        self.config_manager = config_manager
-        self.skip_rate = 1  # 1 = スキップなし
+    現在のFPSに基づいて処理するフレームを動的に調整します。
+    """
+    
+    def __init__(self, 
+                 target_fps: float = 15.0,
+                 min_fps: float = 10.0, 
+                 max_skip_rate: int = 5,
+                 adjustment_interval: float = 2.0,
+                 adaptive_mode: bool = True):
+        """
+        初期化
+        
+        Args:
+            target_fps: 目標FPS
+            min_fps: 最小許容FPS
+            max_skip_rate: 最大スキップレート
+            adjustment_interval: 調整間隔（秒）
+            adaptive_mode: 適応モードの有効/無効
+        """
+        self.target_fps = target_fps
+        self.min_fps = min_fps
+        self.max_skip_rate = max_skip_rate
+        self.adjustment_interval = adjustment_interval
+        self.adaptive_mode = adaptive_mode
+        
+        # 現在の設定
+        self.current_skip_rate = 1  # 初期値は1（全フレーム処理）
         self.frame_counter = 0
-        self.target_fps = 15.0
-        self.min_fps = 5.0
-        self.max_skip_rate = 5
-        self.last_adjustment = time.time()
-        self.adjustment_interval = 2.0  # 2秒ごとに調整
+        self.last_adjustment_time = time.time()
+        
+        logger.info(f"FrameSkipper initialized: target_fps={target_fps}, min_fps={min_fps}, "
+                   f"max_skip_rate={max_skip_rate}")
         
     def should_process_frame(self, current_fps: float) -> bool:
-        """フレームを処理すべきかどうかを判定"""
+        """
+        現在のフレームを処理すべきかどうかを判定
+        
+        Args:
+            current_fps: 現在のFPS
+            
+        Returns:
+            bool: 処理すべきならTrue、スキップすべきならFalse
+        """
+        # 適応モードが無効の場合は、現在のカウンター値で判定してからインクリメント
+        if not self.adaptive_mode:
+            should_process = (self.frame_counter % self.current_skip_rate == 0)
+            self.frame_counter += 1
+            return should_process
+        
+        # 適応モードではインクリメントしてから適応調整
         self.frame_counter += 1
         
-        # 動的スキップレート調整
-        self._adjust_skip_rate(current_fps)
-        
-        # スキップレートに基づいて処理判定
-        return (self.frame_counter % self.skip_rate) == 0
-        
-    def _adjust_skip_rate(self, current_fps: float) -> None:
-        """現在のFPSに基づいてスキップレートを動的調整"""
+        # 定期的にスキップレートを調整
         current_time = time.time()
+        if current_time - self.last_adjustment_time > self.adjustment_interval:
+            self._adjust_skip_rate(current_fps)
+            self.last_adjustment_time = current_time
         
-        if current_time - self.last_adjustment < self.adjustment_interval:
-            return
-            
-        self.last_adjustment = current_time
+        # カウンターに基づくスキップ
+        return self.frame_counter % self.current_skip_rate == 0
+    
+    def _adjust_skip_rate(self, current_fps: float) -> None:
+        """
+        現在のFPSに基づいてスキップレートを調整
+        
+        Args:
+            current_fps: 現在のFPS
+        """
+        if current_fps <= 0:
+            return  # 有効なFPSがない場合は調整しない
+        
+        old_skip_rate = self.current_skip_rate
         
         if current_fps < self.min_fps:
             # FPSが低すぎる場合はスキップレートを上げる
-            self.skip_rate = min(self.skip_rate + 1, self.max_skip_rate)
-            logger.debug(f"Low FPS detected ({current_fps:.1f}), increasing skip rate to {self.skip_rate}")
+            self.current_skip_rate = min(self.current_skip_rate + 1, self.max_skip_rate)
         elif current_fps > self.target_fps * 1.2:
             # FPSが十分高い場合はスキップレートを下げる
-            self.skip_rate = max(self.skip_rate - 1, 1)
-            logger.debug(f"High FPS detected ({current_fps:.1f}), decreasing skip rate to {self.skip_rate}")
+            self.current_skip_rate = max(self.current_skip_rate - 1, 1)
+        
+        # スキップレートが変化した場合にログ出力
+        if old_skip_rate != self.current_skip_rate:
+            logger.info(f"Skip rate adjusted: {old_skip_rate} -> {self.current_skip_rate} "
+                      f"(current FPS: {current_fps:.1f}, target: {self.target_fps})")
+    
+    def reset(self) -> None:
+        """状態をリセット"""
+        self.current_skip_rate = 1
+        self.frame_counter = 0
+        self.last_adjustment_time = time.time()
+        logger.info("FrameSkipper reset to initial state")
 
 
 class BatchProcessor:
@@ -364,12 +419,13 @@ class AIOptimizer:
                     details={'original_error': str(e)}
                 )
     
-    def _optimize_frame_preprocessing(self, frame: np.ndarray) -> np.ndarray:
+    def _optimize_frame_preprocessing(self, frame: np.ndarray, *, for_mediapipe: bool = False) -> np.ndarray:
         """
         フレーム前処理の最適化
         
         Args:
             frame: 入力フレーム
+            for_mediapipe: MediaPipe用のフラグ
             
         Returns:
             前処理済みフレーム
@@ -380,6 +436,11 @@ class AIOptimizer:
         try:
             optimized_frame = frame
             preprocessing = self.settings['preprocessing']
+            
+            # MediaPipe 用の場合はリサイズのみ適用し、正規化は行わない
+            if for_mediapipe:
+                preprocessing = preprocessing.copy()
+                preprocessing['normalize_enabled'] = False  # dtype を維持
             
             # リサイズ処理
             if preprocessing['resize_enabled']:
@@ -395,7 +456,7 @@ class AIOptimizer:
                     )
             
             # 正規化処理
-            if preprocessing['normalize_enabled']:
+            if preprocessing['normalize_enabled'] and not for_mediapipe:
                 # 0-255 -> 0-1の範囲に正規化
                 if optimized_frame.dtype != np.float32:
                     optimized_frame = optimized_frame.astype(np.float32) / 255.0
@@ -409,6 +470,9 @@ class AIOptimizer:
                 start_y = (h - roi_h) // 2
                 optimized_frame = optimized_frame[start_y:start_y+roi_h, start_x:start_x+roi_w]
                 
+            # MediaPipe 用の場合は必ず uint8 形式で返す
+            if for_mediapipe and optimized_frame.dtype != np.uint8:
+                optimized_frame = np.clip(optimized_frame * 255.0, 0, 255).astype(np.uint8)
             return optimized_frame
         
         except Exception as e:
@@ -443,9 +507,8 @@ class AIOptimizer:
         start_time = time.time()
         
         # フレーム前処理
-        preprocessed_frame = self._optimize_frame_preprocessing(frame)
+        preprocessed_frame = self._optimize_frame_preprocessing(frame, for_mediapipe=True)
         
-        # MediaPipe処理
         results = mediapipe_component.process(preprocessed_frame)
         
         inference_time = time.time() - start_time
@@ -601,96 +664,52 @@ class AIOptimizer:
             logger.error(f"Settings update error: {update_error.to_dict()}")
             raise update_error
 
-
-class FrameSkipper:
-    """
-    動的フレームスキップ機構
-    
-    現在のFPSに基づいて処理するフレームを動的に調整します。
-    """
-    
-    def __init__(self, 
-                 target_fps: float = 15.0,
-                 min_fps: float = 10.0, 
-                 max_skip_rate: int = 5,
-                 adjustment_interval: float = 2.0,
-                 adaptive_mode: bool = True):
+    def should_skip_frame(self) -> bool:
         """
-        初期化
+        現在のフレームをスキップすべきかどうかを判定
         
-        Args:
-            target_fps: 目標FPS
-            min_fps: 最小許容FPS
-            max_skip_rate: 最大スキップレート
-            adjustment_interval: 調整間隔（秒）
-            adaptive_mode: 適応モードの有効/無効
-        """
-        self.target_fps = target_fps
-        self.min_fps = min_fps
-        self.max_skip_rate = max_skip_rate
-        self.adjustment_interval = adjustment_interval
-        self.adaptive_mode = adaptive_mode
-        
-        # 現在の設定
-        self.current_skip_rate = 1  # 初期値は1（全フレーム処理）
-        self.frame_counter = 0
-        self.last_adjustment_time = time.time()
-        
-        logger.info(f"FrameSkipper initialized: target_fps={target_fps}, min_fps={min_fps}, "
-                   f"max_skip_rate={max_skip_rate}")
-        
-    def should_process_frame(self, current_fps: float) -> bool:
-        """
-        現在のフレームを処理すべきかどうかを判定
-        
-        Args:
-            current_fps: 現在のFPS
-            
         Returns:
-            bool: 処理すべきならTrue、スキップすべきならFalse
+            bool: スキップすべきならTrue、処理すべきならFalse
         """
-        self.frame_counter += 1
+        if not self.settings['frame_skipper']['enabled']:
+            return False
         
-        # 適応モードが無効の場合は、単純なカウンターベースのスキップ
-        if not self.adaptive_mode:
-            return self.frame_counter % self.current_skip_rate == 0
+        # フレームスキッパーがあればそのロジックを使用
+        if hasattr(self, 'frame_skipper'):
+            return not self.frame_skipper.should_process_frame(self.current_fps)
         
-        # 定期的にスキップレートを調整
-        current_time = time.time()
-        if current_time - self.last_adjustment_time > self.adjustment_interval:
-            self._adjust_skip_rate(current_fps)
-            self.last_adjustment_time = current_time
-        
-        # カウンターに基づくスキップ
-        return self.frame_counter % self.current_skip_rate == 0
-    
-    def _adjust_skip_rate(self, current_fps: float) -> None:
+        return False
+
+    def start_inference_timer(self) -> None:
         """
-        現在のFPSに基づいてスキップレートを調整
-        
-        Args:
-            current_fps: 現在のFPS
+        推論時間計測を開始
         """
-        if current_fps <= 0:
-            return  # 有効なFPSがない場合は調整しない
+        self.inference_start_time = time.time()
         
-        old_skip_rate = self.current_skip_rate
+    def end_inference_timer(self) -> None:
+        """
+        推論時間計測を終了し、統計を更新
+        """
+        if hasattr(self, 'inference_start_time'):
+            inference_time = time.time() - self.inference_start_time
+            self.inference_times.append(inference_time)
+            self._update_fps_stats()
+            
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """
+        パフォーマンスメトリクスを取得
         
-        if current_fps < self.min_fps:
-            # FPSが低すぎる場合はスキップレートを上げる
-            self.current_skip_rate = min(self.current_skip_rate + 1, self.max_skip_rate)
-        elif current_fps > self.target_fps * 1.2:
-            # FPSが十分高い場合はスキップレートを下げる
-            self.current_skip_rate = max(self.current_skip_rate - 1, 1)
+        Returns:
+            Dict[str, Any]: パフォーマンス指標
+        """
+        avg_inference_time = sum(self.inference_times) / len(self.inference_times) if self.inference_times else 0
         
-        # スキップレートが変化した場合にログ出力
-        if old_skip_rate != self.current_skip_rate:
-            logger.info(f"Skip rate adjusted: {old_skip_rate} -> {self.current_skip_rate} "
-                      f"(current FPS: {current_fps:.1f}, target: {self.target_fps})")
-    
-    def reset(self) -> None:
-        """状態をリセット"""
-        self.current_skip_rate = 1
-        self.frame_counter = 0
-        self.last_adjustment_time = time.time()
-        logger.info("FrameSkipper reset to initial state") 
+        metrics = {
+            'fps': self.current_fps,
+            'inference_time_ms': avg_inference_time * 1000,
+            'skip_rate': self.frame_skipper.current_skip_rate if hasattr(self, 'frame_skipper') else 1,
+            'memory_percent': self.system_stats['memory_percent'],
+            'cpu_percent': self.system_stats['cpu_percent']
+        }
+        
+        return metrics 

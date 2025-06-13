@@ -672,4 +672,30 @@ class ConfigManager:
             'validation_rules_count': len(self._validation_rules),
             'config_keys': list(self._config.keys()) if self._config else [],
             'validation_errors': self.validate_config()
-        } 
+        }
+
+    def has(self, key_path: str) -> bool:
+        """指定したキー階層が設定に存在するかを判定します。
+
+        Args:
+            key_path: ドット区切りのキー階層 (e.g. "optimization.fps_counter")
+
+        Returns:
+            bool: 値が存在すれば True、それ以外は False
+        """
+        try:
+            value = self.get(key_path, default=None)
+            return value is not None
+        except Exception:
+            return False
+
+    # ---------------------------------------------------------
+    # Email / Notification helper
+    # ---------------------------------------------------------
+    def get_email_config(self) -> Dict[str, Any]:
+        """メール通知設定を取得します。
+
+        設定ファイル上では `notifications.email.*` の階層に置くことを想定しています。
+        存在しない場合は空の辞書を返します。
+        """
+        return self.get('notifications.email', {}) 

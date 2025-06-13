@@ -763,5 +763,22 @@
     "language": "ja",
     "file_hash": "bd0c00ccf4fa28f89465f72f329d7adc",
     "display_name": null
+  },
+  "7f038e3233d53815": {
+    "file_path": "/Users/tmys-sasaki/Projects/Private/KanshiChan/backend/voice_data/cache/7f038e3233d53815_tts_output_20250613_174349_687.wav.gz",
+    "original_filename": "tts_output_20250613_174349_687.wav",
+    "file_size": 1213981,
+    "duration_seconds": 7.430385487528345,
+    "sample_rate": 44100,
+    "channels": 1,
+    "created_at": "2025-06-13T17:46:36.421760",
+    "audio_format": "wav",
+    "compressed": true,
+    "voice_sample_for": null,
+    "text_content": "これは音声設定のテストです。設定した感情とトーンで再生されます。",
+    "emotion": "custom",
+    "language": "ja",
+    "file_hash": "a119c353a146c4b7a37eaf2a6c06de56",
+    "display_name": null
   }
 }
