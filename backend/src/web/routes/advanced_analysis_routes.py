@@ -27,7 +27,7 @@ from services.analysis.service_loader import (
 logger = setup_logger(__name__)
 
 # Blueprint定義
-advanced_analysis_bp = Blueprint('advanced_analysis', __name__, url_prefix='/api/analysis/advanced')
+advanced_analysis_bp = Blueprint('advanced_analysis', __name__, url_prefix='/api/analysis')
 
 
 @advanced_analysis_bp.route('/advanced-patterns', methods=['GET'])
