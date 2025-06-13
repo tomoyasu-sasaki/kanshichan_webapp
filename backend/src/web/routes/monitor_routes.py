@@ -8,6 +8,7 @@ import logging
 from typing import Dict, Any, Optional
 from flask import Blueprint, jsonify, request
 from datetime import datetime
+import psutil
 
 # Monitor の簡素化ラッパークラス
 class SimpleMonitor:
@@ -243,5 +244,82 @@ def get_monitoring_metrics():
             'status': 'error',
             'error': 'Failed to get monitoring metrics',
             'code': 'METRICS_ERROR',
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
+
+@monitor_bp.route('/system-metrics', methods=['GET'])
+def get_system_metrics():
+    """システムメトリクス（CPU、メモリ、GPU使用率）を取得するAPI
+    
+    システムの現在のリソース使用状況を取得します
+    
+    Returns:
+        JSON: システムメトリクス情報
+    """
+    try:
+        # CPU使用率
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        cpu_cores = psutil.cpu_count()
+        cpu_per_core = psutil.cpu_percent(interval=0.1, percpu=True)
+        
+        # メモリ使用率
+        memory_info = psutil.virtual_memory()
+        memory_percent = memory_info.percent
+        memory_used = memory_info.used
+        memory_total = memory_info.total
+        
+        # ディスク使用率
+        disk_info = psutil.disk_usage('/')
+        disk_percent = disk_info.percent
+        disk_used = disk_info.used
+        disk_total = disk_info.total
+        
+        # GPU情報取得（可能な場合）
+        gpu_info = {
+            'available': False,
+            'usage_percent': 0,
+            'memory_used': 0,
+            'memory_total': 0
+        }
+        
+        # TODO: GPUモジュールが利用可能な場合は追加実装
+        
+        system_metrics = {
+            'cpu': {
+                'usage_percent': cpu_percent,
+                'cores': cpu_cores,
+                'per_core_usage': cpu_per_core
+            },
+            'memory': {
+                'usage_percent': memory_percent,
+                'used_bytes': memory_used,
+                'total_bytes': memory_total,
+                'used_gb': round(memory_used / (1024 ** 3), 2),
+                'total_gb': round(memory_total / (1024 ** 3), 2)
+            },
+            'disk': {
+                'usage_percent': disk_percent,
+                'used_bytes': disk_used,
+                'total_bytes': disk_total,
+                'used_gb': round(disk_used / (1024 ** 3), 2),
+                'total_gb': round(disk_total / (1024 ** 3), 2)
+            },
+            'gpu': gpu_info,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        
+        return jsonify({
+            'status': 'success',
+            'data': system_metrics,
+            'timestamp': datetime.utcnow().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting system metrics: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'error': 'Failed to get system metrics',
+            'code': 'SYSTEM_METRICS_ERROR',
             'timestamp': datetime.utcnow().isoformat()
         }), 500 

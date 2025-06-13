@@ -7,6 +7,8 @@ from utils.exceptions import (
 import base64
 import threading
 import queue
+import time
+import psutil
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 import os
@@ -18,6 +20,10 @@ socketio = SocketIO()
 # 音声配信用のキューとスレッド管理
 audio_queue = queue.Queue()
 connected_clients: List[str] = []  # 接続中のクライアントID管理
+
+# システムメトリクス配信用の設定
+metrics_broadcast_interval = 5.0  # 5秒ごとに配信
+metrics_broadcast_enabled = True  # 配信有効フラグ
 
 def init_websocket(app):
     """WebSocketの初期化"""
@@ -51,6 +57,26 @@ def init_websocket(app):
             'audio_id': audio_id,
             'status': status
         }, room=None, include_self=False)
+        
+    @socketio.on('toggle_metrics_broadcast')
+    def handle_toggle_metrics(data):
+        """システムメトリクス配信の有効/無効を切り替え"""
+        global metrics_broadcast_enabled
+        enabled = data.get('enabled', True)
+        interval = data.get('interval', 5.0)
+        
+        # 値の範囲チェック
+        if interval < 1.0:
+            interval = 1.0  # 最小1秒
+        elif interval > 60.0:
+            interval = 60.0  # 最大60秒
+            
+        metrics_broadcast_enabled = enabled
+        global metrics_broadcast_interval
+        metrics_broadcast_interval = interval
+        
+        logger.info(f"System metrics broadcast {'enabled' if enabled else 'disabled'} with interval {interval}s")
+        return {'success': True, 'enabled': metrics_broadcast_enabled, 'interval': metrics_broadcast_interval}
 
 def broadcast_status(status):
     """検出状態の変更をブロードキャスト"""
@@ -66,6 +92,69 @@ def broadcast_status(status):
             }
         )
         logger.error(f"WebSocket broadcast error: {broadcast_error.to_dict()}") 
+
+def broadcast_system_metrics():
+    """システムメトリクスを収集してブロードキャスト"""
+    try:
+        # CPU使用率
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        cpu_cores = psutil.cpu_count()
+        cpu_per_core = psutil.cpu_percent(interval=0.1, percpu=True)
+        
+        # メモリ使用率
+        memory_info = psutil.virtual_memory()
+        memory_percent = memory_info.percent
+        memory_used = memory_info.used
+        memory_total = memory_info.total
+        
+        # ディスク使用率
+        disk_info = psutil.disk_usage('/')
+        disk_percent = disk_info.percent
+        disk_used = disk_info.used
+        disk_total = disk_info.total
+        
+        # GPU情報取得（可能な場合）
+        gpu_info = {
+            'available': False,
+            'usage_percent': 0,
+            'memory_used': 0,
+            'memory_total': 0
+        }
+        
+        system_metrics = {
+            'cpu': {
+                'usage_percent': cpu_percent,
+                'cores': cpu_cores,
+                'per_core_usage': cpu_per_core
+            },
+            'memory': {
+                'usage_percent': memory_percent,
+                'used_bytes': memory_used,
+                'total_bytes': memory_total,
+                'used_gb': round(memory_used / (1024 ** 3), 2),
+                'total_gb': round(memory_total / (1024 ** 3), 2)
+            },
+            'disk': {
+                'usage_percent': disk_percent,
+                'used_bytes': disk_used,
+                'total_bytes': disk_total,
+                'used_gb': round(disk_used / (1024 ** 3), 2),
+                'total_gb': round(disk_total / (1024 ** 3), 2)
+            },
+            'gpu': gpu_info,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        
+        # WebSocketで配信
+        socketio.emit('system_metrics', system_metrics)
+        
+    except Exception as e:
+        metrics_error = wrap_exception(
+            e, NetworkError,
+            "Error broadcasting system metrics via WebSocket",
+            details={'socketio_initialized': socketio is not None}
+        )
+        logger.error(f"System metrics broadcast error: {metrics_error.to_dict()}")
 
 def broadcast_audio_stream(audio_data: bytes, audio_metadata: Dict[str, Any], 
                           target_clients: Optional[List[str]] = None):
@@ -226,6 +315,32 @@ def start_audio_streaming_worker():
     worker_thread.start()
     logger.info("Audio streaming worker thread started")
 
+def start_system_metrics_worker():
+    """システムメトリクス配信ワーカースレッドを開始"""
+    def metrics_worker():
+        """システムメトリクス配信ワーカー関数"""
+        while True:
+            try:
+                if metrics_broadcast_enabled and connected_clients:
+                    broadcast_system_metrics()
+                
+                # 設定された間隔で待機
+                time.sleep(metrics_broadcast_interval)
+                
+            except Exception as e:
+                metrics_worker_error = wrap_exception(
+                    e, NetworkError,
+                    "Error in system metrics worker",
+                    details={'connected_clients': len(connected_clients)}
+                )
+                logger.error(f"System metrics worker error: {metrics_worker_error.to_dict()}")
+                time.sleep(5)  # エラー発生時は5秒待機
+    
+    # ワーカースレッドを開始
+    worker_thread = threading.Thread(target=metrics_worker, daemon=True)
+    worker_thread.start()
+    logger.info("System metrics worker thread started")
+
 def get_connected_clients_count() -> int:
     """接続中のクライアント数を取得"""
     return len(connected_clients)
@@ -243,4 +358,19 @@ def init_audio_streaming():
             details={}
         )
         logger.error(f"Audio streaming initialization error: {init_error.to_dict()}")
+        raise
+
+# システムメトリクス配信システムの初期化
+def init_system_metrics_broadcast():
+    """システムメトリクス配信システムの初期化"""
+    try:
+        start_system_metrics_worker()
+        logger.info("System metrics broadcast initialized successfully")
+    except Exception as e:
+        init_error = wrap_exception(
+            e, InitializationError,
+            "Failed to initialize system metrics broadcast",
+            details={}
+        )
+        logger.error(f"System metrics broadcast initialization error: {init_error.to_dict()}")
         raise 
