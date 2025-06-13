@@ -25,21 +25,21 @@
 ## Phase 2: バックエンド基盤強化 (3日間)
 
 ### Section 2.1: 通知システムのマルチチャネル対応
-- [ ] `communication-system.adoc` から旧要件のLINE関連記述を削除する。
-- [ ] `services/communication/enums.py` に `AlertChannel` Enum を定義する。
-- [ ] `services/communication/notification_delivery.py` を新規作成し、配信管理ロジックを実装する。
-- [ ] `services/communication/alert_service.py` にEmail通知用の `_send_email` メソッドを実装する。
-- [ ] `AlertManager` が複数の `channels` を扱えるように修正する。
+- [x] `communication-system.adoc` から旧要件のLINE関連記述を削除する。
+- [x] `services/communication/enums.py` に `AlertChannel` Enum を定義する。
+- [x] `services/communication/notification_delivery.py` を新規作成し、配信管理ロジックを実装する。
+- [x] `services/communication/alert_service.py` にEmail通知用の `_send_email` メソッドを実装する。
+- [x] `AlertManager` が複数の `channels` を扱えるように修正する。
 
 ### Section 2.2: REST APIのパス統一
-- [ ] `basic_analysis_routes.py` 等のBlueprintの `url_prefix` を `/api/analysis` に統一する。
+- [x] `basic_analysis_routes.py` 等のBlueprintの `url_prefix` を `/api/analysis` に統一する。
 - [ ] 旧URL (`/api/analysis/basic/*`) から新URLへのリダイレクト処理を追加する (任意)。
 - [ ] PostmanやSwagger等のAPIドキュメントを更新する。
 
 ### Section 2.3: データベースモデルの追加
-- [ ] `models/detection_log.py` を作成し、`DETECTION_LOG` スキーマを定義する。
-- [ ] `models/detection_summary.py` を作成し、`DETECTION_SUMMARY` スキーマを定義する。
-- [ ] `ObjectDetector` から検出結果を非同期で `DetectionLog` に保存する処理を追加する。
+- [x] `models/detection_log.py` を作成し、`DETECTION_LOG` スキーマを定義する。
+- [x] `models/detection_summary.py` を作成し、`DETECTION_SUMMARY` スキーマを定義する。
+- [x] `ObjectDetector` から検出結果を非同期で `DetectionLog` に保存する処理を追加する。
 
 ---
 
