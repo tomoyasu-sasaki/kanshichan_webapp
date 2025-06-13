@@ -164,218 +164,533 @@ class BatchProcessor:
 
 
 class AIOptimizer:
-    """AI処理最適化メインクラス"""
+    """
+    AI処理最適化クラス
+    
+    システムリソース・パフォーマンスを監視し、推論処理を最適化します：
+    1. FPSカウンター: 推論速度を常時監視
+    2. 動的フレームスキップ: 負荷に応じて自動的にフレーム処理率を調整
+    3. 推論前処理最適化: メモリ使用量削減・処理速度向上
+    """
     
     def __init__(self, config_manager: Optional[ConfigManager] = None):
         """
+        初期化
+        
         Args:
             config_manager: 設定管理インスタンス
         """
-        try:
-            self.config_manager = config_manager
-            self.performance_monitor = PerformanceMonitor()
-            self.frame_skipper = FrameSkipper(config_manager)
-            self.batch_processor = BatchProcessor()
+        self.config_manager = config_manager
+        
+        # デフォルト設定
+        self.settings = {
+            # FPSカウンター設定
+            'fps_counter': {
+                'window_size': 30,  # 移動平均のウィンドウサイズ
+                'enabled': True,
+            },
             
-            # 🆕 検出結果キャッシュ（描画継続性のため）
-            self.last_yolo_results = None
-            self.last_yolo_results_age = 0  # キャッシュの経過フレーム数
-            self.max_cache_age = 10  # 最大キャッシュ保持フレーム数
-            
-            # 最適化設定の読み込み
-            self._load_optimization_settings()
-            
-            logger.info("AIOptimizer initialized successfully with detection caching")
-            
-        except Exception as e:
-            optimization_error = wrap_exception(
-                e, OptimizationError,
-                "AIOptimizer initialization failed",
-                details={'optimization_disabled': True}
-            )
-            logger.error(f"AIOptimizer initialization error: {optimization_error.to_dict()}")
-            raise optimization_error
-            
-    def _load_optimization_settings(self) -> None:
-        """最適化設定の読み込み"""
-        if not self.config_manager:
-            return
-            
-        try:
             # フレームスキップ設定
-            self.frame_skipper.target_fps = self.config_manager.get('optimization.target_fps', 15.0)
-            self.frame_skipper.min_fps = self.config_manager.get('optimization.min_fps', 5.0)
-            self.frame_skipper.max_skip_rate = self.config_manager.get('optimization.max_skip_rate', 5)
+            'frame_skipper': {
+                'target_fps': 15.0,  # 目標FPS（高すぎると点滅する可能性）
+                'min_fps': 10.0,     # 最小FPS（これを下回るとスキップ率上昇）
+                'max_skip_rate': 5,  # 最大スキップ率（1:処理、5:5フレームごとに1回処理）
+                'adjustment_interval': 2.0,  # 調整間隔（秒）
+                'adaptive_mode': True,  # 適応モード（システム負荷に応じて自動調整）
+                'enabled': True,
+            },
             
-            # バッチ処理設定
-            batch_enabled = self.config_manager.get('optimization.batch_processing.enabled', False)
-            self.batch_processor.enabled = batch_enabled
-            self.batch_processor.batch_size = self.config_manager.get('optimization.batch_processing.batch_size', 4)
-            self.batch_processor.timeout_ms = self.config_manager.get('optimization.batch_processing.timeout_ms', 50)
+            # フレーム前処理設定
+            'preprocessing': {
+                'resize_enabled': True,  # リサイズ有効（低解像度で推論）
+                'resize_width': 640,     # リサイズ幅
+                'resize_height': 480,    # リサイズ高さ
+                'normalize_enabled': True,  # 正規化有効（高速推論）
+                'roi_enabled': False,    # 関心領域処理（実験的）
+            },
+        }
+        
+        # 設定の読み込み
+        if config_manager:
+            self._load_settings()
+        
+        # パフォーマンスモニタリング
+        self.fps_times = deque(maxlen=self.settings['fps_counter']['window_size'])
+        self.inference_times = deque(maxlen=self.settings['fps_counter']['window_size'])
+        self.last_fps_update = time.time()
+        self.current_fps = 0.0
+        self.frame_counter = 0
+        
+        # フレームスキッパー
+        self.frame_skipper = FrameSkipper(
+            target_fps=self.settings['frame_skipper']['target_fps'],
+            min_fps=self.settings['frame_skipper']['min_fps'],
+            max_skip_rate=self.settings['frame_skipper']['max_skip_rate'],
+            adjustment_interval=self.settings['frame_skipper']['adjustment_interval'],
+            adaptive_mode=self.settings['frame_skipper']['adaptive_mode']
+        )
+        
+        # システムモニタリング（メモリ、CPU、GPU）
+        self.system_stats = {
+            'memory_percent': 0.0,
+            'cpu_percent': 0.0,
+            'gpu_percent': 0.0,
+            'total_memory_mb': 0,
+            'used_memory_mb': 0,
+            'last_update': time.time()
+        }
+        self._update_system_stats()
+        
+        logger.info("AIOptimizer initialized successfully")
+    
+    def _load_settings(self) -> None:
+        """設定を読み込む"""
+        try:
+            # FPSカウンター設定
+            if self.config_manager.has('optimization.fps_counter'):
+                fps_config = self.config_manager.get('optimization.fps_counter', {})
+                self.settings['fps_counter'].update(fps_config)
+                
+                # バッファサイズの更新
+                new_window_size = self.settings['fps_counter']['window_size']
+                if new_window_size != len(self.fps_times):
+                    self.fps_times = deque(list(self.fps_times)[-new_window_size:] if self.fps_times else [], 
+                                        maxlen=new_window_size)
+                    self.inference_times = deque(list(self.inference_times)[-new_window_size:] if self.inference_times else [], 
+                                             maxlen=new_window_size)
             
-            logger.info(f"Optimization settings loaded: target_fps={self.frame_skipper.target_fps}, "
-                       f"batch_enabled={batch_enabled}")
-                       
+            # フレームスキップ設定
+            if self.config_manager.has('optimization.frame_skipper'):
+                skip_config = self.config_manager.get('optimization.frame_skipper', {})
+                self.settings['frame_skipper'].update(skip_config)
+                
+                # フレームスキッパーの設定更新
+                if hasattr(self, 'frame_skipper'):
+                    self.frame_skipper.target_fps = self.settings['frame_skipper']['target_fps']
+                    self.frame_skipper.min_fps = self.settings['frame_skipper']['min_fps']
+                    self.frame_skipper.max_skip_rate = self.settings['frame_skipper']['max_skip_rate']
+                    self.frame_skipper.adjustment_interval = self.settings['frame_skipper']['adjustment_interval']
+                    self.frame_skipper.adaptive_mode = self.settings['frame_skipper']['adaptive_mode']
+            
+            # 前処理設定
+            if self.config_manager.has('optimization.preprocessing'):
+                preproc_config = self.config_manager.get('optimization.preprocessing', {})
+                self.settings['preprocessing'].update(preproc_config)
+                
+            logger.info("AI optimizer settings loaded successfully")
+            
         except Exception as e:
             config_error = wrap_exception(
-                e, ConfigError,
-                "Failed to load optimization settings",
-                details={'using_defaults': True}
+                e, OptimizationError, 
+                "Failed to load AI optimizer settings",
+                details={'using_default_settings': True}
             )
-            logger.warning(f"Using default optimization settings: {config_error.to_dict()}")
-            
-    def optimize_yolo_inference(self, model, frame: np.ndarray) -> Optional[Any]:
+            logger.warning(f"Configuration error: {config_error.to_dict()}")
+    
+    def optimize_yolo_inference(self, model: Any, frame: np.ndarray) -> Optional[Any]:
         """
-        YOLO推論の最適化（描画継続性を考慮した改良版）
+        YOLO推論の最適化
+        
+        フレームスキップ判定とGPU最適化を適用したYOLO推論を実行します。
         
         Args:
             model: YOLOモデル
-            frame: 入力フレーム
+            frame: 入力フレーム（BGR形式）
             
         Returns:
-            推論結果（最適化適用済み）
+            推論結果、フレームスキップ時はNone
         """
-        try:
-            inference_start = time.time()
-            
-            # キャッシュの年齢を更新
-            self.last_yolo_results_age += 1
-            
-            # フレームスキップ判定
-            current_fps = self.performance_monitor.get_current_fps()
-            should_skip = not self.frame_skipper.should_process_frame(current_fps)
-            
-            if should_skip:
-                # 🆕 スキップ時も前回の検出結果を返すモードを追加
-                if (self.last_yolo_results is not None and 
-                    self.last_yolo_results_age <= self.max_cache_age):
-                    # 前回結果を返して描画継続性を維持
-                    logger.debug(f"Using cached YOLO results (age: {self.last_yolo_results_age} frames)")
-                    return self.last_yolo_results
-                else:
-                    # キャッシュが古すぎる場合はNoneを返す
-                    logger.debug(f"Cache too old or empty, returning None (age: {self.last_yolo_results_age})")
-                return None
-                
-            # フレーム前処理の最適化
-            optimized_frame = self._optimize_frame_preprocessing(frame)
-            
-            # YOLO推論実行
-            with torch.no_grad():  # 勾配計算を無効化
-                results = model(optimized_frame, verbose=False)
-                
-            # 🆕 成功した推論結果をキャッシュ
-            self.last_yolo_results = results
-            self.last_yolo_results_age = 0  # キャッシュをリフレッシュ
-                
-            inference_time = time.time() - inference_start
-            self.performance_monitor.record_inference_time(inference_time)
-            
-            logger.debug(f"YOLO inference completed, results cached")
-            return results
-            
-        except Exception as e:
-            model_error = wrap_exception(
-                e, ModelError,
-                "YOLO inference optimization failed",
-                details={'fallback_to_standard': True}
-            )
-            logger.warning(f"YOLO optimization error: {model_error.to_dict()}")
-            
-            # エラー時も前回結果でフォールバック
-            if (self.last_yolo_results is not None and 
-                self.last_yolo_results_age <= self.max_cache_age):
-                logger.debug("Fallback to cached YOLO results due to error")
-                return self.last_yolo_results
-            
-            # フォールバック: 標準推論
-            try:
-                return model(frame, verbose=False)
-            except Exception:
-                return None
-            
-    def optimize_mediapipe_pipeline(self, pose_model, frame: np.ndarray) -> Optional[Any]:
+        if not self.settings['frame_skipper']['enabled'] or not hasattr(self, 'frame_skipper'):
+            # フレームスキップが無効の場合は全フレーム処理
+            return self._run_inference(model, frame)
+        
+        # フレームスキップ判定（FPSに基づく動的スキップ）
+        if not self.frame_skipper.should_process_frame(self.current_fps):
+            return None
+        
+        # 推論実行と統計更新
+        start_time = time.time()
+        results = self._run_inference(model, frame)
+        inference_time = time.time() - start_time
+        
+        # 統計更新
+        self._update_fps_stats()
+        self.inference_times.append(inference_time)
+        
+        return results
+    
+    def _run_inference(self, model: Any, frame: np.ndarray) -> Any:
         """
-        MediaPipeパイプライン最適化
+        最適化設定を適用した推論実行
         
         Args:
-            pose_model: MediaPipe Poseモデル
+            model: 推論モデル
             frame: 入力フレーム
             
         Returns:
-            推論結果（最適化適用済み）
+            推論結果
         """
         try:
-            inference_start = time.time()
+            # フレーム前処理
+            preprocessed_frame = self._optimize_frame_preprocessing(frame)
             
-            # フレームサイズ最適化
-            optimized_frame = self._optimize_frame_for_mediapipe(frame)
+            # 対応するバックエンドを判定して適切な推論を実行
+            if hasattr(model, '__class__') and model.__class__.__name__ == 'YOLO':
+                # YOLO推論
+                results = model(preprocessed_frame, verbose=False)
+                return results
+            else:
+                # 一般的なモデル推論
+                return model(preprocessed_frame)
+                
+        except Exception as e:
+            inference_error = wrap_exception(
+                e, OptimizationError,
+                "Optimized inference failed",
+                details={
+                    'model_type': str(type(model)),
+                    'frame_shape': frame.shape if frame is not None else None
+                }
+            )
+            logger.error(f"Inference optimization error: {inference_error.to_dict()}")
             
-            # MediaPipe推論実行
-            results = pose_model.process(optimized_frame)
+            # エラー時は元のフレームで直接推論を試みる
+            try:
+                return model(frame)
+            except Exception as fallback_error:
+                raise wrap_exception(
+                    fallback_error, OptimizationError,
+                    "Fallback inference also failed",
+                    details={'original_error': str(e)}
+                )
+    
+    def _optimize_frame_preprocessing(self, frame: np.ndarray) -> np.ndarray:
+        """
+        フレーム前処理の最適化
+        
+        Args:
+            frame: 入力フレーム
             
-            inference_time = time.time() - inference_start
-            self.performance_monitor.record_inference_time(inference_time)
+        Returns:
+            前処理済みフレーム
+        """
+        if frame is None or frame.size == 0:
+            return frame
             
-            return results
+        try:
+            optimized_frame = frame
+            preprocessing = self.settings['preprocessing']
+            
+            # リサイズ処理
+            if preprocessing['resize_enabled']:
+                target_width = preprocessing['resize_width']
+                target_height = preprocessing['resize_height']
+                
+                # 元のサイズが既に小さい場合はリサイズしない
+                if frame.shape[1] > target_width or frame.shape[0] > target_height:
+                    optimized_frame = cv2.resize(
+                        optimized_frame, 
+                        (target_width, target_height), 
+                        interpolation=cv2.INTER_AREA
+                    )
+            
+            # 正規化処理
+            if preprocessing['normalize_enabled']:
+                # 0-255 -> 0-1の範囲に正規化
+                if optimized_frame.dtype != np.float32:
+                    optimized_frame = optimized_frame.astype(np.float32) / 255.0
+            
+            # 関心領域処理（実験的）
+            if preprocessing['roi_enabled']:
+                # 画像の中央部分を抽出（例: 中央70%）
+                h, w = optimized_frame.shape[:2]
+                roi_w, roi_h = int(w * 0.7), int(h * 0.7)
+                start_x = (w - roi_w) // 2
+                start_y = (h - roi_h) // 2
+                optimized_frame = optimized_frame[start_y:start_y+roi_h, start_x:start_x+roi_w]
+                
+            return optimized_frame
+        
+        except Exception as e:
+            preproc_error = wrap_exception(
+                e, OptimizationError,
+                "Frame preprocessing optimization failed",
+                details={'frame_shape': frame.shape if frame is not None else None}
+            )
+            logger.warning(f"Preprocessing error: {preproc_error.to_dict()}")
+            return frame  # エラー時は元のフレームを返す
+    
+    def optimize_mediapipe_pipeline(self, mediapipe_component: Any, frame: np.ndarray) -> Any:
+        """
+        MediaPipe推論パイプラインの最適化
+        
+        Args:
+            mediapipe_component: MediaPipeコンポーネント
+            frame: 入力フレーム（RGB形式）
+            
+        Returns:
+            MediaPipe推論結果
+        """
+        if not self.settings['frame_skipper']['enabled'] or not hasattr(self, 'frame_skipper'):
+            # フレームスキップが無効の場合は全フレーム処理
+            return mediapipe_component.process(frame)
+        
+        # フレームスキップ判定
+        if not self.frame_skipper.should_process_frame(self.current_fps):
+            return None
+        
+        # 推論実行と統計更新
+        start_time = time.time()
+        
+        # フレーム前処理
+        preprocessed_frame = self._optimize_frame_preprocessing(frame)
+        
+        # MediaPipe処理
+        results = mediapipe_component.process(preprocessed_frame)
+        
+        inference_time = time.time() - start_time
+        
+        # 統計更新
+        self._update_fps_stats()
+        self.inference_times.append(inference_time)
+        
+        return results
+    
+    def _update_fps_stats(self) -> None:
+        """FPS統計を更新"""
+        if not self.settings['fps_counter']['enabled']:
+            return
+        
+        current_time = time.time()
+        self.fps_times.append(current_time)
+        self.frame_counter += 1
+        
+        # FPSを計算（直近のframesのフレーム間隔から）
+        if len(self.fps_times) >= 2:
+            time_diff = self.fps_times[-1] - self.fps_times[0]
+            if time_diff > 0:
+                self.current_fps = (len(self.fps_times) - 1) / time_diff
+        
+        # 定期的にログに出力
+        fps_log_interval = 5.0  # 5秒ごと
+        if current_time - self.last_fps_update > fps_log_interval:
+            avg_inference_time = sum(self.inference_times) / len(self.inference_times) if self.inference_times else 0
+            logger.info(f"Performance stats: FPS={self.current_fps:.2f}, "
+                      f"Inference Time={avg_inference_time*1000:.1f}ms, "
+                      f"Skip Rate={self.frame_skipper.current_skip_rate if hasattr(self, 'frame_skipper') else 1}, "
+                      f"Memory={self.system_stats['memory_percent']:.1f}%, "
+                      f"CPU={self.system_stats['cpu_percent']:.1f}%")
+            self.last_fps_update = current_time
+            
+            # システム統計も更新
+            self._update_system_stats()
+    
+    def _update_system_stats(self) -> None:
+        """システムリソース使用状況を更新"""
+        try:
+            # メモリ使用率
+            memory = psutil.virtual_memory()
+            self.system_stats['memory_percent'] = memory.percent
+            self.system_stats['total_memory_mb'] = memory.total / (1024 * 1024)
+            self.system_stats['used_memory_mb'] = memory.used / (1024 * 1024)
+            
+            # CPU使用率
+            self.system_stats['cpu_percent'] = psutil.cpu_percent(interval=0.1)
+            
+            # GPU使用率（Torch経由で取得を試みる）
+            if torch.cuda.is_available():
+                try:
+                    # NVIDIAのGPUの場合
+                    self.system_stats['gpu_percent'] = float(torch.cuda.utilization())
+                except (AttributeError, RuntimeError):
+                    # 取得できない場合はPyTorchのメモリ使用量を取得
+                    if torch.cuda.is_initialized():
+                        gpu_mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)
+                        gpu_mem_reserved = torch.cuda.memory_reserved() / (1024 * 1024)
+                        self.system_stats['gpu_memory_allocated_mb'] = gpu_mem_allocated
+                        self.system_stats['gpu_memory_reserved_mb'] = gpu_mem_reserved
+            
+            self.system_stats['last_update'] = time.time()
             
         except Exception as e:
-            model_error = wrap_exception(
-                e, ModelError,
-                "MediaPipe pipeline optimization failed",
-                details={'fallback_to_standard': True}
+            stats_error = wrap_exception(
+                e, PerformanceError,
+                "Failed to update system stats",
+                details={'error_type': str(type(e))}
             )
-            logger.warning(f"MediaPipe optimization error: {model_error.to_dict()}")
-            # フォールバック: 標準推論
-            return pose_model.process(frame)
-            
-    def _optimize_frame_preprocessing(self, frame: np.ndarray) -> np.ndarray:
-        """フレーム前処理の最適化"""
-        # フレームサイズの最適化（解像度を下げて処理速度向上）
-        height, width = frame.shape[:2]
-        
-        # 解像度が高すぎる場合はリサイズ
-        max_width = 640
-        if width > max_width:
-            scale = max_width / width
-            new_width = max_width
-            new_height = int(height * scale)
-            frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
-            
-        return frame
-        
-    def _optimize_frame_for_mediapipe(self, frame: np.ndarray) -> np.ndarray:
-        """MediaPipe用フレーム最適化"""
-        # MediaPipeはRGBを期待するが、変換コストを最小化
-        if len(frame.shape) == 3 and frame.shape[2] == 3:
-            # BGR to RGB変換
-            return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        return frame
-        
+            logger.warning(f"System stats update error: {stats_error.to_dict()}")
+    
     def update_performance_stats(self) -> None:
-        """パフォーマンス統計を更新"""
-        self.performance_monitor.record_frame()
+        """パフォーマンス統計を更新（外部からの定期呼び出し用）"""
+        self._update_fps_stats()
         
+        # 一定間隔でシステム統計を更新
+        current_time = time.time()
+        stats_update_interval = 10.0  # 10秒ごと
+        if current_time - self.system_stats['last_update'] > stats_update_interval:
+            self._update_system_stats()
+    
     def get_performance_stats(self) -> Dict[str, Any]:
-        """パフォーマンス統計を取得"""
-        stats = self.performance_monitor.get_stats()
-        stats.update({
-            'skip_rate': self.frame_skipper.skip_rate,
-            'batch_enabled': self.batch_processor.enabled,
-            'optimization_active': True,
-            # 🆕 キャッシュ統計を追加
-            'cache_active': self.last_yolo_results is not None,
-            'cache_age': self.last_yolo_results_age,
-            'max_cache_age': self.max_cache_age
-        })
-        return stats
+        """
+        パフォーマンス統計を取得
         
-    def log_performance_summary(self) -> None:
-        """パフォーマンス統計をログ出力"""
-        stats = self.get_performance_stats()
-        logger.info(
-            f"Performance Stats - FPS: {stats['fps']:.1f}, "
-            f"Inference: {stats['avg_inference_ms']:.1f}ms, "
-            f"Memory: {stats['memory_mb']:.1f}MB, "
-            f"Skip Rate: {stats['skip_rate']}"
-        ) 
+        Returns:
+            Dict[str, Any]: 統計情報
+        """
+        avg_inference_time = sum(self.inference_times) / len(self.inference_times) if self.inference_times else 0
+        
+        stats = {
+            'fps': self.current_fps,
+            'frame_count': self.frame_counter,
+            'inference_time_ms': avg_inference_time * 1000,
+            'skip_rate': self.frame_skipper.current_skip_rate if hasattr(self, 'frame_skipper') else 1,
+            'memory_percent': self.system_stats['memory_percent'],
+            'cpu_percent': self.system_stats['cpu_percent'],
+            'gpu_percent': self.system_stats['gpu_percent'],
+            'used_memory_mb': self.system_stats['used_memory_mb'],
+            'total_memory_mb': self.system_stats['total_memory_mb'],
+            'settings': self.get_settings()
+        }
+        
+        return stats
+    
+    def get_settings(self) -> Dict[str, Any]:
+        """
+        現在の設定を取得
+        
+        Returns:
+            Dict[str, Any]: 設定内容
+        """
+        return self.settings.copy()
+    
+    def update_settings(self, new_settings: Dict[str, Any]) -> None:
+        """
+        設定を更新
+        
+        Args:
+            new_settings: 新しい設定
+        """
+        try:
+            # 既存の設定を更新（階層的）
+            for section, section_settings in new_settings.items():
+                if section in self.settings and isinstance(section_settings, dict):
+                    self.settings[section].update(section_settings)
+            
+            # FPSカウンターの更新
+            if 'fps_counter' in new_settings:
+                window_size = self.settings['fps_counter']['window_size']
+                self.fps_times = deque(list(self.fps_times)[-window_size:] if self.fps_times else [], maxlen=window_size)
+                self.inference_times = deque(list(self.inference_times)[-window_size:] if self.inference_times else [], maxlen=window_size)
+            
+            # フレームスキッパーの更新
+            if hasattr(self, 'frame_skipper') and 'frame_skipper' in new_settings:
+                self.frame_skipper.target_fps = self.settings['frame_skipper']['target_fps']
+                self.frame_skipper.min_fps = self.settings['frame_skipper']['min_fps']
+                self.frame_skipper.max_skip_rate = self.settings['frame_skipper']['max_skip_rate']
+                self.frame_skipper.adjustment_interval = self.settings['frame_skipper']['adjustment_interval']
+                self.frame_skipper.adaptive_mode = self.settings['frame_skipper']['adaptive_mode']
+            
+            logger.info("AIOptimizer settings updated successfully")
+            
+        except Exception as e:
+            update_error = wrap_exception(
+                e, OptimizationError,
+                "Failed to update AI optimizer settings",
+                details={'settings': new_settings}
+            )
+            logger.error(f"Settings update error: {update_error.to_dict()}")
+            raise update_error
+
+
+class FrameSkipper:
+    """
+    動的フレームスキップ機構
+    
+    現在のFPSに基づいて処理するフレームを動的に調整します。
+    """
+    
+    def __init__(self, 
+                 target_fps: float = 15.0,
+                 min_fps: float = 10.0, 
+                 max_skip_rate: int = 5,
+                 adjustment_interval: float = 2.0,
+                 adaptive_mode: bool = True):
+        """
+        初期化
+        
+        Args:
+            target_fps: 目標FPS
+            min_fps: 最小許容FPS
+            max_skip_rate: 最大スキップレート
+            adjustment_interval: 調整間隔（秒）
+            adaptive_mode: 適応モードの有効/無効
+        """
+        self.target_fps = target_fps
+        self.min_fps = min_fps
+        self.max_skip_rate = max_skip_rate
+        self.adjustment_interval = adjustment_interval
+        self.adaptive_mode = adaptive_mode
+        
+        # 現在の設定
+        self.current_skip_rate = 1  # 初期値は1（全フレーム処理）
+        self.frame_counter = 0
+        self.last_adjustment_time = time.time()
+        
+        logger.info(f"FrameSkipper initialized: target_fps={target_fps}, min_fps={min_fps}, "
+                   f"max_skip_rate={max_skip_rate}")
+        
+    def should_process_frame(self, current_fps: float) -> bool:
+        """
+        現在のフレームを処理すべきかどうかを判定
+        
+        Args:
+            current_fps: 現在のFPS
+            
+        Returns:
+            bool: 処理すべきならTrue、スキップすべきならFalse
+        """
+        self.frame_counter += 1
+        
+        # 適応モードが無効の場合は、単純なカウンターベースのスキップ
+        if not self.adaptive_mode:
+            return self.frame_counter % self.current_skip_rate == 0
+        
+        # 定期的にスキップレートを調整
+        current_time = time.time()
+        if current_time - self.last_adjustment_time > self.adjustment_interval:
+            self._adjust_skip_rate(current_fps)
+            self.last_adjustment_time = current_time
+        
+        # カウンターに基づくスキップ
+        return self.frame_counter % self.current_skip_rate == 0
+    
+    def _adjust_skip_rate(self, current_fps: float) -> None:
+        """
+        現在のFPSに基づいてスキップレートを調整
+        
+        Args:
+            current_fps: 現在のFPS
+        """
+        if current_fps <= 0:
+            return  # 有効なFPSがない場合は調整しない
+        
+        old_skip_rate = self.current_skip_rate
+        
+        if current_fps < self.min_fps:
+            # FPSが低すぎる場合はスキップレートを上げる
+            self.current_skip_rate = min(self.current_skip_rate + 1, self.max_skip_rate)
+        elif current_fps > self.target_fps * 1.2:
+            # FPSが十分高い場合はスキップレートを下げる
+            self.current_skip_rate = max(self.current_skip_rate - 1, 1)
+        
+        # スキップレートが変化した場合にログ出力
+        if old_skip_rate != self.current_skip_rate:
+            logger.info(f"Skip rate adjusted: {old_skip_rate} -> {self.current_skip_rate} "
+                      f"(current FPS: {current_fps:.1f}, target: {self.target_fps})")
+    
+    def reset(self) -> None:
+        """状態をリセット"""
+        self.current_skip_rate = 1
+        self.frame_counter = 0
+        self.last_adjustment_time = time.time()
+        logger.info("FrameSkipper reset to initial state") 
