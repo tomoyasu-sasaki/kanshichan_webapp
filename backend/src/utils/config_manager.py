@@ -20,12 +20,6 @@ DEFAULT_CONFIG = {
         'absence': {'threshold_seconds': 5},
         'smartphone_usage': {'threshold_seconds': 3}
     },
-    'line': {
-        'enabled': False,
-        'token': 'YOUR_LINE_NOTIFY_TOKEN',
-        'channel_secret': 'YOUR_CHANNEL_SECRET', # (現在は未使用かも)
-        'user_id': 'YOUR_LINE_USER_ID' # (現在は未使用かも)
-    },
     'llm': {
         'enabled': False,
         'model_name': 'TinyLlama/TinyLlama-1.1B-Chat-v1.0',

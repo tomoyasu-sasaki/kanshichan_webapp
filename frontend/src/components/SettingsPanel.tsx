@@ -28,7 +28,6 @@ import { logger } from '../utils/logger';
 interface Settings {
   absence_threshold: number;
   smartphone_threshold: number;
-  message_extensions: { [key: string]: number };
   landmark_settings: {
     [key: string]: {
       enabled: boolean;
@@ -49,7 +48,6 @@ export const SettingsPanel = () => {
   const [settings, setSettings] = useState<Settings>({
     absence_threshold: 5,
     smartphone_threshold: 3,
-    message_extensions: {},
     landmark_settings: {},
     detection_objects: {}
   });
@@ -67,7 +65,6 @@ export const SettingsPanel = () => {
       const fetchedSettings = {
         absence_threshold: response.data.absence_threshold,
         smartphone_threshold: response.data.smartphone_threshold,
-        message_extensions: response.data.message_extensions,
         landmark_settings: response.data.landmark_settings,
         detection_objects: response.data.detection_objects
       };
@@ -131,7 +128,6 @@ export const SettingsPanel = () => {
           settings: {
             absence_threshold: settings.absence_threshold,
             smartphone_threshold: settings.smartphone_threshold,
-            message_extensions_count: Object.keys(settings.message_extensions).length,
             landmark_settings_count: Object.keys(settings.landmark_settings).length,
             detection_objects_count: Object.keys(settings.detection_objects).length
           }
@@ -142,7 +138,6 @@ export const SettingsPanel = () => {
       const requestData = {
         absence_threshold: settings.absence_threshold,
         smartphone_threshold: settings.smartphone_threshold,
-        message_extensions: settings.message_extensions,
         landmark_settings: settings.landmark_settings,
         detection_objects: settings.detection_objects
       };
@@ -203,29 +198,6 @@ export const SettingsPanel = () => {
         component: 'SettingsPanel', 
         action: 'threshold_change',
         field,
-        oldValue,
-        newValue: value
-      }, 
-      'SettingsPanel'
-    );
-  };
-
-  const handleMessageExtensionChange = async (message: string, value: number) => {
-    const oldValue = settings.message_extensions[message];
-    
-    setSettings(prev => ({
-      ...prev,
-      message_extensions: {
-        ...prev.message_extensions,
-        [message]: value
-      }
-    }));
-
-    await logger.debug('SettingsPanel: メッセージ延長設定変更', 
-      { 
-        component: 'SettingsPanel', 
-        action: 'message_extension_change',
-        message,
         oldValue,
         newValue: value
       }, 
@@ -329,30 +301,6 @@ export const SettingsPanel = () => {
             </NumberInputStepper>
           </NumberInput>
         </FormControl>
-
-        <Divider my={4} />
-
-        <Heading size="md">LINEメッセージ設定</Heading>
-        <Text fontSize="sm" color="gray.600">
-          各メッセージ受信時の不在検知閾値の延長時間（秒）
-        </Text>
-
-        {Object.entries(settings.message_extensions).map(([message, extension]) => (
-          <FormControl key={message}>
-            <FormLabel>{message}</FormLabel>
-            <NumberInput
-              value={extension}
-              min={0}
-              onChange={(_, value) => handleMessageExtensionChange(message, value)}
-            >
-              <NumberInputField />
-              <NumberInputStepper>
-                <NumberIncrementStepper />
-                <NumberDecrementStepper />
-              </NumberInputStepper>
-            </NumberInput>
-          </FormControl>
-        ))}
 
         <Divider my={4} />
 

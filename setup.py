@@ -10,7 +10,6 @@ common_requires = [
     "transformers",
     "openai",
     "flask",
-    "line-bot-sdk",
     "pyyaml",
     "Pillow",
     "screeninfo",

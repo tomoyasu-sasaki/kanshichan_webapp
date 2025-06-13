@@ -93,7 +93,7 @@ KanshiChan/
 │   ├── src/
 │   │   ├── config/         # ⚙️ 設定ファイル (config.yaml)
 │   │   ├── core/           # 🧠 AIコアエンジン (検出, 最適化)
-│   │   ├── services/       # 🚀 外部連携サービス (TTS, LINE)
+│   │   ├── services/       # 🚀 外部連携サービス (TTS)
 │   │   ├── web/            # 🌐 Web API (Flask, WebSocket)
 │   │   ├── utils/          # 🛠️ 共通ユーティリティ (ロガー, 例外処理)
 │   │   └── main.py         # ▶️ アプリケーション起動スクリプト

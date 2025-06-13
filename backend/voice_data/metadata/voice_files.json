@@ -729,5 +729,39 @@
     "language": "ja",
     "file_hash": "46f7815eb073eb3c6d8a92503d765502",
     "display_name": null
+  },
+  "519812a313eb6389": {
+    "file_path": "/Users/tmys-sasaki/Projects/Private/KanshiChan/backend/voice_data/cache/519812a313eb6389_tts_output_20250613_081956_157.wav.gz",
+    "original_filename": "tts_output_20250613_081956_157.wav",
+    "file_size": 944339,
+    "duration_seconds": 5.77015873015873,
+    "sample_rate": 44100,
+    "channels": 1,
+    "created_at": "2025-06-13T08:21:40.861691",
+    "audio_format": "wav",
+    "compressed": true,
+    "voice_sample_for": null,
+    "text_content": "現在の作業ペースを維持しながら、更なる改善を目指しましょう",
+    "emotion": "custom",
+    "language": "ja",
+    "file_hash": "0097b65b62e15cb84935a0cd627db7f7",
+    "display_name": null
+  },
+  "54427974e61d7297": {
+    "file_path": "/Users/tmys-sasaki/Projects/Private/KanshiChan/backend/voice_data/cache/54427974e61d7297_tts_output_20250613_082253_592.wav.gz",
+    "original_filename": "tts_output_20250613_082253_592.wav",
+    "file_size": 3037644,
+    "duration_seconds": 18.517913832199547,
+    "sample_rate": 44100,
+    "channels": 1,
+    "created_at": "2025-06-13T08:31:42.722921",
+    "audio_format": "wav",
+    "compressed": true,
+    "voice_sample_for": null,
+    "text_content": "Good morning! Today is going to be a fantastic day! 分析結果を見ると、朝の活動レベルが高く、集中力は中程度です。",
+    "emotion": "custom",
+    "language": "ja",
+    "file_hash": "bd0c00ccf4fa28f89465f72f329d7adc",
+    "display_name": null
   }
 }
