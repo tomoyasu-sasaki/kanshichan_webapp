@@ -7,6 +7,7 @@ KanshiChan Webアプリケーションのメインエントリーポイント
 import os
 import sys
 from pathlib import Path
+from datetime import datetime
 
 # tqdmの進捗バー表示を全体的に無効化
 os.environ['TQDM_DISABLE'] = '1'
@@ -19,6 +20,9 @@ tqdm.tqdm.disable = True
 from flask import Flask, request, jsonify, send_from_directory, current_app
 from flask_cors import CORS
 from flask_socketio import SocketIO
+from flask_wtf.csrf import CSRFProtect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from web.api import api
 from web.routes import (
     basic_analysis_bp, advanced_analysis_bp, prediction_analysis_bp, realtime_analysis_bp,
@@ -27,7 +31,9 @@ from web.routes import (
     behavior_bp, monitor_bp
 )
 from web.routes.monitor_routes import init_monitor_service
-from web.websocket import init_websocket, socketio, init_audio_streaming
+from web.websocket import (
+    init_websocket, socketio, init_audio_streaming, init_system_metrics_broadcast
+)
 from utils.logger import setup_logger
 from utils.config_manager import ConfigManager
 from utils.exceptions import (
@@ -60,6 +66,23 @@ def create_app(config_manager: ConfigManager):
         
     app = Flask(__name__, static_folder='../../../frontend/dist')
     
+    # セキュリティ強化: シークレットキーの設定
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24).hex())
+    
+    # セキュリティ強化: CSRF保護を有効化
+    csrf = CSRFProtect(app)
+    # WebSocketとファイルアップロード向けにCSRF保護を除外するルート
+    csrf.exempt('web.routes.tts_file_bp.upload_file')
+    
+    # セキュリティ強化: レート制限の設定
+    limiter = Limiter(
+        get_remote_address,
+        app=app,
+        default_limits=["200 per day", "50 per hour"],
+        strategy="fixed-window",
+        storage_uri="memory://",
+    )
+    
     # ConfigManagerをFlaskアプリケーションに注入
     app.config['config_manager'] = config_manager
     
@@ -70,9 +93,14 @@ def create_app(config_manager: ConfigManager):
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # CORS設定
+    # 環境変数からCORS許可オリジンを取得
+    cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', '*')
+    # カンマ区切りの文字列を配列に変換（'*'の場合はそのまま）
+    origins = [origin.strip() for origin in cors_origins.split(',')] if cors_origins != '*' else '*'
+    
     CORS(app, resources={
-        r"/api/*": {"origins": "*"},
-        r"/socket.io/*": {"origins": "*"}
+        r"/api/*": {"origins": origins},
+        r"/socket.io/*": {"origins": origins}
     })
     
     # 設定を取得
@@ -89,6 +117,12 @@ def create_app(config_manager: ConfigManager):
     except Exception as e:
         logger.error(f"❌ Failed to initialize audio streaming system: {e}")
         # 音声配信システムの初期化失敗は致命的ではないため継続
+        
+    try:
+        init_system_metrics_broadcast()
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize system metrics broadcast: {e}")
+        # システムメトリクス配信の初期化失敗は致命的ではないため継続
     
     # TTS サービス初期化
     try:
@@ -129,9 +163,17 @@ def create_app(config_manager: ConfigManager):
     app.register_blueprint(behavior_bp)
     app.register_blueprint(monitor_bp)
     
+    # レート制限の適用
+    # 主要なAPIエンドポイントに対するレート制限の設定
+    limiter.limit("100 per minute")(monitor_bp)
+    limiter.limit("100 per minute")(api)
+    limiter.limit("100 per minute")(basic_analysis_bp)
+    limiter.limit("60 per minute")(advanced_analysis_bp)
+    limiter.limit("30 per minute")(tts_synthesis_bp)
+    
     # サービスの初期化状況を集約してロギング
     initialized_services = [
-        "WebSocket", "Audio Streaming", "TTS", "Monitor"
+        "WebSocket", "Audio Streaming", "System Metrics Broadcast", "TTS", "Monitor"
     ]
     total_services = len(initialized_services)
     logger.info(f"🎉 Application started successfully with all {total_services} services initialized")
@@ -170,6 +212,28 @@ def create_app(config_manager: ConfigManager):
             )
             logger.error(f"Frontend file error: {frontend_error.to_dict()}")
             return jsonify({"error": "Frontend not found"}), 404
+            
+    # CSRFエラーハンドラ
+    @app.errorhandler(CSRFProtect.error_handler)
+    def handle_csrf_error(e):
+        return jsonify({
+            'status': 'error',
+            'error': 'CSRF token validation failed',
+            'code': 'CSRF_ERROR',
+            'details': {'csrf': 'Invalid or missing CSRF token'},
+            'timestamp': datetime.utcnow().isoformat()
+        }), 400
+    
+    # レート制限エラーハンドラ
+    @app.errorhandler(429)
+    def handle_ratelimit_error(e):
+        return jsonify({
+            'status': 'error',
+            'error': 'Rate limit exceeded',
+            'code': 'RATE_LIMIT_ERROR',
+            'details': {'message': str(e.description)},
+            'timestamp': datetime.utcnow().isoformat()
+        }), 429
     
     # ルートパス用の明示的なルート
     @app.route('/')
