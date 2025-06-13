@@ -25,9 +25,6 @@ conditions:
     threshold_seconds: 5
 
 # テスト時は各種外部連携を無効化
-line:
-  enabled: false
-  
 llm:
   enabled: false
 

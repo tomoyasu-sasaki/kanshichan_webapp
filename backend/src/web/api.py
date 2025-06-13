@@ -27,17 +27,12 @@ def get_settings():
         return jsonify(create_error_response(init_error, include_details=True)), 500
 
     # 設定をすべてConfigManagerから取得する
-    message_sound_mapping = config_manager.get_message_sound_mapping()
     landmark_settings = config_manager.get_landmark_settings()
     detection_objects = config_manager.get_detection_objects()
 
     return jsonify({
         'absence_threshold': config_manager.get('conditions.absence.threshold_seconds'),
         'smartphone_threshold': config_manager.get('conditions.smartphone_usage.threshold_seconds'),
-        'message_extensions': {
-            message: data['extension']
-            for message, data in message_sound_mapping.items()
-        },
         'landmark_settings': landmark_settings,
         'detection_objects': detection_objects
     })
@@ -88,23 +83,6 @@ def update_settings():
             )
             logger.error(f"Smartphone threshold validation error: {validation_error.to_dict()}")
             return jsonify(create_error_response(validation_error)), 400
-    
-    if 'message_extensions' in data:
-        message_sound_mapping = config_manager.get_message_sound_mapping()
-        for message, extension in data['message_extensions'].items():
-            if message in message_sound_mapping:
-                try:
-                    # 設定をConfigManagerを通じて更新
-                    new_extension = int(extension)
-                    config_manager.set(f'message_sound_mapping.{message}.extension', new_extension)
-                    config_updated = True
-                except ValueError as e:
-                    validation_error = wrap_exception(
-                        e, ValidationError,
-                        f"Invalid extension value for {message}",
-                        details={'message': message, 'extension': extension, 'expected_type': 'int'}
-                    )
-                    logger.warning(f"Extension validation error: {validation_error.to_dict()}")
     
     if 'landmark_settings' in data:
         for key, settings in data['landmark_settings'].items():
