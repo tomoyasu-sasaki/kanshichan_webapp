@@ -4,7 +4,11 @@ from ultralytics import YOLO
 import mediapipe as mp
 import os
 import numpy as np
-from typing import Dict, Any, Optional
+import asyncio
+import threading
+import time
+from typing import Dict, Any, Optional, List, Tuple
+from datetime import datetime
 from utils.logger import setup_logger
 from utils.config_manager import ConfigManager
 from utils.exceptions import (
@@ -28,6 +32,7 @@ class ObjectDetector:
     - MediaPipe初期化と推論
     - 検出結果の統合処理
     - 検出結果の平滑化（点滅抑制）
+    - 検出結果のデータベース保存
     """
     
     def __init__(self, config_manager: Optional[ConfigManager] = None):
@@ -82,6 +87,19 @@ class ObjectDetector:
                 )
                 logger.warning(f"DetectionSmoother error: {smoothing_error.to_dict()}")
                 self.detection_smoother = None
+            
+            # 検出ログ保存設定
+            self.log_detections = config_manager.get('detector.log_detections', False) if config_manager else False
+            self.camera_id = config_manager.get('camera.id', 'main') if config_manager else 'main'
+            self.log_queue = []
+            self.log_thread = None
+            self.log_thread_running = False
+            self.log_interval = config_manager.get('detector.log_interval', 300) if config_manager else 300  # 5分ごと
+            self.last_summary_time = datetime.utcnow()
+            
+            # 検出ログ保存スレッドの起動（設定が有効な場合）
+            if self.log_detections:
+                self._start_log_thread()
             
             logger.info("ObjectDetector initialized successfully.")
             
@@ -272,91 +290,70 @@ class ObjectDetector:
         フレーム内の物体を検出
         
         Args:
-            frame: 入力フレーム（BGR形式）
+            frame: 検出対象の画像フレーム
             
         Returns:
-            Dict[str, Any]: 検出結果の辞書
+            検出結果を含む辞書
         """
-        results = {
-            'detections': {},
-            'pose_landmarks': None,
-            'hands_landmarks': None,
-            'face_landmarks': None,
-            'person_detected': False,
-            'frame_info': {
-                'width': frame.shape[1] if frame is not None else 0,
-                'height': frame.shape[0] if frame is not None else 0,
-                'channels': frame.shape[2] if frame is not None and len(frame.shape) > 2 else 0
-            }
-        }
-        
         if frame is None or frame.size == 0:
-            logger.warning("Empty frame received for detection")
-            return results
+            logger.warning("Empty frame received for object detection")
+            return self._create_empty_results()
             
         try:
-            if self.use_yolo or self.use_mediapipe:
-                logger.debug(f"Starting object detection on frame {results['frame_info']['width']}x{results['frame_info']['height']} - MediaPipe: {self.use_mediapipe}, YOLO: {self.use_yolo}")
+            # AIオプティマイザーがある場合、最適化処理を適用
+            if self.ai_optimizer:
+                # フレームスキップ判定
+                if self.ai_optimizer.should_skip_frame():
+                    return self._create_empty_results()
+                    
+                # パフォーマンスモニタリング開始
+                self.ai_optimizer.start_inference_timer()
+                
+            # 結果格納用辞書
+            results = {
+                'detections': [],
+                'timestamp': datetime.now().isoformat(),
+                'frame_id': id(frame),
+                'mediapipe_results': {},
+                'yolo_results': {}
+            }
             
-            # BGR形式からRGB形式に変換（MediaPipe用）
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
-            # MediaPipeでの検出
+            # MediaPipe検出（有効な場合）
             if self.use_mediapipe:
+                # RGB変換（MediaPipeはRGBを使用）
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 self._detect_with_mediapipe(rgb_frame, results)
             
-            # YOLO物体検出（元のBGRフレームを使用）
-            if self.use_yolo and hasattr(self, 'model'):
+            # YOLO検出（有効な場合）
+            if self.use_yolo:
                 self._detect_with_yolo_bgr(frame, results)
             
-            # 検出システムが全て無効な場合、強制的に人を検出したことにする
-            if not self.use_mediapipe and not self.use_yolo:
-                results['person_detected'] = True
-            
-            # パフォーマンス統計の更新
-            if self.ai_optimizer:
-                self.ai_optimizer.update_performance_stats()
-            
-            # 検出結果の平滑化処理（点滅抑制）
+            # 検出結果の平滑化処理（有効な場合）
             if self.detection_smoother:
-                try:
-                    results = self.detection_smoother.smooth_detections(results)
-                    logger.debug("Detection smoothing applied successfully")
-                except Exception as e:
-                    smoothing_error = wrap_exception(
-                        e, SmoothingError,
-                        "Detection smoothing failed, using original results",
-                        details={
-                            'frame_info': results.get('frame_info', {}),
-                            'detection_count': len(results.get('detections', {})),
-                            'fallback_to_original': True
-                        }
-                    )
-                    logger.warning(f"Smoothing error: {smoothing_error.to_dict()}")
-                    # エラー時は元の結果をそのまま使用
+                results = self.detection_smoother.smooth_detections(results)
             
-            # 結果要約のログ
-            logger.debug(f"Detection completed - Person: {results['person_detected']}, "
-                        f"Pose: {results['pose_landmarks'] is not None}, "
-                        f"Hands: {results['hands_landmarks'] is not None}, "
-                        f"Face: {results['face_landmarks'] is not None}, "
-                        f"Objects: {list(results['detections'].keys())}")
-            
+            # AIオプティマイザーがある場合、パフォーマンス測定終了
+            if self.ai_optimizer:
+                self.ai_optimizer.end_inference_timer()
+                
+                # パフォーマンス情報を結果に追加
+                performance_metrics = self.ai_optimizer.get_performance_metrics()
+                results['performance'] = performance_metrics
+                
+            # 検出ログ保存（設定が有効な場合）
+            if self.log_detections and results.get('detections'):
+                self._queue_detection_logs(results)
+                
             return results
-        
+            
         except Exception as e:
             detection_error = wrap_exception(
                 e, DetectionError,
-                "Unexpected error during object detection processing",
-                details={
-                    'frame_shape': frame.shape if frame is not None else None,
-                    'mediapipe_enabled': self.use_mediapipe,
-                    'yolo_enabled': self.use_yolo,
-                    'fallback_result': True
-                }
+                "Error during object detection",
+                details={'frame_shape': frame.shape if frame is not None else None}
             )
-            logger.error(f"Detection processing error: {detection_error.to_dict()}")
-            return results
+            logger.error(f"Detection error: {detection_error.to_dict()}")
+            return self._create_empty_results()
 
     def _detect_with_mediapipe(self, rgb_frame: np.ndarray, results: Dict[str, Any]) -> None:
         """
@@ -547,3 +544,225 @@ class ObjectDetector:
             logger.info(f"Settings reloaded: MediaPipe={'enabled' if self.use_mediapipe else 'disabled'}, YOLO={'enabled' if self.use_yolo else 'disabled'}")
         else:
             logger.warning("ConfigManager not available, cannot reload settings.") 
+
+    def _queue_detection_logs(self, results: Dict[str, Any]) -> None:
+        """
+        検出結果をログキューに追加
+        
+        Args:
+            results: 検出結果
+        """
+        try:
+            frame_id = results.get('frame_id', 0)
+            timestamp = datetime.utcnow()
+            
+            # 各検出オブジェクトをキューに追加
+            for detection in results.get('detections', []):
+                log_entry = {
+                    'timestamp': timestamp,
+                    'camera_id': self.camera_id,
+                    'frame_id': frame_id,
+                    'object_class': detection.get('class_name', 'unknown'),
+                    'confidence': detection.get('confidence', 0.0),
+                    'bbox': detection.get('bbox', (0, 0, 0, 0)),
+                    'is_smoothed': detection.get('is_smoothed', False),
+                    'is_interpolated': detection.get('is_interpolated', False),
+                    'additional_data': {
+                        'performance': results.get('performance', {})
+                    }
+                }
+                self.log_queue.append(log_entry)
+                
+            # キューが一定サイズを超えたら即時保存
+            if len(self.log_queue) >= 100:
+                self._save_detection_logs_async()
+                
+            # サマリー作成時間チェック
+            current_time = datetime.utcnow()
+            if (current_time - self.last_summary_time).total_seconds() >= self.log_interval:
+                self._create_detection_summary_async()
+                self.last_summary_time = current_time
+                
+        except Exception as e:
+            logger.error(f"Error queueing detection logs: {str(e)}")
+    
+    def _start_log_thread(self) -> None:
+        """検出ログ保存スレッドを開始"""
+        if self.log_thread_running:
+            return
+            
+        self.log_thread_running = True
+        self.log_thread = threading.Thread(target=self._log_thread_worker, daemon=True)
+        self.log_thread.start()
+        logger.info("Detection log thread started")
+    
+    def _log_thread_worker(self) -> None:
+        """検出ログ保存スレッドのワーカー関数"""
+        try:
+            while self.log_thread_running:
+                # 定期的にログを保存
+                if self.log_queue:
+                    self._save_detection_logs_sync()
+                
+                # スレッド休止
+                time.sleep(10)  # 10秒ごとにチェック
+                
+        except Exception as e:
+            logger.error(f"Error in log thread worker: {str(e)}")
+        finally:
+            logger.info("Detection log thread stopped")
+    
+    def _save_detection_logs_async(self) -> None:
+        """検出ログを非同期で保存（メインスレッドをブロックしない）"""
+        if not self.log_queue:
+            return
+            
+        # キューのコピーを作成して空にする
+        queue_copy = self.log_queue.copy()
+        self.log_queue = []
+        
+        # 別スレッドで保存処理を実行
+        thread = threading.Thread(
+            target=self._save_logs_to_db,
+            args=(queue_copy,),
+            daemon=True
+        )
+        thread.start()
+    
+    def _save_detection_logs_sync(self) -> None:
+        """検出ログを同期的に保存（ログスレッド内で使用）"""
+        if not self.log_queue:
+            return
+            
+        # キューのコピーを作成して空にする
+        queue_copy = self.log_queue.copy()
+        self.log_queue = []
+        
+        # DBに保存
+        self._save_logs_to_db(queue_copy)
+    
+    def _save_logs_to_db(self, log_entries: List[Dict[str, Any]]) -> None:
+        """
+        検出ログをデータベースに保存
+        
+        Args:
+            log_entries: 保存する検出ログエントリのリスト
+        """
+        try:
+            # モデルのインポート（循環インポート回避のため）
+            from models.detection_log import DetectionLog
+            
+            # 各ログエントリをDBに保存
+            for entry in log_entries:
+                log = DetectionLog.create_from_detection(
+                    camera_id=entry['camera_id'],
+                    frame_id=entry['frame_id'],
+                    object_class=entry['object_class'],
+                    confidence=entry['confidence'],
+                    bbox=entry['bbox'],
+                    is_smoothed=entry['is_smoothed'],
+                    is_interpolated=entry['is_interpolated'],
+                    additional_data=entry['additional_data']
+                )
+                log.save()
+                
+            logger.debug(f"Saved {len(log_entries)} detection logs to database")
+            
+        except Exception as e:
+            logger.error(f"Error saving detection logs to database: {str(e)}")
+    
+    def _create_detection_summary_async(self) -> None:
+        """検出サマリーを非同期で作成"""
+        # 別スレッドでサマリー作成処理を実行
+        thread = threading.Thread(
+            target=self._create_detection_summary,
+            daemon=True
+        )
+        thread.start()
+    
+    def _create_detection_summary(self) -> None:
+        """検出サマリーを作成してデータベースに保存"""
+        try:
+            # モデルのインポート（循環インポート回避のため）
+            from models.detection_log import DetectionLog
+            from models.detection_summary import DetectionSummary
+            
+            # 集計期間
+            end_time = datetime.utcnow()
+            start_time = self.last_summary_time
+            
+            # 期間内のログを取得
+            logs = DetectionLog.query.filter(
+                DetectionLog.timestamp >= start_time,
+                DetectionLog.timestamp <= end_time,
+                DetectionLog.camera_id == self.camera_id
+            ).all()
+            
+            if not logs:
+                logger.debug("No detection logs found for summary creation")
+                return
+                
+            # オブジェクトクラス別の集計
+            object_stats = {}
+            total_frames = len(set(log.frame_id for log in logs))
+            
+            for log in logs:
+                obj_class = log.object_class
+                if obj_class not in object_stats:
+                    object_stats[obj_class] = {'count': 0, 'confidence_sum': 0.0}
+                    
+                object_stats[obj_class]['count'] += 1
+                object_stats[obj_class]['confidence_sum'] += log.confidence
+            
+            # 平均信頼度の計算
+            for obj_class, stats in object_stats.items():
+                if stats['count'] > 0:
+                    stats['avg_confidence'] = stats['confidence_sum'] / stats['count']
+                    del stats['confidence_sum']
+                else:
+                    stats['avg_confidence'] = 0.0
+                    del stats['confidence_sum']
+            
+            # サマリーの作成と保存
+            summary = DetectionSummary.create_summary(
+                camera_id=self.camera_id,
+                start_time=start_time,
+                end_time=end_time,
+                total_frames=total_frames,
+                object_stats=object_stats,
+                metadata={
+                    'ai_optimizer_enabled': self.ai_optimizer is not None,
+                    'detection_smoother_enabled': self.detection_smoother is not None
+                }
+            )
+            summary.save()
+            
+            # サマリーに関連するログを関連付け
+            for log in logs:
+                log.summary_id = summary.id
+                log.save()
+                
+            logger.info(f"Created detection summary for period {start_time} to {end_time}")
+            
+        except Exception as e:
+            logger.error(f"Error creating detection summary: {str(e)}")
+
+    def _create_empty_results(self) -> Dict[str, Any]:
+        """
+        空の検出結果を作成
+        
+        Returns:
+            Dict[str, Any]: 空の検出結果
+        """
+        return {
+            'detections': {},
+            'pose_landmarks': None,
+            'hands_landmarks': None,
+            'face_landmarks': None,
+            'person_detected': False,
+            'frame_info': {
+                'width': 0,
+                'height': 0,
+                'channels': 0
+            }
+        } 
