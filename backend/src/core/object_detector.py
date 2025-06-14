@@ -77,8 +77,14 @@ class ObjectDetector:
             
             # 検出結果平滑化システムの初期化
             try:
-                self.detection_smoother = DetectionSmoother(config_manager)
-                logger.info("DetectionSmoother integrated successfully")
+                # 設定で無効化されている場合はスキップ
+                smoother_enabled = config_manager.get('detection_smoother.enabled', True) if config_manager else True
+                if smoother_enabled:
+                    self.detection_smoother = DetectionSmoother(config_manager)
+                    logger.info("DetectionSmoother integrated successfully")
+                else:
+                    self.detection_smoother = None
+                    logger.info("DetectionSmoother disabled by configuration")
             except Exception as e:
                 smoothing_error = wrap_exception(
                     e, SmoothingError,
@@ -491,7 +497,11 @@ class ObjectDetector:
                         scaled_x2 = int(x2 * scale_x)
                         scaled_y2 = int(y2 * scale_y)
                         
-                        logger.debug(f"物体を検出: {obj_settings.get('name')} (confidence: {conf:.3f}, bbox: ({scaled_x1}, {scaled_y1}, {scaled_x2}, {scaled_y2}))")
+                        # スマートフォン検出時は特別にINFOレベルでログ出力
+                        if obj_key == 'smartphone':
+                            logger.debug(f"📱 スマートフォン検出: {obj_settings.get('name')} (信頼度: {conf:.3f}, 座標: ({scaled_x1}, {scaled_y1}, {scaled_x2}, {scaled_y2}))")
+                        else:
+                            logger.debug(f"物体を検出: {obj_settings.get('name')} (confidence: {conf:.3f}, bbox: ({scaled_x1}, {scaled_y1}, {scaled_x2}, {scaled_y2}))")
                         
                         detections.append({
                             'bbox': (scaled_x1, scaled_y1, scaled_x2, scaled_y2),

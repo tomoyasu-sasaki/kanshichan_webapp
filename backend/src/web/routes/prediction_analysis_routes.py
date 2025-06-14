@@ -52,7 +52,14 @@ def get_predictions():
         target_metrics = [m.strip() for m in metrics_str.split(',') if m.strip()]
         
         # バリデーション
-        valid_metrics = ['focus_score', 'posture_score', 'activity_level', 'distraction_level']
+        valid_metrics = [
+            'focus_score',
+            'posture_score',
+            'activity_level',
+            'distraction_level',
+            'productivity_score',
+            'fatigue_level'
+        ]
         invalid_metrics = [m for m in target_metrics if m not in valid_metrics]
         
         if invalid_metrics:

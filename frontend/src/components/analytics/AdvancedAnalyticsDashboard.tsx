@@ -83,13 +83,13 @@ interface PerformanceData {
 
 interface AdvancedAnalyticsDashboardProps {
   userId?: string;
-  timeframe?: 'hour' | 'day' | 'week' | 'month';
+  timeframe?: 'hourly' | 'daily' | 'weekly';
   isRealtime?: boolean;
 }
 
 export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
   userId = 'default',
-  timeframe = 'day',
+  timeframe = 'daily',
   isRealtime = true
 }) => {
   // State management
@@ -98,7 +98,9 @@ export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProp
   const [predictiveInsights, setPredictiveInsights] = useState<PredictiveInsight[]>([]);
   const [performanceMetrics, setPerformanceMetrics] = useState<PerformanceMetric[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedTimeframe, setSelectedTimeframe] = useState(timeframe);
+  const [selectedTimeframe, setSelectedTimeframe] = useState<
+    'hourly' | 'daily' | 'weekly'
+  >(timeframe);
   const [realtimeEnabled, setRealtimeEnabled] = useState(isRealtime);
   const [error, setError] = useState<string | null>(null);
 
@@ -116,7 +118,9 @@ export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProp
       setError(null);
 
       // Fetch time series data
-      const timeseriesResponse = await fetch(`${API_BASE_URL}/analysis/trends?timeframe=${selectedTimeframe}&user_id=${userId}`);
+      const timeseriesResponse = await fetch(
+        `${API_BASE_URL}/analysis/trends?timeframe=${selectedTimeframe}&user_id=${userId}`
+      );
       if (!timeseriesResponse.ok) throw new Error('Failed to fetch analytics data');
       const timeseriesData = await timeseriesResponse.json();
 
@@ -415,14 +419,13 @@ export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProp
             </FormControl>
             <Select 
               value={selectedTimeframe} 
-              onChange={(e) => setSelectedTimeframe(e.target.value as 'hour' | 'day' | 'week' | 'month')}
+              onChange={(e) => setSelectedTimeframe(e.target.value as 'hourly' | 'daily' | 'weekly')}
               size="sm"
               w="auto"
             >
-              <option value="hour">1時間</option>
-              <option value="day">1日</option>
-              <option value="week">1週間</option>
-              <option value="month">1ヶ月</option>
+              <option value="hourly">1時間</option>
+              <option value="daily">1日</option>
+              <option value="weekly">1週間</option>
             </Select>
           </HStack>
         </HStack>
