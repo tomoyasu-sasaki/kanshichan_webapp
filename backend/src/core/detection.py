@@ -68,7 +68,11 @@ class DetectionManager:
                              'confidence': det.get('confidence'),
                              'bbox': det.get('bbox') # FrameProcessorとの互換性のため'bbox'キーを使用
                          })
-                         logger.debug(f"Added {label} detection with bbox: {det.get('bbox')}")
+                         # スマートフォン検出時にINFOレベルでログ出力
+                         if label == 'smartphone':
+                             logger.debug(f"🔄 DetectionManager: スマートフォン検出をリスト形式に変換 (信頼度: {det.get('confidence', 0):.3f})")
+                         else:
+                             logger.debug(f"Added {label} detection with bbox: {det.get('bbox')}")
 
             # 3. ランドマーク情報をリストに追加（個別エントリとして）
             # FrameProcessorとの互換性のため、各ランドマークタイプを個別のエントリとして追加
