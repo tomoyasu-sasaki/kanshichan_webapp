@@ -99,7 +99,7 @@ class StateManager:
             self.last_phone_detection_time = current_time # 最後に検出された時刻を更新
             if not self.smartphone_in_use:
                 # 初めて検出された（使用開始）
-                logger.debug("Smartphone usage started.") # ログレベル変更
+                logger.info("🔍 スマートフォン検出: 使用開始を検知しました") # INFOレベルに変更・日本語メッセージ追加
                 self.smartphone_in_use = True
                 self.smartphone_start_time = current_time # 開始時刻を記録 ★修正
             # else: すでに使用中の場合は何もしない (開始時刻は維持)
@@ -120,7 +120,7 @@ class StateManager:
                 time_since_last_detection = current_time - self.last_phone_detection_time
                 if time_since_last_detection > self.smartphone_grace_period:
                     # 猶予時間を超えて検出されない場合のみ使用終了
-                    logger.debug(f"Smartphone usage stopped after grace period ({time_since_last_detection:.1f}s > {self.smartphone_grace_period}s).") 
+                    logger.info(f"🔍 スマートフォン検出終了: 猶予時間経過後に使用停止 ({time_since_last_detection:.1f}s > {self.smartphone_grace_period}s)") # INFOレベルに変更
                     self.smartphone_in_use = False
                     self.smartphone_start_time = None # 開始時刻をリセット ★修正
                     if self.alert_triggered_smartphone:
