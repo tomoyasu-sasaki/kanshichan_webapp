@@ -265,16 +265,16 @@ class AIOptimizer:
             },
         }
         
-        # 設定の読み込み
-        if config_manager:
-            self._load_settings()
-        
-        # パフォーマンスモニタリング
+        # パフォーマンスモニタリング（設定読み込み前に初期化）
         self.fps_times = deque(maxlen=self.settings['fps_counter']['window_size'])
         self.inference_times = deque(maxlen=self.settings['fps_counter']['window_size'])
         self.last_fps_update = time.time()
         self.current_fps = 0.0
         self.frame_counter = 0
+        
+        # 設定の読み込み（属性初期化後に実行）
+        if config_manager:
+            self._load_settings()
         
         # フレームスキッパー
         self.frame_skipper = FrameSkipper(
@@ -360,7 +360,10 @@ class AIOptimizer:
             return self._run_inference(model, frame)
         
         # フレームスキップ判定（FPSに基づく動的スキップ）
-        if not self.frame_skipper.should_process_frame(self.current_fps):
+        should_process = self.frame_skipper.should_process_frame(self.current_fps)
+        if not should_process:
+            # スマホ検出のためのフレームスキップ状況をログに出力
+            logger.debug(f"⏭️ フレームスキップ: FPS={self.current_fps:.1f}, skip_rate={self.frame_skipper.current_skip_rate}, frame_counter={self.frame_skipper.frame_counter}")
             return None
         
         # 推論実行と統計更新

@@ -87,10 +87,6 @@ class DetectionSmoother:
                 },
             }
             
-            # 設定の読み込み
-            if config_manager:
-                self._load_settings()
-            
             # 検出履歴の管理
             self.detection_history: Dict[str, List[DetectionHistory]] = defaultdict(list)
             self.frame_counter = 0
@@ -113,6 +109,10 @@ class DetectionSmoother:
             
             # 特殊フラグ状態
             self.currently_tracking = defaultdict(bool)  # 現在追跡中かどうか
+            
+            # 設定の読み込み（属性初期化後に実行）
+            if config_manager:
+                self._load_settings()
             
             logger.info("DetectionSmoother initialized successfully")
             
@@ -249,19 +249,37 @@ class DetectionSmoother:
         high_threshold = self.settings['hysteresis']['high_threshold']
         low_threshold = self.settings['hysteresis']['low_threshold']
         
+        # スマートフォン検出の詳細ログ（デバッグ用）
+        if obj_key == 'smartphone':
+            logger.debug(f"📱 スマホ検出判定: 信頼度={confidence:.3f}, 高閾値={high_threshold}, 低閾値={low_threshold}, 追跡中={self.currently_tracking[obj_key]}")
+        
         # 現在追跡中かどうかで閾値を変える（ヒステリシス制御）
         if self.currently_tracking[obj_key]:
             # 追跡中なら低い閾値でも検出を維持
             accept = confidence >= low_threshold
             if not accept:
-                logger.debug(f"Dropping {obj_key} detection: confidence {confidence:.3f} < low_threshold {low_threshold}")
+                # スマートフォン検出終了時にINFOレベルでログ出力
+                if obj_key == 'smartphone':
+                    logger.debug(f"📱 スマートフォン検出終了: 信頼度不足により追跡停止 (信頼度: {confidence:.3f} < 低閾値: {low_threshold})")
+                else:
+                    logger.debug(f"Dropping {obj_key} detection: confidence {confidence:.3f} < low_threshold {low_threshold}")
                 self.currently_tracking[obj_key] = False
         else:
             # 未追跡なら高い閾値で検出を開始
             accept = confidence >= high_threshold
             if accept:
-                logger.debug(f"Starting tracking {obj_key}: confidence {confidence:.3f} >= high_threshold {high_threshold}")
+                # スマートフォン検出開始時にINFOレベルでログ出力
+                if obj_key == 'smartphone':
+                    logger.info(f"📱 スマートフォン検出開始: 平滑化システムで追跡開始 (信頼度: {confidence:.3f} >= 高閾値: {high_threshold})")
+                else:
+                    logger.debug(f"Starting tracking {obj_key}: confidence {confidence:.3f} >= high_threshold {high_threshold}")
                 self.currently_tracking[obj_key] = True
+            else:
+                # スマートフォン検出拒否時のログ
+                if obj_key == 'smartphone':
+                    logger.info(f"📱 スマートフォン検出拒否: 信頼度不足 (信頼度: {confidence:.3f} < 高閾値: {high_threshold})")
+                else:
+                    logger.debug(f"Rejecting {obj_key} detection: confidence {confidence:.3f} < high_threshold {high_threshold}")
                 
         return accept
     

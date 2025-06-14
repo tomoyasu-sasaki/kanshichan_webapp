@@ -1,0 +1,212 @@
+alert_sounds:
+  absence: alert_absence.wav
+  smartphone: alert_smartphone.wav
+conditions:
+  absence:
+    threshold_seconds: 600.0
+  smartphone_usage:
+    grace_period_seconds: 3.0
+    threshold_seconds: 10.0
+data_collection:
+  batch_save_size: 5
+  buffer_size: 15
+  collection_interval_seconds: 2.0
+  real_time_threshold_ms: 100
+detection_objects:
+  book:
+    alert_message: ''
+    alert_sound: ''
+    alert_threshold: 0.0
+    class_name: book
+    color:
+    - 0
+    - 255
+    - 0
+    confidence_threshold: 0.5
+    enabled: false
+    name: 本
+    thickness: 2
+  laptop:
+    alert_message: ノートパソコンの使用を検知しました
+    alert_sound: alert.wav
+    alert_threshold: 3.0
+    class_name: laptop
+    color:
+    - 0
+    - 255
+    - 255
+    confidence_threshold: 0.5
+    enabled: false
+    name: laptop
+    thickness: 2
+  smartphone:
+    alert_message: スマホばかり触っていないで勉強をしろ！
+    alert_sound: smartphone_alert.wav
+    alert_threshold: 3.0
+    class_name: cell phone
+    color:
+    - 0
+    - 255
+    - 255
+    confidence_threshold: 0.4
+    enabled: true
+    name: smartphone
+    thickness: 3
+detection_smoother:
+  enabled: true  # 最適化された設定で有効化
+  hysteresis:
+    high_threshold: 0.45  # スマホ検出開始閾値（0.4より少し高く）
+    low_threshold: 0.30   # スマホ検出維持閾値（より低く設定）
+    enabled: true
+  moving_average:
+    window_size: 5
+    weight_recent: 6.0
+    enabled: true
+  interpolation:
+    max_missing_frames: 3
+    fade_out_factor: 0.85
+    enabled: true
+detector:
+  use_mediapipe: true
+  use_yolo: true
+display:
+  show_opencv_window: false
+landmark_settings:
+  face:
+    color:
+    - 255
+    - 0
+    - 0
+    enabled: false
+    name: 顔
+    thickness: 2
+  hands:
+    color:
+    - 0
+    - 0
+    - 255
+    enabled: true
+    name: 手
+    thickness: 2
+  pose:
+    color:
+    - 0
+    - 255
+    - 0
+    enabled: true
+    name: 姿勢
+    thickness: 2
+llm:
+  analysis_interval_seconds: 300
+  enabled: false
+  model_name: huggingface.co/elyza/Llama-3-ELYZA-JP-8B-GGUF:latest
+  temperature: 0.7
+logging:
+  backup_count: 3
+  console_level: DEBUG
+  detection_log_sampling: 50
+  enable_console_output: true
+  enable_file_output: true
+  file_level: DEBUG
+  frame_log_interval: 300
+  level: DEBUG
+  log_dir: logs
+  max_duplicate_suppression: 10
+  max_file_size_mb: 50
+  suppress_frequent_logs: true
+memory:
+  cache:
+    max_memory_mb: 50.0
+    max_size: 100
+  gc_interval_seconds: 30.0
+  monitor_interval_seconds: 5.0
+  threshold_percent: 80.0
+models:
+  yolo:
+    model_name: yolov8n.pt
+    models_dir: models
+optimization:
+  batch_processing:
+    batch_size: 8
+    enabled: true
+    timeout_ms: 33
+  max_skip_rate: 1  # 旧設定キー（互換性のため残す）
+  min_fps: 10.0
+  target_fps: 15.0
+  # AIOptimizerが参照する正しい設定キー構造
+  frame_skipper:
+    enabled: true
+    target_fps: 15.0
+    min_fps: 10.0
+    max_skip_rate: 1  # スマホ検出最優先：フレームスキップ最小化
+    adjustment_interval: 2.0
+    adaptive_mode: true
+  fps_counter:
+    window_size: 30
+    smoothing_enabled: true
+  preprocessing:
+    resize_enabled: true
+    resize_width: 640
+    resize_height: 480
+    normalize_enabled: false
+    roi_enabled: false
+server:
+  port: 8000
+tts:
+  cache_dir: voice_data/tts_cache
+  cache_ttl_hours: 24
+  debug_mps: false
+  default_audio_prefix: null
+  default_audio_quality: 5.0
+  default_cfg_scale: 0.8
+  default_emotion: anger
+  default_emotion_anger: 0.7
+  default_emotion_disgust: 1.0
+  default_emotion_fear: 0.0
+  default_emotion_happiness: 0.0
+  default_emotion_neutral: 0.0
+  default_emotion_other: 0.0
+  default_emotion_sadness: 0.3
+  default_emotion_surprise: 0.0
+  default_fast_mode: false
+  default_language: ja
+  default_max_frequency: 24000
+  default_min_p: 0.2
+  default_seed: 0
+  default_speaker_noised: false
+  default_style_intensity: 0.5
+  default_use_breath_style: false
+  default_use_emotion_preset: false
+  default_use_noise_reduction: true
+  default_use_seed: false
+  default_use_streaming_playback: false
+  default_use_whisper_style: false
+  default_voice_mode: voiceClone
+  default_voice_pitch: 1.0
+  default_voice_sample_id: 5f37f403230125be
+  default_voice_sample_path: /Users/tmys-sasaki/Projects/Private/KanshiChan/backend/voice_data/samples/5f37f403230125be_tmpnl5ofbxe.wav
+  default_voice_speed: 1.0
+  default_voice_volume: 0.7
+  default_vq_score: 0.8
+  disable_progress_bars: true
+  enable_async_generation: true
+  enable_audio_cache: true
+  enable_mps: false
+  enable_voice_cloning: true
+  gpu_memory_optimization: true
+  max_cache_size_mb: 500
+  max_generation_length: 30
+  max_worker_threads: 2
+  model: Zyphra/Zonos-v0.1-transformer
+  mps_half_precision: true
+  mps_memory_fraction: 0.75
+  suppress_warnings: true
+  use_hybrid: false
+  verbose_logging: false
+  voice_samples_dir: voice_data/voice_samples
+voice_manager:
+  auto_cleanup_hours: 24
+  base_dir: voice_data
+  compression_quality: 0.5
+  enable_compression: true
+  max_cache_size_mb: 1024
