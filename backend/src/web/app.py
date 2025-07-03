@@ -76,6 +76,8 @@ def create_app(config_manager: ConfigManager):
     csrf.exempt(api)                    # /api/* 全体
     csrf.exempt(tts_file_bp)            # /api/tts/file/*
     csrf.exempt(tts_synthesis_bp)       # /api/tts/synthesize* すべて
+    # 音声設定などTTSシステム管理系はフォーム送信ではなくJSON APIのためCSRFを除外
+    csrf.exempt(tts_system_bp)         # /api/tts/* システム管理API
     # スケジュール管理APIを除外（/api/schedules*）
     for ep in [
         'api.add_schedule',

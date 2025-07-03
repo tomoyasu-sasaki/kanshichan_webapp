@@ -6,7 +6,7 @@ conditions:
     threshold_seconds: 600.0
   smartphone_usage:
     grace_period_seconds: 3.0
-    threshold_seconds: 10.0
+    threshold_seconds: 600.0
 data_collection:
   batch_save_size: 5
   buffer_size: 15
@@ -53,19 +53,19 @@ detection_objects:
     name: smartphone
     thickness: 3
 detection_smoother:
-  enabled: true  # 最適化された設定で有効化
+  enabled: true
   hysteresis:
-    high_threshold: 0.45  # スマホ検出開始閾値（0.4より少し高く）
-    low_threshold: 0.30   # スマホ検出維持閾値（より低く設定）
     enabled: true
-  moving_average:
-    window_size: 5
-    weight_recent: 6.0
-    enabled: true
+    high_threshold: 0.45
+    low_threshold: 0.3
   interpolation:
-    max_missing_frames: 3
-    fade_out_factor: 0.85
     enabled: true
+    fade_out_factor: 0.85
+    max_missing_frames: 3
+  moving_average:
+    enabled: true
+    weight_recent: 6.0
+    window_size: 5
 detector:
   use_mediapipe: true
   use_yolo: true
@@ -130,26 +130,25 @@ optimization:
     batch_size: 8
     enabled: true
     timeout_ms: 33
-  max_skip_rate: 1  # 旧設定キー（互換性のため残す）
-  min_fps: 10.0
-  target_fps: 15.0
-  # AIOptimizerが参照する正しい設定キー構造
-  frame_skipper:
-    enabled: true
-    target_fps: 15.0
-    min_fps: 10.0
-    max_skip_rate: 1  # スマホ検出最優先：フレームスキップ最小化
-    adjustment_interval: 2.0
-    adaptive_mode: true
   fps_counter:
-    window_size: 30
     smoothing_enabled: true
+    window_size: 30
+  frame_skipper:
+    adaptive_mode: true
+    adjustment_interval: 2.0
+    enabled: true
+    max_skip_rate: 1
+    min_fps: 10.0
+    target_fps: 15.0
+  max_skip_rate: 1
+  min_fps: 10.0
   preprocessing:
-    resize_enabled: true
-    resize_width: 640
-    resize_height: 480
     normalize_enabled: false
+    resize_enabled: true
+    resize_height: 480
+    resize_width: 640
     roi_enabled: false
+  target_fps: 15.0
 server:
   port: 8000
 tts:
@@ -183,8 +182,8 @@ tts:
   default_use_whisper_style: false
   default_voice_mode: voiceClone
   default_voice_pitch: 1.0
-  default_voice_sample_id: 5f37f403230125be
-  default_voice_sample_path: /Users/tmys-sasaki/Projects/Private/KanshiChan/backend/voice_data/samples/5f37f403230125be_tmpnl5ofbxe.wav
+  default_voice_sample_id: 0c972f4e2b683751
+  default_voice_sample_path: /Users/tmys-sasaki/Projects/Private/KanshiChan/backend/voice_data/samples/0c972f4e2b683751_tmprxb_eiwn.wav
   default_voice_speed: 1.0
   default_voice_volume: 0.7
   default_vq_score: 0.8
