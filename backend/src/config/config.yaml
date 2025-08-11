@@ -3,10 +3,10 @@ alert_sounds:
   smartphone: alert_smartphone.wav
 conditions:
   absence:
-    threshold_seconds: 600.0
+    threshold_seconds: 60.0
   smartphone_usage:
     grace_period_seconds: 3.0
-    threshold_seconds: 600.0
+    threshold_seconds: 60.0
 data_collection:
   batch_save_size: 5
   buffer_size: 15
