@@ -4,8 +4,9 @@ import time
 from utils.logger import setup_logger
 from utils.exceptions import (
     APIError, ConfigError, ValidationError, ScheduleError,
-    InitializationError, wrap_exception, create_error_response
+    InitializationError, wrap_exception
 )
+from web.response_utils import success_response, error_response, error_from_exception
 
 logger = setup_logger(__name__)
 api = Blueprint('api', __name__)
@@ -21,13 +22,13 @@ def get_settings():
             details={'state_available': state is not None, 'config_manager_available': config_manager is not None}
         )
         logger.error(f"API initialization error: {init_error.to_dict()}")
-        return jsonify(create_error_response(init_error, include_details=True)), 500
+        return error_from_exception(init_error, status_code=500, include_details=True)
 
     # 設定をすべてConfigManagerから取得する
     landmark_settings = config_manager.get_landmark_settings()
     detection_objects = config_manager.get_detection_objects()
 
-    return jsonify({
+    return success_response({
         'absence_threshold': config_manager.get('conditions.absence.threshold_seconds'),
         'smartphone_threshold': config_manager.get('conditions.smartphone_usage.threshold_seconds'),
         'landmark_settings': landmark_settings,
@@ -45,7 +46,7 @@ def update_settings():
             details={'state_available': state is not None, 'config_manager_available': config_manager is not None}
         )
         logger.error(f"API initialization error: {init_error.to_dict()}")
-        return jsonify(create_error_response(init_error, include_details=True)), 500
+        return error_from_exception(init_error, status_code=500, include_details=True)
 
     data = request.get_json()
     config_updated = False
@@ -64,7 +65,7 @@ def update_settings():
                 details={'value': data['absence_threshold'], 'expected_type': 'float'}
             )
             logger.error(f"Absence threshold validation error: {validation_error.to_dict()}")
-            return jsonify(create_error_response(validation_error)), 400
+            return error_from_exception(validation_error, status_code=400)
     if 'smartphone_threshold' in data:
         try:
             new_threshold = float(data['smartphone_threshold'])
@@ -79,7 +80,7 @@ def update_settings():
                 details={'value': data['smartphone_threshold'], 'expected_type': 'float'}
             )
             logger.error(f"Smartphone threshold validation error: {validation_error.to_dict()}")
-            return jsonify(create_error_response(validation_error)), 400
+            return error_from_exception(validation_error, status_code=400)
     
     if 'landmark_settings' in data:
         for key, settings in data['landmark_settings'].items():
@@ -119,7 +120,7 @@ def update_settings():
             # 500 エラーを返しても良いかもしれないが、一旦ログのみ
             # return jsonify({'status': 'success', 'warning': 'Failed to save config'}), 200
 
-    return jsonify({'status': 'success'})
+    return success_response({'updated': config_updated})
 
 @api.route('/video_feed')
 def video_feed():
@@ -160,14 +161,14 @@ def get_schedules():
     
     if schedule_manager is None:
         logger.error("ScheduleManager not found in app config")
-        return jsonify({'error': 'ScheduleManager not initialized'}), 500
+        return error_response('ScheduleManager not initialized', code='SERVICE_UNAVAILABLE', status_code=500)
     
     try:
         schedules = schedule_manager.get_schedules()
-        return jsonify(schedules)
+        return success_response({'schedules': schedules})
     except Exception as e:
         logger.error(f"Error getting schedules: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        return error_response(str(e), code='INTERNAL_ERROR', status_code=500)
 
 @api.route('/schedules', methods=['POST'])
 def add_schedule():
@@ -176,27 +177,27 @@ def add_schedule():
     
     if schedule_manager is None:
         logger.error("ScheduleManager not found in app config")
-        return jsonify({'error': 'ScheduleManager not initialized'}), 500
+        return error_response('ScheduleManager not initialized', code='SERVICE_UNAVAILABLE', status_code=500)
     
     try:
         data = request.get_json()
         if not data:
-            return jsonify({'error': 'No data provided'}), 400
+            return error_response('No data provided', code='VALIDATION_ERROR', status_code=400)
             
         time = data.get('time')
         content = data.get('content')
         
         if not time or not content:
-            return jsonify({'error': 'Time and content are required'}), 400
+            return error_response('Time and content are required', code='VALIDATION_ERROR', status_code=400)
         
         new_schedule = schedule_manager.add_schedule(time, content)
         if not new_schedule:
-            return jsonify({'error': 'Failed to add schedule'}), 500
+            return error_response('Failed to add schedule', code='SCHEDULE_ADD_FAILED', status_code=500)
         
-        return jsonify(new_schedule), 201
+        return success_response({'schedule': new_schedule}, status_code=201)
     except Exception as e:
         logger.error(f"Error adding schedule: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        return error_response(str(e), code='INTERNAL_ERROR', status_code=500)
 
 @api.route('/performance', methods=['GET'])
 def get_performance_stats():
@@ -205,7 +206,7 @@ def get_performance_stats():
     
     if monitor is None:
         logger.error("Monitor instance not found in app config for performance stats")
-        return jsonify({'error': 'Monitor not initialized'}), 500
+        return error_response('Monitor not initialized', code='SERVICE_UNAVAILABLE', status_code=500)
     
     try:
         # ObjectDetectorからパフォーマンス統計を取得
@@ -225,10 +226,10 @@ def get_performance_stats():
             # 実際のデータで更新
             default_stats.update(performance_data)
             
-            return jsonify(default_stats)
+            return success_response(default_stats)
         else:
             logger.warning("Detector or performance stats not available")
-            return jsonify({
+            return success_response({
                 'fps': 0.0,
                 'avg_inference_ms': 0.0,
                 'memory_mb': 0.0,
@@ -238,7 +239,7 @@ def get_performance_stats():
             
     except Exception as e:
         logger.error(f"Error getting performance stats: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        return error_response('Failed to get performance stats', code='INTERNAL_ERROR', status_code=500)
 
 @api.route('/schedules/<schedule_id>', methods=['DELETE'])
 def delete_schedule(schedule_id):
@@ -247,17 +248,17 @@ def delete_schedule(schedule_id):
     
     if schedule_manager is None:
         logger.error("ScheduleManager not found in app config")
-        return jsonify({'error': 'ScheduleManager not initialized'}), 500
+        return error_response('ScheduleManager not initialized', code='SERVICE_UNAVAILABLE', status_code=500)
     
     try:
         if not schedule_id:
-            return jsonify({'error': 'Schedule ID is required'}), 400
+            return error_response('Schedule ID is required', code='VALIDATION_ERROR', status_code=400)
         
         success = schedule_manager.delete_schedule(schedule_id)
         if not success:
-            return jsonify({'error': 'Schedule not found or could not be deleted'}), 404
+            return error_response('Schedule not found or could not be deleted', code='SCHEDULE_DELETE_FAILED', status_code=404)
         
-        return '', 204
+        return success_response({'deleted': True}, status_code=200)
     except Exception as e:
         logger.error(f"Error deleting schedule: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500 
+        return error_response(str(e), code='INTERNAL_ERROR', status_code=500)

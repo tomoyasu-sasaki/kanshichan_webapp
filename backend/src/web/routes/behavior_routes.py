@@ -6,17 +6,18 @@
 
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timedelta
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, request, current_app
 import logging
 
 from models.behavior_log import BehaviorLog
 from models.analysis_result import AnalysisResult
 from utils.logger import setup_logger
+from web.response_utils import success_response, error_response
 
 logger = setup_logger(__name__)
 
-# Blueprint定義
-behavior_bp = Blueprint('behavior', __name__, url_prefix='/api/behavior')
+# Blueprint定義（相対パス化。上位で /api および /api/v1 を付与）
+behavior_bp = Blueprint('behavior', __name__, url_prefix='/behavior')
 
 
 @behavior_bp.route('/logs', methods=['GET'])
@@ -44,7 +45,7 @@ def get_behavior_logs():
         # パラメータ取得・バリデーション
         params = _validate_logs_params(request.args)
         if 'error' in params:
-            return jsonify(params), 400
+            return error_response(params.get('error', 'Invalid parameters'), code=params.get('code', 'VALIDATION_ERROR'), status_code=400)
         
         # フィルタ条件の構築
         filters = _build_log_filters(params)
@@ -77,25 +78,16 @@ def get_behavior_logs():
                 'created_at': log.created_at.isoformat() if log.created_at else None
             })
         
-        return jsonify({
-            'status': 'success',
-            'data': {
-                'logs': logs_data,
-                'pagination': pagination_info,
-                'filters_applied': {k: v for k, v in filters.items() if v is not None},
-                'total_count': total_count
-            },
-            'timestamp': datetime.utcnow().isoformat()
+        return success_response({
+            'logs': logs_data,
+            'pagination': pagination_info,
+            'filters_applied': {k: v for k, v in filters.items() if v is not None},
+            'total_count': total_count
         })
         
     except Exception as e:
         logger.error(f"Error getting behavior logs: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to retrieve behavior logs',
-            'code': 'DATA_RETRIEVAL_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
-        }), 500
+        return error_response('Failed to retrieve behavior logs', code='DATA_RETRIEVAL_ERROR', status_code=500)
 
 
 @behavior_bp.route('/summary/dashboard', methods=['GET'])
@@ -114,24 +106,15 @@ def get_dashboard_summary():
         yesterday_data = _get_daily_dashboard_data('yesterday', user_id)
         
         response_data = {
-            'status': 'success',
-            'data': {
-                'today': today_data,
-                'yesterday': yesterday_data
-            },
-            'timestamp': datetime.utcnow().isoformat()
+            'today': today_data,
+            'yesterday': yesterday_data
         }
-        
         logger.info(f"Dashboard summary generated: today={today_data.get('total_time', 0)}s, yesterday={yesterday_data.get('total_time', 0)}s")
-        return jsonify(response_data)
+        return success_response(response_data)
         
     except Exception as e:
         logger.error(f"Dashboard summary error: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to get dashboard summary',
-            'timestamp': datetime.utcnow().isoformat()
-        }), 500
+        return error_response('Failed to get dashboard summary', code='SUMMARY_ERROR', status_code=500)
 
 
 @behavior_bp.route('/summary', methods=['GET'])
@@ -164,7 +147,7 @@ def get_behavior_summary():
         )
         
         if isinstance(start_time, dict) and 'error' in start_time:
-            return jsonify(start_time), 400
+            return error_response(start_time.get('error', 'Invalid timeframe'), code=start_time.get('code', 'VALIDATION_ERROR'), status_code=400)
         
         # データ取得
         logs = BehaviorLog.get_logs_by_timerange(
@@ -182,20 +165,11 @@ def get_behavior_summary():
             summary['hourly_breakdown'] = _calculate_hourly_breakdown(logs)
             summary['focus_distribution'] = _calculate_focus_distribution(logs)
         
-        return jsonify({
-            'status': 'success',
-            'data': summary,
-            'timestamp': datetime.utcnow().isoformat()
-        })
+        return success_response(summary)
         
     except Exception as e:
         logger.error(f"Error getting behavior summary: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to generate behavior summary',
-            'code': 'SUMMARY_GENERATION_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
-        }), 500
+        return error_response('Failed to generate behavior summary', code='SUMMARY_GENERATION_ERROR', status_code=500)
 
 
 @behavior_bp.route('/stats', methods=['GET'])
@@ -221,20 +195,10 @@ def get_behavior_stats():
         metrics_str = request.args.get('metrics', 'focus,smartphone,presence')
         
         if period not in ['hour', 'day', 'week', 'month']:
-            return jsonify({
-                'status': 'error',
-                'error': 'Invalid period. Must be one of: hour, day, week, month',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
-            }), 400
+            return error_response('Invalid period. Must be one of: hour, day, week, month', code='VALIDATION_ERROR', status_code=400)
         
         if limit < 1 or limit > 365:
-            return jsonify({
-                'status': 'error',
-                'error': 'Limit must be between 1 and 365',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
-            }), 400
+            return error_response('Limit must be between 1 and 365', code='VALIDATION_ERROR', status_code=400)
         
         # 指標の解析
         requested_metrics = [m.strip() for m in metrics_str.split(',')]
@@ -244,33 +208,19 @@ def get_behavior_stats():
         # 統計データ取得
         stats_data = _get_period_statistics(period, limit, user_id, metrics)
         
-        return jsonify({
-            'status': 'success',
-            'data': {
-                'period': period,
-                'limit': limit,
-                'metrics': metrics,
-                'statistics': stats_data,
-                'generated_at': datetime.utcnow().isoformat()
-            },
-            'timestamp': datetime.utcnow().isoformat()
+        return success_response({
+            'period': period,
+            'limit': limit,
+            'metrics': metrics,
+            'statistics': stats_data,
+            'generated_at': datetime.utcnow().isoformat()
         })
         
     except ValueError as e:
-        return jsonify({
-            'status': 'error',
-            'error': f'Invalid parameter: {str(e)}',
-            'code': 'VALIDATION_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
-        }), 400
+        return error_response(f'Invalid parameter: {str(e)}', code='VALIDATION_ERROR', status_code=400)
     except Exception as e:
         logger.error(f"Error getting behavior stats: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to calculate behavior statistics',
-            'code': 'STATISTICS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
-        }), 500
+        return error_response('Failed to calculate behavior statistics', code='STATISTICS_ERROR', status_code=500)
 
 
 @behavior_bp.route('/export', methods=['GET'])
@@ -298,41 +248,21 @@ def export_behavior_data():
         fields_str = request.args.get('fields', 'timestamp,focus_level,smartphone_detected,presence_status')
         
         if not start_date_str or not end_date_str:
-            return jsonify({
-                'status': 'error',
-                'error': 'start_date and end_date are required',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
-            }), 400
+            return error_response('start_date and end_date are required', code='VALIDATION_ERROR', status_code=400)
         
         if export_format not in ['csv', 'json']:
-            return jsonify({
-                'status': 'error',
-                'error': 'Invalid format. Must be csv or json',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
-            }), 400
+            return error_response('Invalid format. Must be csv or json', code='VALIDATION_ERROR', status_code=400)
         
         # 日時パースと検証
         try:
             start_time = datetime.fromisoformat(start_date_str.replace('Z', '+00:00'))
             end_time = datetime.fromisoformat(end_date_str.replace('Z', '+00:00'))
         except ValueError:
-            return jsonify({
-                'status': 'error',
-                'error': 'Invalid date format. Use ISO 8601 format',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
-            }), 400
+            return error_response('Invalid date format. Use ISO 8601 format', code='VALIDATION_ERROR', status_code=400)
         
         # データ期間制限（最大90日）
         if (end_time - start_time).days > 90:
-            return jsonify({
-                'status': 'error',
-                'error': 'Export period cannot exceed 90 days',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
-            }), 400
+            return error_response('Export period cannot exceed 90 days', code='VALIDATION_ERROR', status_code=400)
         
         # データ取得
         logs = BehaviorLog.get_logs_by_timerange(
@@ -342,13 +272,9 @@ def export_behavior_data():
         )
         
         if not logs:
-            return jsonify({
-                'status': 'success',
-                'data': {
-                    'message': 'No data found for the specified period',
-                    'count': 0
-                },
-                'timestamp': datetime.utcnow().isoformat()
+            return success_response({
+                'message': 'No data found for the specified period',
+                'count': 0
             })
         
         # フィールド定義
@@ -370,29 +296,20 @@ def export_behavior_data():
             return csv_data
         else:
             json_data = _generate_json_export(logs, fields, available_fields)
-            return jsonify({
-                'status': 'success',
-                'data': {
-                    'records': json_data,
-                    'count': len(json_data),
-                    'fields': fields,
-                    'export_info': {
-                        'start_date': start_date_str,
-                        'end_date': end_date_str,
-                        'generated_at': datetime.utcnow().isoformat()
-                    }
-                },
-                'timestamp': datetime.utcnow().isoformat()
+            return success_response({
+                'records': json_data,
+                'count': len(json_data),
+                'fields': fields,
+                'export_info': {
+                    'start_date': start_date_str,
+                    'end_date': end_date_str,
+                    'generated_at': datetime.utcnow().isoformat()
+                }
             })
         
     except Exception as e:
         logger.error(f"Error exporting behavior data: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to export behavior data',
-            'code': 'EXPORT_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
-        }), 500
+        return error_response('Failed to export behavior data', code='EXPORT_ERROR', status_code=500)
 
 
 def _validate_logs_params(args) -> Dict[str, Any]:

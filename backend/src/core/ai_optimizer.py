@@ -249,7 +249,7 @@ class AIOptimizer:
             'frame_skipper': {
                 'target_fps': 15.0,  # 目標FPS（高すぎると点滅する可能性）
                 'min_fps': 10.0,     # 最小FPS（これを下回るとスキップ率上昇）
-                'max_skip_rate': 5,  # 最大スキップ率（1:処理、5:5フレームごとに1回処理）
+                 'max_skip_rate': 2,  # 最大スキップ率（1:処理、2:2フレームごとに1回処理）
                 'adjustment_interval': 2.0,  # 調整間隔（秒）
                 'adaptive_mode': True,  # 適応モード（システム負荷に応じて自動調整）
                 'enabled': True,

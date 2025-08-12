@@ -6,7 +6,7 @@ Monitor API Routes - システム監視API
 
 import logging
 from typing import Dict, Any, Optional
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, request
 from datetime import datetime
 import psutil
 
@@ -37,11 +37,13 @@ class SimpleMonitor:
 
 from models.behavior_log import BehaviorLog
 from utils.logger import setup_logger
+from web.response_utils import success_response, error_response
+from flask import current_app
 
 logger = setup_logger(__name__)
 
-# Blueprint定義
-monitor_bp = Blueprint('monitor', __name__, url_prefix='/api/monitor')
+# Blueprint定義（相対パス化。上位で /api および /api/v1 を付与）
+monitor_bp = Blueprint('monitor', __name__, url_prefix='/monitor')
 
 # Monitorインスタンス（アプリケーション初期化時に設定）
 monitor_instance: Optional[SimpleMonitor] = None
@@ -105,34 +107,25 @@ def get_monitor_status():
         ])
         health_score = active_services / 2.0
         
-        return jsonify({
-            'status': 'success',
-            'data': {
-                'overall_status': 'healthy' if health_score >= 0.75 else 'degraded' if health_score >= 0.5 else 'critical',
-                'health_score': health_score,
-                'services': {
-                    'monitor_service': monitor_status,
-                    'data_collection': data_collection_status,
-                    'camera': camera_status,
-                    'device': device_status
-                },
-                'metrics': {
-                    'recent_logs_count': logs_count,
-                    'last_log_time': recent_logs[0].timestamp.isoformat() if recent_logs else None
-                },
-                'last_check': datetime.utcnow().isoformat()
+        return success_response({
+            'overall_status': 'healthy' if health_score >= 0.75 else 'degraded' if health_score >= 0.5 else 'critical',
+            'health_score': health_score,
+            'services': {
+                'monitor_service': monitor_status,
+                'data_collection': data_collection_status,
+                'camera': camera_status,
+                'device': device_status
             },
-            'timestamp': datetime.utcnow().isoformat()
+            'metrics': {
+                'recent_logs_count': logs_count,
+                'last_log_time': recent_logs[0].timestamp.isoformat() if recent_logs else None
+            },
+            'last_check': datetime.utcnow().isoformat()
         })
         
     except Exception as e:
         logger.error(f"Error checking monitor status: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to check monitor system status',
-            'code': 'STATUS_CHECK_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
-        }), 500
+        return error_response('Failed to check monitor system status', code='STATUS_CHECK_ERROR', status_code=500)
 
 
 @monitor_bp.route('/toggle', methods=['POST'])
@@ -152,12 +145,7 @@ def toggle_monitoring():
         enabled = data.get('enabled', False)
         
         if not monitor_instance:
-            return jsonify({
-                'status': 'error',
-                'error': 'Monitor service not available',
-                'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.utcnow().isoformat()
-            }), 503
+            return error_response('Monitor service not available', code='SERVICE_UNAVAILABLE', status_code=503)
         
         # Monitor の開始/停止メソッドが存在する場合の処理
         if hasattr(monitor_instance, 'start') and hasattr(monitor_instance, 'stop'):
@@ -172,24 +160,15 @@ def toggle_monitoring():
             action = 'started' if enabled else 'stopped'
             logger.info(f"Monitor service {action} (simulated)")
         
-        return jsonify({
-            'status': 'success',
-            'data': {
-                'monitoring_enabled': enabled,
-                'action': action,
-                'timestamp': datetime.utcnow().isoformat()
-            },
+        return success_response({
+            'monitoring_enabled': enabled,
+            'action': action,
             'timestamp': datetime.utcnow().isoformat()
         })
         
     except Exception as e:
         logger.error(f"Error toggling monitoring: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to toggle monitoring',
-            'code': 'TOGGLE_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
-        }), 500
+        return error_response('Failed to toggle monitoring', code='TOGGLE_ERROR', status_code=500)
 
 
 @monitor_bp.route('/metrics', methods=['GET'])
@@ -206,12 +185,7 @@ def get_monitoring_metrics():
         timeframe = request.args.get('timeframe', 'hour')
         
         if timeframe not in ['hour', 'day', 'week']:
-            return jsonify({
-                'status': 'error',
-                'error': 'Invalid timeframe. Must be one of: hour, day, week',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.utcnow().isoformat()
-            }), 400
+            return error_response('Invalid timeframe. Must be one of: hour, day, week', code='VALIDATION_ERROR', status_code=400)
         
         # 期間に応じたデータ取得
         hours_map = {'hour': 1, 'day': 24, 'week': 168}
@@ -232,20 +206,50 @@ def get_monitoring_metrics():
             }
         }
         
-        return jsonify({
-            'status': 'success',
-            'data': metrics,
-            'timestamp': datetime.utcnow().isoformat()
-        })
+        return success_response(metrics)
         
     except Exception as e:
         logger.error(f"Error getting monitoring metrics: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to get monitoring metrics',
-            'code': 'METRICS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
-        }), 500
+        return error_response('Failed to get monitoring metrics', code='METRICS_ERROR', status_code=500)
+
+
+@monitor_bp.route('/performance', methods=['GET'])
+def get_monitor_performance():
+    """監視系の詳細パフォーマンス統計
+
+    既存の `/api/performance` と同等の情報を `/api/monitor/performance` で提供
+    （標準化されたレスポンス形式）
+    """
+    try:
+        monitor = current_app.config.get('monitor_instance')
+        if monitor is None:
+            logger.error("Monitor instance not found in app config for monitor/performance")
+            return error_response('Monitor not initialized', code='SERVICE_UNAVAILABLE', status_code=503)
+
+        if hasattr(monitor, 'detector') and hasattr(monitor.detector, 'get_detection_status'):
+            status = monitor.detector.get_detection_status()
+            performance = status.get('performance', {})
+            default_stats = {
+                'fps': 0.0,
+                'avg_inference_ms': 0.0,
+                'memory_mb': 0.0,
+                'skip_rate': 1,
+                'optimization_active': False
+            }
+            default_stats.update(performance)
+            return success_response(default_stats)
+        else:
+            logger.warning("Detector or performance stats not available (monitor/performance)")
+            return success_response({
+                'fps': 0.0,
+                'avg_inference_ms': 0.0,
+                'memory_mb': 0.0,
+                'skip_rate': 1,
+                'optimization_active': False
+            })
+    except Exception as e:
+        logger.error(f"Error getting monitor performance: {e}", exc_info=True)
+        return error_response('Failed to get monitor performance', code='MONITOR_PERFORMANCE_ERROR', status_code=500)
 
 
 @monitor_bp.route('/system-metrics', methods=['GET'])
@@ -309,17 +313,8 @@ def get_system_metrics():
             'timestamp': datetime.utcnow().isoformat()
         }
         
-        return jsonify({
-            'status': 'success',
-            'data': system_metrics,
-            'timestamp': datetime.utcnow().isoformat()
-        })
+        return success_response(system_metrics)
         
     except Exception as e:
         logger.error(f"Error getting system metrics: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to get system metrics',
-            'code': 'SYSTEM_METRICS_ERROR',
-            'timestamp': datetime.utcnow().isoformat()
-        }), 500 
+        return error_response('Failed to get system metrics', code='SYSTEM_METRICS_ERROR', status_code=500)

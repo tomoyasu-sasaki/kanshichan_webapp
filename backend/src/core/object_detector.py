@@ -220,6 +220,13 @@ class ObjectDetector:
             
             # モデルディレクトリが存在しない場合は作成
             os.makedirs(models_dir, exist_ok=True)
+
+            # Ultralytics の重み保存先を明示的に models_dir へ固定
+            try:
+                SETTINGS['weights_dir'] = str(models_dir)
+                logger.info(f"Ultralytics weights_dir set to: {SETTINGS['weights_dir']}")
+            except Exception as e:
+                logger.warning(f"Failed to set Ultralytics weights_dir: {e}")
             
             # モデルの絶対パスを設定
             model_path = models_dir / model_name
@@ -227,16 +234,21 @@ class ObjectDetector:
             # モデルが存在しない場合はダウンロードして保存
             if not model_path.exists():
                 logger.warning(f"YOLOモデルファイルが見つかりません: {model_path}。'{model_name}' をダウンロードします...")
-                self.model = YOLO(model_name)  # ダウンロード実行
+                # ダウンロード実行（weights_dir は上で models_dir に設定済み）
+                self.model = YOLO(model_name)
 
                 # ダウンロードしたモデルファイルを所定の場所にコピー
                 weights_dir = Path(SETTINGS['weights_dir'])
                 source_model_path = weights_dir / model_name
                 
                 if source_model_path.exists():
-                    logger.info(f"ダウンロードしたモデルをコピーします: {source_model_path} -> {model_path}")
-                    shutil.copy(source_model_path, model_path)
-                    logger.info(f"モデルを正常に保存しました: {model_path}")
+                    if source_model_path.resolve() == model_path.resolve():
+                        # 既に目的地にダウンロードされている場合はコピー不要
+                        logger.info(f"モデルは既に保存済みです: {model_path}")
+                    else:
+                        logger.info(f"ダウンロードしたモデルをコピーします: {source_model_path} -> {model_path}")
+                        shutil.copy(source_model_path, model_path)
+                        logger.info(f"モデルを正常に保存しました: {model_path}")
                 else:
                     logger.error(f"モデルの保存に失敗しました。ダウンロードされたモデルがキャッシュに見つかりません: {source_model_path}")
 
@@ -285,7 +297,7 @@ class ObjectDetector:
                 e, YOLOError,
                 "YOLO object detection runtime error",
                 details={
-                    'frame_shape': frame.shape if frame is not None else None,
+                    'frame_shape': None,
                     'model_available': hasattr(self, 'model'),
                     'device': str(self.device) if hasattr(self, 'device') else 'unknown',
                     'yolo_disabled': critical

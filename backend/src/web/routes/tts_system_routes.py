@@ -9,7 +9,7 @@ import os
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request
 
 from services.tts.tts_service import TTSService
 from services.voice_manager import VoiceManager
@@ -19,8 +19,9 @@ from .tts_helpers import get_backend_path
 
 logger = setup_logger(__name__)
 
-# Blueprint定義
-tts_system_bp = Blueprint('tts_system', __name__, url_prefix='/api/tts')
+# Blueprint定義（相対パス化。上位で /api および /api/v1 を付与）
+tts_system_bp = Blueprint('tts_system', __name__, url_prefix='/tts')
+from web.response_utils import success_response, error_response
 
 # サービスインスタンス（tts_helpers.pyで初期化）
 tts_service: Optional[TTSService] = None
@@ -112,16 +113,11 @@ def get_tts_status():
             }
         }
         
-        return jsonify(response)
+        return success_response(response)
         
     except Exception as e:
         logger.error(f"Error getting TTS status: {e}")
-        return jsonify({
-            'success': False,
-            'error': 'internal_error',
-            'message': 'Failed to get TTS service status',
-            'timestamp': datetime.now().isoformat()
-        }), 500
+        return error_response('Failed to get TTS service status', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_system_bp.route('/languages', methods=['GET'])
@@ -132,16 +128,12 @@ def get_supported_languages():
         JSON response with supported languages
     """
     if not tts_service:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         languages = tts_service.get_supported_languages()
         
-        return jsonify({
-            'success': True,
+        return success_response({
             'languages': languages,
             'total_count': len(languages),
             'default_language': 'ja'
@@ -149,10 +141,7 @@ def get_supported_languages():
         
     except Exception as e:
         logger.error(f"Error getting supported languages: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to get supported languages'
-        }), 500
+        return error_response('Failed to get supported languages', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_system_bp.route('/cleanup', methods=['POST'])
@@ -170,10 +159,7 @@ def cleanup_old_files():
         JSON response with cleanup result
     """
     if not voice_manager:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'Voice manager is not available'
-        }), 503
+        return error_response('Voice manager is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         # リクエストデータ取得
@@ -214,21 +200,15 @@ def cleanup_old_files():
         else:
             response['message'] = f"Cleanup completed: {cleanup_result.get('deleted_files', 0)} files deleted"
         
-        return jsonify(response)
+        return success_response(response)
         
     except ValidationError as e:
         logger.warning(f"Validation error in cleanup: {e}")
-        return jsonify({
-            'error': 'validation_error',
-            'message': str(e)
-        }), 400
+        return error_response(str(e), code='VALIDATION_ERROR', status_code=400)
         
     except Exception as e:
         logger.error(f"Error during cleanup: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to perform cleanup operation'
-        }), 500
+        return error_response('Failed to perform cleanup operation', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_system_bp.route('/config', methods=['GET'])
@@ -268,14 +248,11 @@ def get_system_config():
                 logger.warning(f"Failed to get Voice Manager configuration: {e}")
                 config['configuration']['voice_manager'] = {'error': str(e)}
         
-        return jsonify(config)
+        return success_response(config)
         
     except Exception as e:
         logger.error(f"Error getting system configuration: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to get system configuration'
-        }), 500
+        return error_response('Failed to get system configuration', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_system_bp.route('/health', methods=['GET'])
@@ -385,17 +362,12 @@ def health_check():
         else:
             status_code = 503  # サービス利用不可
         
-        return jsonify(health_status), status_code
+        # success_response は status_code を指定可能
+        return success_response(health_status, status_code=status_code)
         
     except Exception as e:
         logger.error(f"Error during health check: {e}")
-        return jsonify({
-            'success': False,
-            'overall_status': 'error',
-            'error': 'internal_error',
-            'message': 'Health check failed',
-            'timestamp': datetime.now().isoformat()
-        }), 500
+        return error_response('Health check failed', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_system_bp.route('/metrics', methods=['GET'])
@@ -472,14 +444,11 @@ def get_system_metrics():
             logger.warning(f"Failed to get system resource metrics: {e}")
             metrics['metrics']['system_resources'] = {'error': str(e)}
         
-        return jsonify(metrics)
+        return success_response(metrics)
         
     except Exception as e:
         logger.error(f"Error getting system metrics: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to get system metrics'
-        }), 500
+        return error_response('Failed to get system metrics', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_system_bp.route('/restart', methods=['POST'])
@@ -548,16 +517,11 @@ def restart_services():
             restart_results['message'] = 'All services restarted successfully'
         
         status_code = 200 if all_success else 500
-        return jsonify(restart_results), status_code
+        return success_response(restart_results, status_code=status_code)
         
     except Exception as e:
         logger.error(f"Error during service restart: {e}")
-        return jsonify({
-            'success': False,
-            'error': 'internal_error',
-            'message': 'Failed to restart services',
-            'timestamp': datetime.now().isoformat()
-        }), 500
+        return error_response('Failed to restart services', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_system_bp.route('/voice-settings', methods=['GET'])
@@ -573,11 +537,7 @@ def get_voice_settings():
         config_manager = current_app.config.get('config_manager')
         
         if not config_manager:
-            return jsonify({
-                'success': False,
-                'error': 'config_not_available',
-                'message': 'Configuration manager is not available'
-            }), 500
+            return error_response('Configuration manager is not available', code='CONFIG_NOT_AVAILABLE', status_code=500)
         
         voice_settings = {
             'success': True,
@@ -629,14 +589,11 @@ def get_voice_settings():
             }
         }
         
-        return jsonify(voice_settings)
+        return success_response(voice_settings)
         
     except Exception as e:
         logger.error(f"Error getting voice settings: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to get voice settings'
-        }), 500
+        return error_response('Failed to get voice settings', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_system_bp.route('/voice-settings', methods=['POST'])
@@ -652,11 +609,7 @@ def save_voice_settings():
         config_manager = current_app.config.get('config_manager')
         
         if not config_manager:
-            return jsonify({
-                'success': False,
-                'error': 'config_not_available',
-                'message': 'Configuration manager is not available'
-            }), 500
+            return error_response('Configuration manager is not available', code='CONFIG_NOT_AVAILABLE', status_code=500)
         
         # 設定保存
         voice_mode = data.get('voiceMode', 'tts')
@@ -741,17 +694,10 @@ def save_voice_settings():
         config_manager.save()
         
         logger.info("Voice settings saved as default")
-        return jsonify({
-            'success': True,
-            'message': 'Voice settings saved as default'
-        })
+        return success_response({'message': 'Voice settings saved as default'})
     except Exception as e:
         logger.error(f"Error saving voice settings: {e}")
-        return jsonify({
-            'success': False,
-            'error': 'save_failed',
-            'message': str(e)
-        }), 500
+        return error_response(str(e), code='SAVE_FAILED', status_code=500)
 
 
 @tts_system_bp.route('/schedule', methods=['POST'])
@@ -766,21 +712,13 @@ def add_schedule():
         
         # 入力チェック
         if not data or 'time' not in data or 'content' not in data:
-            return jsonify({
-                'success': False,
-                'error': 'invalid_parameters',
-                'message': 'Time and content are required'
-            }), 400
+            return error_response('Time and content are required', code='VALIDATION_ERROR', status_code=400)
         
         from flask import current_app
         schedule_manager = current_app.config.get('schedule_manager')
         
         if not schedule_manager:
-            return jsonify({
-                'success': False,
-                'error': 'service_not_available',
-                'message': 'Schedule manager is not available'
-            }), 500
+            return error_response('Schedule manager is not available', code='SERVICE_UNAVAILABLE', status_code=500)
         
         # スケジュール追加（音声ファイル生成を含む）
         new_schedule = schedule_manager.add_schedule(
@@ -789,28 +727,19 @@ def add_schedule():
         )
         
         if not new_schedule:
-            return jsonify({
-                'success': False,
-                'error': 'schedule_add_failed',
-                'message': 'Failed to add schedule'
-            }), 500
+            return error_response('Failed to add schedule', code='SCHEDULE_ADD_FAILED', status_code=500)
             
         voice_file = new_schedule.get('voice_file', None)
         voice_file_created = voice_file is not None
         
-        return jsonify({
-            'success': True,
+        return success_response({
             'message': 'Schedule added successfully',
             'schedule': new_schedule,
             'voice_file_created': voice_file_created
         })
     except Exception as e:
         logger.error(f"Error adding schedule: {e}")
-        return jsonify({
-            'success': False,
-            'error': 'unexpected_error',
-            'message': str(e)
-        }), 500
+        return error_response(str(e), code='UNEXPECTED_ERROR', status_code=500)
 
 
 @tts_system_bp.route('/schedule/<schedule_id>', methods=['DELETE'])
@@ -828,33 +757,18 @@ def delete_schedule(schedule_id):
         schedule_manager = current_app.config.get('schedule_manager')
         
         if not schedule_manager:
-            return jsonify({
-                'success': False,
-                'error': 'service_not_available',
-                'message': 'Schedule manager is not available'
-            }), 500
+            return error_response('Schedule manager is not available', code='SERVICE_UNAVAILABLE', status_code=500)
         
         # スケジュール削除（関連する音声ファイルも削除される）
         result = schedule_manager.delete_schedule(schedule_id)
         
         if not result:
-            return jsonify({
-                'success': False,
-                'error': 'schedule_delete_failed',
-                'message': 'Failed to delete schedule or schedule not found'
-            }), 404
+            return error_response('Failed to delete schedule or schedule not found', code='SCHEDULE_DELETE_FAILED', status_code=404)
             
-        return jsonify({
-            'success': True,
-            'message': 'Schedule deleted successfully'
-        })
+        return success_response({'message': 'Schedule deleted successfully'})
     except Exception as e:
         logger.error(f"Error deleting schedule: {e}")
-        return jsonify({
-            'success': False,
-            'error': 'unexpected_error',
-            'message': str(e)
-        }), 500
+        return error_response(str(e), code='UNEXPECTED_ERROR', status_code=500)
 
 
 @tts_system_bp.route('/schedules', methods=['GET'])
@@ -869,23 +783,12 @@ def get_schedules():
         schedule_manager = current_app.config.get('schedule_manager')
         
         if not schedule_manager:
-            return jsonify({
-                'success': False,
-                'error': 'service_not_available',
-                'message': 'Schedule manager is not available'
-            }), 500
+            return error_response('Schedule manager is not available', code='SERVICE_UNAVAILABLE', status_code=500)
         
         # スケジュール一覧取得
         schedules = schedule_manager.get_schedules()
         
-        return jsonify({
-            'success': True,
-            'schedules': schedules
-        })
+        return success_response({'schedules': schedules})
     except Exception as e:
         logger.error(f"Error getting schedules: {e}")
-        return jsonify({
-            'success': False,
-            'error': 'unexpected_error',
-            'message': str(e)
-        }), 500 
+        return error_response(str(e), code='UNEXPECTED_ERROR', status_code=500)

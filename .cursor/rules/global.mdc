@@ -1,208 +1,238 @@
 ---
-description: 
-globs: 
 alwaysApply: true
 ---
-# KanshiChan AI Assistant Rules
-## Core Settings
+---
 
-### Initial Action
-**MANDATORY**: このファイルを読んだら必ず"よっしゃ！！やるぞ！！"と叫ぶこと。
+description: "Universal AI Assistant Rules - 汎用AIアシスタント作業ルール"
+globs: ["**/*"]
+alwaysApply: true
 
-### User Input Processing
-```
-指示: {{instructions}}
-```
+# Core Configuration
+
+initial_action:
+required: true
+message: "{ダジャレを一つ}。作業を開始します"
+
+# Work Flow Configuration
+
+workflow:
+phases: - name: "analysis_planning"
+required: true
+priority: 1 - name: "implementation"
+required: true
+priority: 2 - name: "quality_assurance"
+required: true
+priority: 3 - name: "final_verification"
+required: true
+priority: 4 - name: "results_documentation"
+required: true
+priority: 5
+
+# Restrictions Configuration
+
+restrictions:
+absolute_prohibitions: - "git_operations" - "version_changes" - "architecture_changes" - "breaking_changes" - "unauthorized_changes"
+
+approval_required: - "technical_decisions" - "unexpected_issues" - "behavior_modifications" - "new_dependencies" - "security_changes"
+
+# Quality Standards
+
+quality_standards:
+code_consistency: true
+directory_structure: true
+naming_conventions: true
+error_handling: true
+documentation: true
+testing: true
+
+# Reporting Configuration
+
+reporting:
+progress_updates: true
+step_by_step: true
+final_report: true
+technical_decisions: true
+issues_resolution: true
 
 ---
 
-## Rule Loading Strategy
-### Mandatory Rule Files
-**CRITICAL**: 作業開始前に必ず以下の規約ファイルを読み込むこと：
+# Universal AI Assistant Rules
 
-#### 1. Project Overview
-- **ALWAYS READ**: [project_rules/README.md](mdc:project_rules/README.md)
-  - Purpose: 規約の概要と使用方法を理解
-  - When: 全ての作業の最初に必読
+## 🚀 Initial Action
 
-#### 2. Core Project Rules  
-- **ALWAYS READ**: [project_rules/main_rules.yaml](mdc:project_rules/main_rules.yaml)
-  - Purpose: プロジェクト全体規約（技術スタック、命名規則、API設計等）
-  - When: プロジェクト全体に関わる作業時は必須
-
-#### 3. Universal Coding Standards
-- **ALWAYS READ**: [project_rules/coding_rules.yaml](mdc:project_rules/coding_rules.yaml)  
-  - Purpose: 全言語統一コーディング規約（Python, TypeScript, YAML, JSON）
-  - When: あらゆるコーディング作業時は必須
-
-#### 4. Documentation Standards
-- **ALWAYS READ**: [project_rules/comment_rules.yaml](mdc:project_rules/comment_rules.yaml)
-  - Purpose: コメント・ドキュメンテーション統一規約
-  - When: コードにコメントやドキュメントを追加する時は必須
-
-### Domain-Specific Rules
-**CONTEXT-DEPENDENT**: 作業内容に応じて該当する規約を必ず読み込む：
-
-#### Backend Development
-- **READ WHEN**: Python/Flask バックエンド作業時
-- **FILE**: [project_rules/backend_rules.yaml](mdc:project_rules/backend_rules.yaml)
-- **SCOPE**: API開発、データベース、認証、エラーハンドリング等
-
-#### Frontend Development  
-- **READ WHEN**: React/TypeScript フロントエンド作業時
-- **FILE**: [project_rules/frontend_rules.yaml](mdc:project_rules/frontend_rules.yaml)
-- **SCOPE**: UI/UX、コンポーネント、状態管理、国際化等
-
-#### AI/ML Development
-- **READ WHEN**: AI/ML機能（YOLO、MediaPipe等）作業時
-- **FILE**: [project_rules/ai_ml_rules.yaml](mdc:project_rules/ai_ml_rules.yaml)
-- **SCOPE**: 物体検出、画像処理、パフォーマンス最適化等
+**MANDATORY**: 作業開始時は必ず「{ダジャレを一つ}。作業を開始します」と宣言してください。
 
 ---
 
-## Work Process Framework
+## 📋 Work Process Framework
 
-### Phase 1: Analysis & Planning
-```markdown
-<タスク分析>
-1. タスク要約: [主要なタスクを簡潔に記述]
-2. 技術スタック確認: [使用技術とバージョン制約を確認]
-   ⚠️ バージョン変更は承認必須
-3. 要件・制約: [重要な要件と制約を特定]
-4. 潜在的課題: [想定される問題点をリスト化]
-5. 実行ステップ: [具体的なステップを詳細に列挙]
-6. 実行順序: [最適な実行順序を決定]
+### Phase 1: Analysis & Planning [PRIORITY: 1]
 
-📋 規約確認チェックリスト:
-□ project_rules/README.md - 規約概要
-□ project_rules/main_rules.yaml - 全体規約  
-□ project_rules/coding_rules.yaml - コーディング規約
-□ project_rules/comment_rules.yaml - コメント規約
-□ 該当する領域別規約（backend/frontend/ai_ml）
+すべての作業前に以下のタスク分析を実行してください：
 
-🔍 重複チェック:
-□ 既存の類似機能確認
-□ 同名関数・コンポーネント確認  
-□ 重複APIエンドポイント確認
-□ 共通化可能処理の特定
-</タスク分析>
+**重複チェック**:
+
+- 既存の類似機能確認
+- 同名関数・コンポーネント確認
+- 重複APIエンドポイント確認
+- 共通化可能処理の特定
+
+**コードベース理解**:
+
+- プロジェクト構造の把握
+- 既存コーディングスタイルの確認
+- 命名規則の確認
+- アーキテクチャパターンの理解
+
+[[calls]]
+match = "when the user requests code examples, setup or configuration steps, or library/API documentation"
+tool = "context7"
+
+```yaml
+task_analysis:
+  summary: '主要なタスクを簡潔に記述'
+  tech_stack: '使用技術とバージョン制約を確認（⚠️ バージョン変更は承認必須）'
+  requirements: '重要な要件と制約を特定'
+  potential_issues: '想定される問題点をリスト化'
+  execution_steps: '具体的なステップを詳細に列挙'
+  execution_order: '最適な実行順序を決定'
 ```
 
-### Phase 2: Implementation
-**実行原則**:
-- ✅ 規約遵守の徹底
-- ✅ 適切なディレクトリ構造
-- ✅ 命名規則の一貫性
-- ✅ 共通処理の適切配置
-- ✅ 統一されたエラーハンドリング
-- ✅ 統一されたログ出力
+### Phase 2: Implementation [PRIORITY: 2]
 
-**Progress Reporting**:
-各ステップ完了後に簡潔な進捗報告を実施
+実装時は以下の原則を厳守してください：
 
-### Phase 3: Quality Assurance  
-**検証項目**:
-```markdown
-□ 規約遵守確認
-□ 機能要件充足  
-□ 性能要件充足
-□ セキュリティ要件充足
-□ テスト実装完了
+```yaml
+implementation_principles:
+  code_consistency: '既存コードスタイルとの一貫性維持'
+  directory_structure: '適切なディレクトリ構造の遵守'
+  naming_conventions: '命名規則の一貫性'
+  shared_logic: '共通処理の適切配置'
+  error_handling: '統一されたエラーハンドリング'
+  logging: '適切なログ出力'
 ```
 
-**問題対応プロセス**:
+### Phase 3: Quality Assurance [PRIORITY: 3]
+
+以下の項目を必ず検証してください：
+
+```yaml
+quality_checklist:
+  - '既存コードスタイルとの整合性確認'
+  - '機能要件充足'
+  - '性能要件充足'
+  - 'セキュリティ要件充足'
+  - 'テスト実装確認'
+  - 'エラーハンドリング確認'
+```
+
+**問題対応手順**:
+
 1. 問題の切り分けと原因特定
-2. 対策案の作成と実施  
+2. 対策案の作成と実施
 3. 修正後の動作検証
 4. デバッグログの確認と分析
 
-### Phase 4: Final Verification
-**最終チェック**:
-```markdown
-□ 当初指示との整合性確認
-□ 規約準拠の最終確認  
-□ 重複実装の排除確認
-□ コード品質チェック実行
-  - Python: black, flake8, mypy
-  - TypeScript: npm run lint, npm run type-check
+### Phase 4: Final Verification [PRIORITY: 4]
+
+以下の最終チェックを実行してください：
+
+```yaml
+final_verification:
+  - '当初指示との整合性確認'
+  - '既存コードベースとの統合性確認'
+  - '重複実装の排除確認'
+  - 'コード品質チェック実行'
+  - '適切なコメント・ドキュメント追加'
+  - '不要なファイルの削除'
 ```
 
-### Phase 5: Results Documentation
-**報告フォーマット**:
-```markdown
-# 実行結果報告
+### Phase 5: Results Documentation [PRIORITY: 5]
 
-## 概要
-[全体要約を簡潔に記述]
+作業完了後は以下の形式で報告してください：
 
-## 規約遵守状況  
-- 参照した規約ファイル: [具体的なファイルリスト]
-- 遵守した主要規約項目: [具体的な規約項目]
-- 規約違反や例外: [該当する場合のみ]
-
-## 実行ステップ
-1. [ステップと結果]
-2. [ステップと結果]
-...
-
-## 最終成果物
-[成果物の詳細]
-
-## 課題対応
-- 発生した問題と対応内容
-- 今後の注意点
-
-## 注意点・改善提案  
-[気づいた点や改善提案]
-
-## 次の作業
-[提案する次の作業]
+```yaml
+report_structure:
+  overview: '全体要約を簡潔に記述'
+  execution_steps: 'ステップと結果のリスト'
+  deliverables:
+    - '作成/修正したファイル'
+    - '実装した機能'
+    - '追加した依存関係'
+  technical_decisions:
+    - '採用したアプローチと選択理由'
+    - '既存コードベースとの統合方法'
+    - 'パフォーマンス・セキュリティ考慮事項'
+  issues_resolution: '発生した問題と対応内容'
+  improvements: '気づいた点や改善提案'
+  next_actions: '提案する次の作業'
 ```
 
 ---
 
-## Critical Restrictions
+## 🚫 Critical Restrictions
 
-### ⛔ Absolute Prohibitions
-- **Git Operations**: コミット・プッシュは事前承認必須
-- **Version Changes**: 技術スタックバージョン変更は承認必須  
-- **UI/UX Changes**: レイアウト・色・フォント変更は承認必須
-- **Unauthorized Changes**: 明示的指示外の変更は承認必須
+### Absolute Prohibitions [APPROVAL: REQUIRED]
 
-### ⚠️ Mandatory Approvals
-- 重要な判断が必要な場合
-- 予期せぬ問題が発生した場合  
-- 技術的変更が必要な場合
-- UI/UXデザイン変更が必要な場合
-
-### 📋 Quick Reference Guide
-
-#### Project Rules Structure
-```
-project_rules/
-├── README.md              # 📖 規約概要・使用方法
-├── main_rules.yaml        # 🌟 プロジェクト全体規約
-├── coding_rules.yaml      # 💻 全言語コーディング規約
-├── comment_rules.yaml     # 📝 コメント・ドキュメント規約
-├── backend_rules.yaml     # 🐍 Python/Flask バックエンド規約
-├── frontend_rules.yaml    # ⚛️ React/TypeScript フロントエンド規約
-└── ai_ml_rules.yaml       # 🤖 AI/ML機能開発規約
+```yaml
+prohibited_actions:
+  - action: 'git_operations'
+    description: 'コミット・プッシュ'
+  - action: 'version_changes'
+    description: '技術スタックバージョン変更'
+  - action: 'architecture_changes'
+    description: 'アーキテクチャの大幅変更'
+  - action: 'breaking_changes'
+    description: '既存機能に影響する変更'
+  - action: 'unauthorized_changes'
+    description: '明示的指示外の変更'
 ```
 
-#### Work Trigger Mapping
-| Work Type | Required Rules |
-|-----------|----------------|
-| **All Work** | README.md + main_rules.yaml + coding_rules.yaml + comment_rules.yaml |
-| **Backend** | + backend_rules.yaml |
-| **Frontend** | + frontend_rules.yaml |  
-| **AI/ML** | + ai_ml_rules.yaml |
-| **Full-Stack** | + backend_rules.yaml + frontend_rules.yaml |
-| **AI Integration** | + ai_ml_rules.yaml + backend_rules.yaml |
+### Approval Required [CONFIRMATION: MANDATORY]
+
+```yaml
+approval_scenarios:
+  - '重要な技術的判断が必要な場合'
+  - '予期せぬ問題が発生した場合'
+  - '既存の動作を変更する可能性がある場合'
+  - '新しい依存関係の追加が必要な場合'
+  - 'セキュリティに関わる変更が必要な場合'
+```
+
+### Best Practices [STANDARDS: ENFORCE]
+
+```yaml
+best_practices:
+  incremental_development: '小さな単位で実装し、段階的に確認'
+  pattern_following: '既存のコードパターンを踏襲'
+  documentation: '変更内容の適切な文書化'
+  testing: '可能な限りテストの実装・実行'
+  clean_code: '可読性と保守性を重視'
+```
 
 ---
 
-## Execution Commitment
+## ⚖️ Execution Rules
 
-指示された範囲内でのみ処理を実行し、不要な追加実装は行いません。
-不明点や重要な判断が必要な場合は、必ず確認を取ります。
-規約を厳格に遵守し、確実で質の高い実装を提供します。
+```yaml
+execution_commitments:
+  scope_adherence:
+    description: '指示された範囲内でのみ処理を実行'
+    additional_work: false
+
+  confirmation_priority:
+    description: '不明点や重要な判断時は必ず確認'
+    auto_decision: false
+
+  quality_assurance:
+    description: '既存コードベースとの整合性維持'
+    consistency_check: true
+
+  transparency:
+    description: '実行プロセスと結果の明確な報告'
+    documentation_required: true
+
+  responsibility:
+    description: '指示の正確な理解と適切な実行'
+    accuracy_priority: true
+```

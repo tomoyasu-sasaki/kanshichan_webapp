@@ -7,7 +7,7 @@ WebSocket音声配信、ストリーミング状態監視、メッセージ一�
 
 import logging
 from typing import Dict, Any, Optional
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request
 
 from services.tts.tts_service import TTSService
 from services.voice_manager import VoiceManager
@@ -20,8 +20,9 @@ from web.websocket import (
 
 logger = setup_logger(__name__)
 
-# Blueprint定義
-tts_streaming_bp = Blueprint('tts_streaming', __name__, url_prefix='/api/tts')
+# Blueprint定義（相対パス化。上位で /api および /api/v1 を付与）
+tts_streaming_bp = Blueprint('tts_streaming', __name__, url_prefix='/tts')
+from web.response_utils import success_response, error_response
 
 # サービスインスタンス（tts_helpers.pyで初期化）
 tts_service: Optional[TTSService] = None
@@ -59,10 +60,7 @@ def stream_audio():
     logger.info("📡 Real-time audio streaming request received")
     
     if not tts_service:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         # リクエストデータ検証
@@ -85,10 +83,7 @@ def stream_audio():
         connected_clients = get_connected_clients_count()
         if connected_clients == 0:
             logger.warning("No connected clients for streaming")
-            return jsonify({
-                'error': 'no_clients',
-                'message': 'No connected clients for streaming'
-            }), 400
+            return error_response('No connected clients for streaming', code='NO_CLIENTS', status_code=400)
         
         logger.info(f"📡 Streaming text to {connected_clients} clients: '{text[:50]}...'")
         logger.info(f"📡 Settings: emotion={emotion}, language={language}, priority={priority}")
@@ -121,10 +116,7 @@ def stream_audio():
         # 音声ファイルパスを取得（TTSServiceから）
         audio_file_path = audio_result.get('file_path')
         if not audio_file_path:
-            return jsonify({
-                'error': 'synthesis_error',
-                'message': 'Audio file path not available'
-            }), 500
+            return error_response('Audio file path not available', code='SYNTHESIS_ERROR', status_code=500)
         
         if broadcast_all or not target_client_ids:
             # 全クライアントに配信
@@ -142,8 +134,7 @@ def stream_audio():
             audio_result['audio_file_id']
         )
         
-        return jsonify({
-            'success': True,
+        return success_response({
             'audio_file_id': audio_result['audio_file_id'],
             'connected_clients': connected_clients,
             'broadcast_type': 'all' if broadcast_all else 'targeted' if target_client_ids else 'all',
@@ -153,24 +144,15 @@ def stream_audio():
         
     except ValidationError as e:
         logger.warning(f"Validation error in audio streaming: {e}")
-        return jsonify({
-            'error': 'validation_error',
-            'message': str(e)
-        }), 400
+        return error_response(str(e), code='VALIDATION_ERROR', status_code=400)
         
     except ServiceUnavailableError as e:
         logger.error(f"Service error in audio streaming: {e}")
-        return jsonify({
-            'error': 'service_error',
-            'message': str(e)
-        }), 503
+        return error_response(str(e), code='SERVICE_ERROR', status_code=503)
         
     except Exception as e:
         logger.error(f"Error in audio streaming: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to stream audio'
-        }), 500
+        return error_response('Failed to stream audio', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_streaming_bp.route('/streaming-status', methods=['GET'])
@@ -217,14 +199,11 @@ def get_streaming_status():
             except Exception as e:
                 logger.warning(f"Failed to get TTS service details: {e}")
         
-        return jsonify(response)
+        return success_response(response)
         
     except Exception as e:
         logger.error(f"Error getting streaming status: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to get streaming status'
-        }), 500
+        return error_response('Failed to get streaming status', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_streaming_bp.route('/broadcast-message', methods=['POST'])
@@ -245,10 +224,7 @@ def broadcast_message():
     logger.info("📢 Broadcast message request received")
     
     if not tts_service:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         # リクエストデータ検証
@@ -270,10 +246,9 @@ def broadcast_message():
         connected_clients = get_connected_clients_count()
         if connected_clients == 0:
             logger.warning("No connected clients for broadcast")
-            return jsonify({
+            return success_response({
                 'warning': 'no_clients',
-                'message': 'No connected clients for broadcast',
-                'success': True  # メッセージ生成は成功
+                'message': 'No connected clients for broadcast'
             })
         
         logger.info(f"📢 Broadcasting message to {connected_clients} clients")
@@ -349,28 +324,19 @@ def broadcast_message():
         if not stream_success:
             response['warning'] = 'Audio streaming failed, but text was sent'
         
-        return jsonify(response)
+        return success_response(response)
         
     except ValidationError as e:
         logger.warning(f"Validation error in message broadcast: {e}")
-        return jsonify({
-            'error': 'validation_error',
-            'message': str(e)
-        }), 400
+        return error_response(str(e), code='VALIDATION_ERROR', status_code=400)
         
     except ServiceUnavailableError as e:
         logger.error(f"Service error in message broadcast: {e}")
-        return jsonify({
-            'error': 'service_error',
-            'message': str(e)
-        }), 503
+        return error_response(str(e), code='SERVICE_ERROR', status_code=503)
         
     except Exception as e:
         logger.error(f"Error in message broadcast: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to broadcast message'
-        }), 500
+        return error_response('Failed to broadcast message', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_streaming_bp.route('/streaming/clients', methods=['GET'])
@@ -391,14 +357,11 @@ def get_connected_clients():
             'queue_length': 0      # 基本実装
         }
         
-        return jsonify(response)
+        return success_response(response)
         
     except Exception as e:
         logger.error(f"Error getting connected clients: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to get connected clients information'
-        }), 500
+        return error_response('Failed to get connected clients information', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_streaming_bp.route('/streaming/queue/clear', methods=['POST'])
@@ -425,8 +388,7 @@ def clear_streaming_queue():
             None
         )
         
-        return jsonify({
-            'success': True,
+        return success_response({
             'cleared_items': 0,  # 基本実装
             'force': force,
             'message': 'Streaming queue cleared'
@@ -434,10 +396,7 @@ def clear_streaming_queue():
         
     except Exception as e:
         logger.error(f"Error clearing streaming queue: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to clear streaming queue'
-        }), 500
+        return error_response('Failed to clear streaming queue', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_streaming_bp.route('/streaming/performance', methods=['GET'])
@@ -462,8 +421,7 @@ def get_streaming_performance():
             'average_latency': 0.0
         }
         
-        return jsonify({
-            'success': True,
+        return success_response({
             'time_range': time_range,
             'performance': basic_stats,
             'current_status': {
@@ -475,7 +433,4 @@ def get_streaming_performance():
         
     except Exception as e:
         logger.error(f"Error getting streaming performance: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to get streaming performance statistics'
-        }), 500 
+        return error_response('Failed to get streaming performance statistics', code='INTERNAL_ERROR', status_code=500)

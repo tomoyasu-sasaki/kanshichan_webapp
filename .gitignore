@@ -165,5 +165,6 @@ cython_debug/
 
 
 backend/voice_data/
+backend/src/sounds/
 backend/src/services/tts/Zonos/model/*
 backend/src/services/config/*

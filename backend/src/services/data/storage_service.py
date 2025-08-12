@@ -27,9 +27,9 @@ class StorageService:
     効率的なデータ保存、圧縮、アーカイブ、削除機能を提供
     """
     
-    def __init__(self, 
-                 backup_dir: str = "./data/backups",
-                 archive_dir: str = "./data/archives",
+    def __init__(self,
+                 backup_dir: str | Path = "./data/backups",
+                 archive_dir: str | Path = "./data/archives",
                  retention_days: int = 90):
         """初期化
         
@@ -38,15 +38,22 @@ class StorageService:
             archive_dir: アーカイブディレクトリ
             retention_days: データ保持期間（日）
         """
-        self.backup_dir = Path(backup_dir)
-        self.archive_dir = Path(archive_dir)
+        # backend 直下の data ディレクトリに絶対固定
+        backend_root = Path(__file__).resolve().parent.parent.parent.parent
+        data_root = backend_root / "data"
+        # 指示に従い、引数に関わらず backend/data をルートとして固定
+        self.backup_dir = data_root / "backups"
+        self.archive_dir = data_root / "archives"
         self.retention_days = retention_days
         
-        # ディレクトリ作成
+        # ディレクトリ作成（絶対パスで作成）
         self.backup_dir.mkdir(parents=True, exist_ok=True)
         self.archive_dir.mkdir(parents=True, exist_ok=True)
         
-        logger.info(f"StorageService initialized - retention: {retention_days} days")
+        logger.info(
+            f"StorageService initialized - retention: {retention_days} days, "
+            f"backup_dir: {self.backup_dir}, archive_dir: {self.archive_dir}"
+        )
     
     def save_behavior_logs_batch(self, logs_data: List[Dict[str, Any]]) -> bool:
         """行動ログをバッチ保存

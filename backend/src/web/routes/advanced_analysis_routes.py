@@ -8,7 +8,7 @@ Advanced Analysis API Routes - 高度分析API
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, current_app
 
 from models.behavior_log import BehaviorLog
 from utils.logger import setup_logger
@@ -26,8 +26,9 @@ from services.analysis.service_loader import (
 
 logger = setup_logger(__name__)
 
-# Blueprint定義
-advanced_analysis_bp = Blueprint('advanced_analysis', __name__, url_prefix='/api/analysis')
+# Blueprint定義（相対パス化。上位で /api および /api/v1 を付与）
+advanced_analysis_bp = Blueprint('advanced_analysis', __name__, url_prefix='/analysis')
+from web.response_utils import success_response, error_response
 
 
 @advanced_analysis_bp.route('/advanced-patterns', methods=['GET'])
@@ -52,32 +53,23 @@ def get_advanced_patterns():
         
         # バリデーション
         if timeframe not in ['hourly', 'daily', 'weekly', 'monthly']:
-            return jsonify({
-                'status': 'error',
-                'error': 'Invalid timeframe. Must be one of: hourly, daily, weekly, monthly',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response(
+                'Invalid timeframe. Must be one of: hourly, daily, weekly, monthly',
+                code='VALIDATION_ERROR', status_code=400
+            )
         
         if pattern_type not in ['cyclical', 'trending', 'seasonal', 'all']:
-            return jsonify({
-                'status': 'error',
-                'error': 'Invalid pattern_type. Must be one of: cyclical, trending, seasonal, all',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response(
+                'Invalid pattern_type. Must be one of: cyclical, trending, seasonal, all',
+                code='VALIDATION_ERROR', status_code=400
+            )
         
         # 高度分析エンジン取得
         advanced_analyzer = _get_advanced_behavior_analyzer()
         pattern_recognizer = _get_pattern_recognizer()
         
         if not advanced_analyzer or not pattern_recognizer:
-            return jsonify({
-                'status': 'error',
-                'error': 'Advanced analysis services not available',
-                'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 500
+            return error_response('Advanced analysis services not available', code='SERVICE_UNAVAILABLE', status_code=500)
         
         # 期間に応じたデータ取得
         hours_map = {'hourly': 1, 'daily': 24, 'weekly': 168, 'monthly': 720}
@@ -85,15 +77,11 @@ def get_advanced_patterns():
         logs = BehaviorLog.get_recent_logs(hours=hours, user_id=user_id)
         
         if not logs:
-            return jsonify({
-                'status': 'success',
-                'data': {
-                    'message': f'{timeframe}のデータが見つかりません',
-                    'timeframe': timeframe,
-                    'pattern_type': pattern_type,
-                    'logs_count': 0
-                },
-                'timestamp': datetime.now(timezone.utc).isoformat()
+            return success_response({
+                'message': f'{timeframe}のデータが見つかりません',
+                'timeframe': timeframe,
+                'pattern_type': pattern_type,
+                'logs_count': 0
             })
         
         # 時系列パターン分析
@@ -123,20 +111,11 @@ def get_advanced_patterns():
             )
         }
         
-        return jsonify({
-            'status': 'success',
-            'data': result_data,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        })
+        return success_response(result_data)
         
     except Exception as e:
         logger.error(f"Error getting advanced patterns: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to analyze advanced patterns',
-            'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 500
+        return error_response('Failed to analyze advanced patterns', code='ANALYSIS_ERROR', status_code=500)
 
 
 @advanced_analysis_bp.route('/focus-deep-dive', methods=['GET'])
@@ -161,35 +140,21 @@ def get_focus_deep_dive():
         
         # バリデーション
         if hours < 1 or hours > 720:  # 最大30日
-            return jsonify({
-                'status': 'error',
-                'error': 'Hours must be between 1 and 720',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response('Hours must be between 1 and 720', code='VALIDATION_ERROR', status_code=400)
         
         # 高度分析エンジン取得
         advanced_analyzer = _get_advanced_behavior_analyzer()
         if not advanced_analyzer:
-            return jsonify({
-                'status': 'error',
-                'error': 'Advanced behavior analyzer not available',
-                'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 500
+            return error_response('Advanced behavior analyzer not available', code='SERVICE_UNAVAILABLE', status_code=500)
         
         # データ取得
         logs = BehaviorLog.get_recent_logs(hours=hours, user_id=user_id)
         
         if not logs:
-            return jsonify({
-                'status': 'success',
-                'data': {
-                    'message': f'過去{hours}時間のデータが見つかりません',
-                    'hours': hours,
-                    'logs_count': 0
-                },
-                'timestamp': datetime.now(timezone.utc).isoformat()
+            return success_response({
+                'message': f'過去{hours}時間のデータが見つかりません',
+                'hours': hours,
+                'logs_count': 0
             })
         
         # 集中度詳細分析実行
@@ -208,27 +173,13 @@ def get_focus_deep_dive():
             'summary': _generate_focus_summary(focus_analysis)
         }
         
-        return jsonify({
-            'status': 'success',
-            'data': result_data,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        })
+        return success_response(result_data)
         
     except ValueError as e:
-        return jsonify({
-            'status': 'error',
-            'error': 'Invalid parameter format',
-            'code': 'VALIDATION_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 400
+        return error_response('Invalid parameter format', code='VALIDATION_ERROR', status_code=400)
     except Exception as e:
         logger.error(f"Error getting focus deep dive: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to analyze focus details',
-            'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 500
+        return error_response('Failed to analyze focus details', code='ANALYSIS_ERROR', status_code=500)
 
 
 @advanced_analysis_bp.route('/health-assessment', methods=['GET'])
@@ -253,35 +204,21 @@ def get_health_assessment():
         
         # バリデーション
         if hours < 1 or hours > 720:
-            return jsonify({
-                'status': 'error',
-                'error': 'Hours must be between 1 and 720',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response('Hours must be between 1 and 720', code='VALIDATION_ERROR', status_code=400)
         
         # 高度分析エンジン取得
         advanced_analyzer = _get_advanced_behavior_analyzer()
         if not advanced_analyzer:
-            return jsonify({
-                'status': 'error',
-                'error': 'Advanced behavior analyzer not available',
-                'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 500
+            return error_response('Advanced behavior analyzer not available', code='SERVICE_UNAVAILABLE', status_code=500)
         
         # データ取得
         logs = BehaviorLog.get_recent_logs(hours=hours, user_id=user_id)
         
         if not logs:
-            return jsonify({
-                'status': 'success',
-                'data': {
-                    'message': f'過去{hours}時間のデータが見つかりません',
-                    'hours': hours,
-                    'logs_count': 0
-                },
-                'timestamp': datetime.now(timezone.utc).isoformat()
+            return success_response({
+                'message': f'過去{hours}時間のデータが見つかりません',
+                'hours': hours,
+                'logs_count': 0
             })
         
         # 健康評価分析実行
@@ -300,27 +237,13 @@ def get_health_assessment():
             'risk_summary': _generate_health_risk_summary(health_analysis)
         }
         
-        return jsonify({
-            'status': 'success',
-            'data': result_data,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        })
+        return success_response(result_data)
         
     except ValueError as e:
-        return jsonify({
-            'status': 'error',
-            'error': 'Invalid parameter format',
-            'code': 'VALIDATION_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 400
+        return error_response('Invalid parameter format', code='VALIDATION_ERROR', status_code=400)
     except Exception as e:
         logger.error(f"Error getting health assessment: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to perform health assessment',
-            'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 500
+        return error_response('Failed to perform health assessment', code='ANALYSIS_ERROR', status_code=500)
 
 
 @advanced_analysis_bp.route('/productivity-score', methods=['GET'])
@@ -345,35 +268,21 @@ def get_productivity_score():
         
         # バリデーション
         if hours < 1 or hours > 720:
-            return jsonify({
-                'status': 'error',
-                'error': 'Hours must be between 1 and 720',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response('Hours must be between 1 and 720', code='VALIDATION_ERROR', status_code=400)
         
         # 高度分析エンジン取得
         advanced_analyzer = _get_advanced_behavior_analyzer()
         if not advanced_analyzer:
-            return jsonify({
-                'status': 'error',
-                'error': 'Advanced behavior analyzer not available',
-                'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 500
+            return error_response('Advanced behavior analyzer not available', code='SERVICE_UNAVAILABLE', status_code=500)
         
         # データ取得
         logs = BehaviorLog.get_recent_logs(hours=hours, user_id=user_id)
         
         if not logs:
-            return jsonify({
-                'status': 'success',
-                'data': {
-                    'message': f'過去{hours}時間のデータが見つかりません',
-                    'hours': hours,
-                    'logs_count': 0
-                },
-                'timestamp': datetime.now(timezone.utc).isoformat()
+            return success_response({
+                'message': f'過去{hours}時間のデータが見つかりません',
+                'hours': hours,
+                'logs_count': 0
             })
         
         # 活動パターン分析実行
@@ -392,27 +301,13 @@ def get_productivity_score():
             'productivity_summary': _generate_productivity_summary(activity_analysis)
         }
         
-        return jsonify({
-            'status': 'success',
-            'data': result_data,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        })
+        return success_response(result_data)
         
     except ValueError as e:
-        return jsonify({
-            'status': 'error',
-            'error': 'Invalid parameter format',
-            'code': 'VALIDATION_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 400
+        return error_response('Invalid parameter format', code='VALIDATION_ERROR', status_code=400)
     except Exception as e:
         logger.error(f"Error getting productivity score: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to calculate productivity score',
-            'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 500
+        return error_response('Failed to calculate productivity score', code='ANALYSIS_ERROR', status_code=500)
 
 
 # ========== ヘルパー関数 ==========

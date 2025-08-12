@@ -89,7 +89,6 @@ directory_structure:
         communication:
           - "alert_manager.py: アラート通知統合管理"
           - "alert_service.py: アラート処理抽象化"
-          - "line_service.py: LINE Notify連携"
         automation:
           - "schedule_manager.py: スケジュール管理"
         tts:
@@ -245,7 +244,6 @@ error_handling:
         - "AudioFileError: 音声ファイル"
       api:
         - "APIError: API関連"
-        - "LineAPIError: LINE API"
         - "ValidationError: バリデーション"
       system:
         - "CameraInitializationError: カメラ初期化"
@@ -481,7 +479,6 @@ dependencies:
       
     ai_services:
       - "ollama>=0.4.3"
-      - "openai>=1.70.0"
       
     utilities:
       - "PyYAML>=6.0.2"
@@ -538,7 +535,6 @@ security:
     env_vars: "機密情報は環境変数"
     config_exclusion: "設定ファイルから機密情報除外"
     tts_keys: "TTS APIキーの安全な管理"
-    line_tokens: "LINE APIトークンの保護"
     
   data_protection:
     camera_access: "カメラアクセス権限の適切な管理"

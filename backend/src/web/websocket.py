@@ -81,7 +81,9 @@ def init_websocket(app):
 def broadcast_status(status):
     """検出状態の変更をブロードキャスト"""
     try:
+        # 互換性のためエイリアスイベント名でも二重配信
         socketio.emit('status_update', status)
+        socketio.emit('detection_status', status)
     except Exception as e:
         broadcast_error = wrap_exception(
             e, NetworkError,
@@ -145,8 +147,9 @@ def broadcast_system_metrics():
             'timestamp': datetime.utcnow().isoformat()
         }
         
-        # WebSocketで配信
+        # WebSocketで配信（互換エイリアス含む）
         socketio.emit('system_metrics', system_metrics)
+        socketio.emit('performance_stats', system_metrics)
         
     except Exception as e:
         metrics_error = wrap_exception(

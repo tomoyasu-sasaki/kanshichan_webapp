@@ -78,8 +78,8 @@ interface PredictiveInsightsProps {
   predictionHorizon?: number; // hours
 }
 
-// API ベース URL（バックエンド Flask サーバ）
-const API_BASE_URL = 'http://localhost:8000/api';
+// API ベース URL（バージョン付きの相対パス。Viteのプロキシ `/api/v1` を使用）
+const API_BASE_URL = '/api/v1';
 
 export const PredictiveInsights: React.FC<PredictiveInsightsProps> = ({
   userId = 'default',
@@ -109,17 +109,19 @@ export const PredictiveInsights: React.FC<PredictiveInsightsProps> = ({
         `${API_BASE_URL}/analysis/predictions?user_id=${userId}&metrics=focus_score,productivity_score,fatigue_level,posture_score&horizon=${selectedHorizon}`
       );
       if (!predictionsResponse.ok) throw new Error('Failed to fetch predictions');
-      const predictionsData = await predictionsResponse.json();
+      const predictionsRaw = await predictionsResponse.json();
+      const predictionsData: any = predictionsRaw?.data ?? predictionsRaw;
 
       // Fetch advanced patterns for trend analysis
       const patternsResponse = await fetch(
         `${API_BASE_URL}/analysis/advanced-patterns?user_id=${userId}&timeframe=weekly`
       );
       if (!patternsResponse.ok) throw new Error('Failed to fetch patterns');
-      const patternsData = await patternsResponse.json();
+      const patternsRaw = await patternsResponse.json();
+      const patternsData: any = patternsRaw?.data ?? patternsRaw;
 
       // Process data
-      setPredictions(predictionsData.predictions || []);
+      setPredictions(predictionsData.predictions || predictionsData?.prediction_summary?.key_predictions || []);
       setTrendAnalysis(processTrendAnalysis(patternsData));
       setFutureScenarios(generateFutureScenarios(predictionsData.predictions || []));
 
@@ -461,7 +463,7 @@ export const PredictiveInsights: React.FC<PredictiveInsightsProps> = ({
   }
 
   return (
-    <Box bg={bgColor} minH="100vh" p={6}>
+    <Box bg={bgColor} minH="100vh" p={6} maxW="1200px" mx="auto">
       <VStack spacing={6} align="stretch">
         {/* Header */}
         <HStack justify="space-between" align="center">

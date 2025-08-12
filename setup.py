@@ -8,7 +8,6 @@ common_requires = [
     "torch",
     "ultralytics",
     "transformers",
-    "openai",
     "flask",
     "pyyaml",
     "Pillow",

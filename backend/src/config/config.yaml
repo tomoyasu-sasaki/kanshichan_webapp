@@ -99,7 +99,7 @@ landmark_settings:
 llm:
   analysis_interval_seconds: 300
   enabled: false
-  model_name: huggingface.co/elyza/Llama-3-ELYZA-JP-8B-GGUF:latest
+  model_name: gpt-oss:20b
   temperature: 0.7
 logging:
   backup_count: 3
@@ -137,10 +137,10 @@ optimization:
     adaptive_mode: true
     adjustment_interval: 2.0
     enabled: true
-    max_skip_rate: 1
+    max_skip_rate: 2
     min_fps: 10.0
     target_fps: 15.0
-  max_skip_rate: 1
+  max_skip_rate: 2
   min_fps: 10.0
   preprocessing:
     normalize_enabled: false
@@ -182,8 +182,8 @@ tts:
   default_use_whisper_style: false
   default_voice_mode: voiceClone
   default_voice_pitch: 1.0
-  default_voice_sample_id: 0c972f4e2b683751
-  default_voice_sample_path: /Users/tmys-sasaki/Projects/Private/KanshiChan/backend/voice_data/samples/0c972f4e2b683751_tmprxb_eiwn.wav
+  default_voice_sample_id: 5f37f403230125be
+  default_voice_sample_path: /Users/tmys-sasaki/Projects/Private/KanshiChan/backend/voice_data/samples/5f37f403230125be_tmpnl5ofbxe.wav
   default_voice_speed: 1.0
   default_voice_volume: 0.7
   default_vq_score: 0.8

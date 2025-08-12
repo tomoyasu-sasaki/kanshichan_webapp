@@ -89,21 +89,34 @@ def create_app(config_manager: ConfigManager):
     ]:
         csrf.exempt(ep)
     
-    # セキュリティ強化: レート制限の設定
+    # 開発時の利便性向上: レート制限を一括無効化（環境変数またはENVに応じて）
+    disable_rl_by_env = (
+        os.environ.get('KANSHICHAN_DISABLE_RATELIMITS', '0') == '1'
+        or os.environ.get('FLASK_ENV') == 'development'
+        or os.environ.get('ENV') == 'development'
+        or app.config.get('ENV') == 'development'
+    )
+
+    # セキュリティ強化: レート制限の設定（開発環境では無効化可能）
     limiter = Limiter(
         get_remote_address,
         app=app,
-        default_limits=["200 per day", "50 per hour"],
+        default_limits=[] if disable_rl_by_env else ["200 per day", "50 per hour"],
         strategy="fixed-window",
         storage_uri="memory://",
     )
+    if disable_rl_by_env:
+        @limiter.request_filter
+        def _disable_rate_limiting_for_dev():
+            return True
+        logger.warning("Rate limiting is disabled for development environment")
     
     # ConfigManagerをFlaskアプリケーションに注入
     app.config['config_manager'] = config_manager
     
     # データベース設定 - 絶対パスに修正
-    # src/instance/kanshichan.dbへの絶対パス
-    db_path = Path(__file__).parent.parent / 'instance' / 'kanshichan.db'
+    # backend/instance/kanshichan.db への絶対パス
+    db_path = Path(__file__).parent.parent.parent / 'instance' / 'kanshichan.db'
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path.absolute()}'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
@@ -115,6 +128,7 @@ def create_app(config_manager: ConfigManager):
     
     CORS(app, resources={
         r"/api/*": {"origins": origins},
+        r"/api/v1/*": {"origins": origins},
         r"/socket.io/*": {"origins": origins}
     })
     
@@ -169,28 +183,41 @@ def create_app(config_manager: ConfigManager):
         logger.error(f"❌ Monitor services initialization error: {monitor_init_error.to_dict()}")
         # Monitorサービスの初期化失敗は致命的ではないため継続
     
-    # API Blueprint登録
-    app.register_blueprint(api, url_prefix='/api')
-    app.register_blueprint(basic_analysis_bp)
-    app.register_blueprint(advanced_analysis_bp)
-    app.register_blueprint(prediction_analysis_bp)
-    app.register_blueprint(realtime_analysis_bp)
-    app.register_blueprint(tts_synthesis_bp)
-    app.register_blueprint(tts_voice_clone_bp)
-    app.register_blueprint(tts_file_bp)
-    app.register_blueprint(tts_emotion_bp)
-    app.register_blueprint(tts_streaming_bp)
-    app.register_blueprint(tts_system_bp)
-    app.register_blueprint(behavior_bp)
-    app.register_blueprint(monitor_bp)
+    # API Blueprint登録（/api/v1 を正とし、/api は非推奨互換ルートに変更）
+    # 正式ルート（/api/v1 配下）
+    app.register_blueprint(api, url_prefix='/api/v1')
+    app.register_blueprint(basic_analysis_bp, url_prefix='/api/v1/analysis')
+    app.register_blueprint(advanced_analysis_bp, url_prefix='/api/v1/analysis')
+    app.register_blueprint(prediction_analysis_bp, url_prefix='/api/v1/analysis')
+    app.register_blueprint(realtime_analysis_bp, url_prefix='/api/v1/analysis')
+    app.register_blueprint(tts_synthesis_bp, url_prefix='/api/v1/tts')
+    app.register_blueprint(tts_voice_clone_bp, url_prefix='/api/v1/tts')
+    app.register_blueprint(tts_file_bp, url_prefix='/api/v1/tts')
+    app.register_blueprint(tts_emotion_bp, url_prefix='/api/v1/tts')
+    app.register_blueprint(tts_streaming_bp, url_prefix='/api/v1/tts')
+    app.register_blueprint(tts_system_bp, url_prefix='/api/v1/tts')
+    app.register_blueprint(behavior_bp, url_prefix='/api/v1/behavior')
+    app.register_blueprint(monitor_bp, url_prefix='/api/v1/monitor')
+
+    # 後方互換ルート（/api 配下）はDeprecatedヘッダを付与して /api/v1 に誘導
+    @app.after_request
+    def add_deprecation_header(response):
+        try:
+            if request.path.startswith('/api/') and not request.path.startswith('/api/v1/'):
+                response.headers['Deprecation'] = 'true'
+                response.headers['Sunset'] = 'Mon, 01 Dec 2025 00:00:00 GMT'
+                response.headers['Link'] = '</api/v1>; rel="successor-version"'
+        finally:
+            return response
     
-    # レート制限の適用
-    # 主要なAPIエンドポイントに対するレート制限の設定
-    limiter.limit("100 per minute")(monitor_bp)
-    limiter.limit("100 per minute")(api)
-    limiter.limit("100 per minute")(basic_analysis_bp)
-    limiter.limit("60 per minute")(advanced_analysis_bp)
-    limiter.limit("30 per minute")(tts_synthesis_bp)
+    # レート制限の適用（開発環境ではスキップ）
+    if not disable_rl_by_env:
+        # 主要なAPIエンドポイントに対するレート制限の設定
+        limiter.limit("100 per minute")(monitor_bp)
+        limiter.limit("100 per minute")(api)
+        limiter.limit("100 per minute")(basic_analysis_bp)
+        limiter.limit("60 per minute")(advanced_analysis_bp)
+        limiter.limit("30 per minute")(tts_synthesis_bp)
     
     # サービスの初期化状況を集約してロギング
     initialized_services = [
@@ -212,11 +239,13 @@ def create_app(config_manager: ConfigManager):
     def spa_route_handler(error):
         # APIパスの場合は404エラーのまま返す
         if request.path.startswith('/api/'):
-            return jsonify({"error": "API endpoint not found"}), 404
+            from web.response_utils import error_response
+            return error_response('API endpoint not found', code='NOT_FOUND', status_code=404)
             
         # 静的ファイルの場合はそのまま404を返す
         if request.path.startswith('/assets/') or '.' in request.path.split('/')[-1]:
-            return jsonify({"error": "File not found"}), 404
+            from web.response_utils import error_response
+            return error_response('File not found', code='NOT_FOUND', status_code=404)
             
         # SPAのindex.htmlを返す
         index_path = os.path.join(app.static_folder, 'index.html')
@@ -232,29 +261,30 @@ def create_app(config_manager: ConfigManager):
                 }
             )
             logger.error(f"Frontend file error: {frontend_error.to_dict()}")
-            return jsonify({"error": "Frontend not found"}), 404
+            from web.response_utils import error_response
+            return error_response('Frontend not found', code='NOT_FOUND', status_code=404)
             
     # CSRFエラーハンドラ
     @app.errorhandler(CSRFError)
     def handle_csrf_error(e):
-        return jsonify({
-            'status': 'error',
-            'error': 'CSRF token validation failed',
-            'code': 'CSRF_ERROR',
-            'details': {'csrf': 'Invalid or missing CSRF token'},
-            'timestamp': datetime.utcnow().isoformat()
-        }), 400
+        from web.response_utils import error_response
+        return error_response(
+            'CSRF token validation failed',
+            code='CSRF_ERROR',
+            details={'csrf': 'Invalid or missing CSRF token'},
+            status_code=400,
+        )
     
     # レート制限エラーハンドラ
     @app.errorhandler(429)
     def handle_ratelimit_error(e):
-        return jsonify({
-            'status': 'error',
-            'error': 'Rate limit exceeded',
-            'code': 'RATE_LIMIT_ERROR',
-            'details': {'message': str(e.description)},
-            'timestamp': datetime.utcnow().isoformat()
-        }), 429
+        from web.response_utils import error_response
+        return error_response(
+            'Rate limit exceeded',
+            code='RATE_LIMIT_ERROR',
+            details={'message': str(e.description)},
+            status_code=429,
+        )
     
     # ルートパス用の明示的なルート
     @app.route('/')

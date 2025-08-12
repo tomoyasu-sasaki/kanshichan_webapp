@@ -6,7 +6,14 @@
   "tabs": {
     "monitor": "監視",
     "settings": "設定",
-    "schedule": "スケジュール"
+    "schedule": "スケジュール",
+    "overview": "概要",
+    "voice": "音声設定",
+    "behavior": "行動分析",
+    "analytics": "高度分析",
+    "personalization": "パーソナライゼーション",
+    "predictions": "予測インサイト",
+    "learning": "学習進捗"
   },
   "monitor": {
     "status": {
@@ -24,7 +31,19 @@
       "enter": "フルスクリーン表示",
       "exit": "フルスクリーン終了",
       "error": "フルスクリーン表示に失敗しました"
+    },
+    "labels": {
+      "presence": "在席状態",
+      "absence_time": "不在時間",
+      "smartphone": "スマートフォン",
+      "use_time": "使用時間"
     }
+  },
+  "dashboard": {
+    "title": "KanshiChan 統合ダッシュボード",
+    "description": "各フェーズの機能が正常に動作しています。左側のメニューから詳細画面にアクセスできます。",
+    "overall_health": "システム全体健康度",
+    "last_update": "最終更新"
   },
   "settings": {
     "title": "設定",
@@ -70,6 +89,9 @@
     "loading": "スケジュールを読み込み中...",
     "no_schedules": "スケジュールがありません",
     "add": "追加",
+    "add_new": "新しいスケジュールを追加",
+    "registered": "登録済みスケジュール",
+    "notification_title": "スケジュール通知",
     "edit": "編集",
     "delete": "削除",
     "save": "保存",
@@ -83,10 +105,18 @@
     "loading": "読み込み中...",
     "error": "エラーが発生しました",
     "success": "成功しました",
+    "update": "更新",
+    "settings": "設定",
     "confirm": "確認",
     "cancel": "キャンセル",
     "ok": "OK",
     "yes": "はい",
     "no": "いいえ"
+  },
+  "nav": {
+    "sections": {
+      "core": "基本機能",
+      "advanced": "拡張機能"
+    }
   }
 } 
