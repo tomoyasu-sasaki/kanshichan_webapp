@@ -11,7 +11,7 @@ import tempfile
 from typing import Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, send_file
 
 from services.tts.tts_service import TTSService
 from services.voice_manager import VoiceManager
@@ -24,8 +24,9 @@ from .tts_helpers import get_tts_service, get_voice_manager
 
 logger = setup_logger(__name__)
 
-# Blueprint定義
-tts_file_bp = Blueprint('tts_file', __name__, url_prefix='/api/tts')
+# Blueprint定義（相対パス化。上位で /api および /api/v1 を付与）
+tts_file_bp = Blueprint('tts_file', __name__, url_prefix='/tts')
+from web.response_utils import success_response, error_response
 
 # サービスインスタンス（tts_helpers.pyで初期化）
 tts_service: Optional[TTSService] = None
@@ -55,10 +56,7 @@ def get_audio_file(file_id: str):
         Audio file or JSON error
     """
     if not voice_manager:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'Voice manager is not available'
-        }), 503
+        return error_response('Voice manager is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         file_path, metadata = voice_manager.get_audio_file(file_id)
@@ -71,17 +69,11 @@ def get_audio_file(file_id: str):
         )
         
     except FileNotFoundError as e:
-        return jsonify({
-            'error': 'file_not_found',
-            'message': str(e)
-        }), 404
+        return error_response(str(e), code='FILE_NOT_FOUND', status_code=404)
         
     except Exception as e:
         logger.error(f"Error retrieving audio file {file_id}: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to retrieve audio file'
-        }), 500
+        return error_response('Failed to retrieve audio file', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_file_bp.route('/voices', methods=['GET'])
@@ -96,10 +88,7 @@ def list_voice_files():
         JSON response with voice file list
     """
     if not voice_manager:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'Voice manager is not available'
-        }), 503
+        return error_response('Voice manager is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         file_type = request.args.get('type')
@@ -110,18 +99,14 @@ def list_voice_files():
             user_id=user_id
         )
         
-        return jsonify({
-            'success': True,
+        return success_response({
             'files': files,
             'count': len(files)
         })
         
     except Exception as e:
         logger.error(f"Error listing voice files: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to list voice files'
-        }), 500
+        return error_response('Failed to list voice files', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_file_bp.route('/voices/<file_id>', methods=['DELETE'])
@@ -135,31 +120,19 @@ def delete_voice_file(file_id: str):
         JSON response with deletion result
     """
     if not voice_manager:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'Voice manager is not available'
-        }), 503
+        return error_response('Voice manager is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         success = voice_manager.delete_audio_file(file_id)
         
         if success:
-            return jsonify({
-                'success': True,
-                'message': f'Audio file {file_id} deleted successfully'
-            })
+            return success_response({'message': f'Audio file {file_id} deleted successfully'})
         else:
-            return jsonify({
-                'error': 'file_not_found',
-                'message': f'Audio file {file_id} not found'
-            }), 404
+            return error_response(f'Audio file {file_id} not found', code='FILE_NOT_FOUND', status_code=404)
             
     except Exception as e:
         logger.error(f"Error deleting audio file {file_id}: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to delete audio file'
-        }), 500
+        return error_response('Failed to delete audio file', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_file_bp.route('/upload_voice_sample', methods=['POST'])
@@ -181,11 +154,7 @@ def upload_voice_sample():
     
     if not voice_manager:
         logger.error("Voice Manager service is not available")
-        return jsonify({
-            'success': False,
-            'error': 'service_unavailable',
-            'message': 'Voice Manager service is not available'
-        }), 503
+        return error_response('Voice Manager service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         logger.info("🔍 Checking for audio file in request")
@@ -193,20 +162,12 @@ def upload_voice_sample():
         # ファイルが存在するかチェック
         if 'audio_file' not in request.files:
             logger.warning("No audio_file in request.files")
-            return jsonify({
-                'success': False,
-                'error': 'missing_file',
-                'message': 'Audio file is required'
-            }), 400
+            return error_response('Audio file is required', code='MISSING_FILE', status_code=400)
         
         file = request.files['audio_file']
         if file.filename == '':
             logger.warning("Empty filename provided")
-            return jsonify({
-                'success': False,
-                'error': 'invalid_file',
-                'message': 'No file selected'
-            }), 400
+            return error_response('No file selected', code='INVALID_FILE', status_code=400)
         
         logger.info(f"📁 Processing file: {file.filename}")
         
@@ -228,11 +189,7 @@ def upload_voice_sample():
         
         if file_size > 10 * 1024 * 1024:  # 10MB
             logger.warning(f"File too large: {file_size} bytes")
-            return jsonify({
-                'success': False,
-                'error': 'file_too_large',
-                'message': 'File size must be less than 10MB'
-            }), 413
+            return error_response('File size must be less than 10MB', code='FILE_TOO_LARGE', status_code=413)
         
         # ファイル形式チェック
         allowed_extensions = {'.wav', '.mp3', '.m4a', '.flac', '.aac'}
@@ -241,11 +198,10 @@ def upload_voice_sample():
         
         if file_ext not in allowed_extensions:
             logger.warning(f"Invalid file format: {file_ext}")
-            return jsonify({
-                'success': False,
-                'error': 'invalid_format',
-                'message': f'Unsupported file format. Allowed: {", ".join(allowed_extensions)}'
-            }), 400
+            return error_response(
+                f'Unsupported file format. Allowed: {", ".join(allowed_extensions)}',
+                code='INVALID_FORMAT', status_code=400
+            )
         
         logger.info("💾 Saving to temporary file")
         
@@ -335,7 +291,7 @@ def upload_voice_sample():
             
             logger.info(f"Voice sample uploaded successfully: {file_id} ({filename})")
             
-            return jsonify(result), 200
+            return success_response(result, status_code=200)
             
         finally:
             # 一時ファイルを削除
@@ -345,18 +301,10 @@ def upload_voice_sample():
                 logger.warning(f"Failed to delete temporary file {temp_path}: {e}")
         
     except ValidationError as e:
-        return jsonify({
-            'success': False,
-            'error': 'validation_error',
-            'message': str(e)
-        }), 400
+        return error_response(str(e), code='VALIDATION_ERROR', status_code=400)
     except Exception as e:
         logger.error(f"Voice sample upload error: {e}")
-        return jsonify({
-            'success': False,
-            'error': 'upload_failed',
-            'message': 'Failed to upload voice sample'
-        }), 500
+        return error_response('Failed to upload voice sample', code='UPLOAD_FAILED', status_code=500)
 
 
 @tts_file_bp.route('/evaluate-quality', methods=['POST'])
@@ -371,10 +319,7 @@ def evaluate_voice_quality():
         JSON response with quality evaluation results
     """
     if not tts_service:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         # 音声ファイル取得
@@ -416,7 +361,7 @@ def evaluate_voice_quality():
             if return_recommendations:
                 response['recommendations'] = evaluation['recommendations']
             
-            return jsonify(response)
+            return success_response(response)
             
         finally:
             # 一時ファイル削除
@@ -425,25 +370,16 @@ def evaluate_voice_quality():
     
     except ValidationError as e:
         logger.warning(f"Validation error in quality evaluation: {e}")
-        return jsonify({
-            'error': 'validation_error',
-            'message': str(e)
-        }), 400
+        return error_response(str(e), code='VALIDATION_ERROR', status_code=400)
         
     except (AudioError, ServiceUnavailableError) as e:
         logger.error(f"TTS error in quality evaluation: {e}")
-        return jsonify({
-            'error': 'evaluation_error',
-            'message': str(e)
-        }), 500
+        return error_response(str(e), code='EVALUATION_ERROR', status_code=500)
         
     except Exception as e:
         error = wrap_exception(e, AudioError, "Unexpected error in quality evaluation")
         logger.error(f"Unexpected error in quality evaluation: {error.to_dict()}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'An unexpected error occurred'
-        }), 500
+        return error_response('An unexpected error occurred', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_file_bp.route('/voice-profiles', methods=['GET'])
@@ -459,10 +395,7 @@ def get_voice_profiles():
         JSON response with voice profiles list
     """
     if not voice_manager:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'Voice manager service is not available'
-        }), 503
+        return error_response('Voice manager service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         # クエリパラメータ取得
@@ -514,19 +447,13 @@ def get_voice_profiles():
             }
         }
         
-        return jsonify(response)
+        return success_response(response)
         
     except ValueError as e:
         logger.warning(f"Parameter error in voice profiles: {e}")
-        return jsonify({
-            'error': 'parameter_error',
-            'message': 'Invalid parameter values'
-        }), 400
+        return error_response('Invalid parameter values', code='PARAMETER_ERROR', status_code=400)
         
     except Exception as e:
         error = wrap_exception(e, AudioError, "Unexpected error in voice profiles")
         logger.error(f"Unexpected error in voice profiles: {error.to_dict()}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'An unexpected error occurred'
-        }), 500 
+        return error_response('An unexpected error occurred', code='INTERNAL_ERROR', status_code=500)

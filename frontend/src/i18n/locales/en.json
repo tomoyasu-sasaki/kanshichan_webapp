@@ -6,7 +6,14 @@
   "tabs": {
     "monitor": "Monitor",
     "settings": "Settings",
-    "schedule": "Schedule"
+    "schedule": "Schedule",
+    "overview": "Overview",
+    "voice": "Voice Settings",
+    "behavior": "Behavior Analysis",
+    "analytics": "Advanced Analytics",
+    "personalization": "Personalization",
+    "predictions": "Predictive Insights",
+    "learning": "Learning Progress"
   },
   "monitor": {
     "status": {
@@ -24,7 +31,19 @@
       "enter": "Enter Fullscreen",
       "exit": "Exit Fullscreen",
       "error": "Failed to enter fullscreen mode"
+    },
+    "labels": {
+      "presence": "Presence",
+      "absence_time": "Absence Time",
+      "smartphone": "Smartphone",
+      "use_time": "Use Time"
     }
+  },
+  "dashboard": {
+    "title": "KanshiChan Integrated Dashboard",
+    "description": "Each phase is functioning correctly. Use the left menu to access details.",
+    "overall_health": "Overall System Health",
+    "last_update": "Last update"
   },
   "settings": {
     "title": "Settings",
@@ -70,6 +89,9 @@
     "loading": "Loading schedules...",
     "no_schedules": "No schedules available",
     "add": "Add",
+    "add_new": "Add New Schedule",
+    "registered": "Registered Schedules",
+    "notification_title": "Schedule Notification",
     "edit": "Edit",
     "delete": "Delete",
     "save": "Save",
@@ -83,10 +105,18 @@
     "loading": "Loading...",
     "error": "An error occurred",
     "success": "Success",
+    "update": "Update",
+    "settings": "Settings",
     "confirm": "Confirm",
     "cancel": "Cancel",
     "ok": "OK",
     "yes": "Yes",
     "no": "No"
+  },
+  "nav": {
+    "sections": {
+      "core": "Core",
+      "advanced": "Advanced"
+    }
   }
 } 

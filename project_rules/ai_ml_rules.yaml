@@ -18,7 +18,7 @@ ai_architecture:
     monitored: "パフォーマンス監視と動的調整"
     
   model_management:
-    storage: "プロジェクトルート（自動ダウンロード管理）"
+    storage: "backend/models（絶対参照・自動ダウンロード配置）"
     versioning: "YOLOv8n固定、MediaPipe最新版"
     caching: "AIOptimizer統合によるモデルキャッシュ"
     device_optimization: "MPS > CUDA > CPU 自動選択"
@@ -129,7 +129,7 @@ memory_management:
 yolo_detection:
   model_specification:
     current: "YOLOv8n (nano) - 軽量版"
-    path: "yolov8n.pt（プロジェクトルート）"
+    path: "backend/models/yolov8n.pt（絶対パス）"
     auto_download: "存在しない場合の自動ダウンロード"
     device_selection: "MPS > CUDA > CPU 自動選択"
     optimization: "AIOptimizer統合推論"
@@ -508,7 +508,7 @@ ai_testing:
 # ===========================================
 model_management:
   yolo_management:
-    model_file: "yolov8n.pt（プロジェクトルート）"
+    model_file: "backend/models/yolov8n.pt（絶対パス）"
     auto_download: "存在しない場合の自動ダウンロード機能"
     device_optimization: "最適デバイス自動選択・設定"
     configuration: "推論設定の最適化"
@@ -526,13 +526,13 @@ model_management:
   examples: |
     def _setup_yolo(self) -> None:
         try:
-            model_path = "yolov8n.pt"
+            model_path = "backend/models/yolov8n.pt"  # backend 配下の絶対参照
             
             if not os.path.exists(model_path):
                 logger.warning("YOLOモデルをダウンロードします...")
                 self.model = YOLO("yolov8n.pt")  # 自動ダウンロード
             else:
-                self.model = YOLO(model_path)
+                self.model = YOLO(model_path)  # 絶対パスからロード
             
             # デバイス最適化
             if torch.backends.mps.is_built():

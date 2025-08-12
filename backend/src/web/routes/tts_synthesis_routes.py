@@ -15,7 +15,7 @@ import time
 from typing import Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, send_file
 
 from services.tts.tts_service import TTSService
 from services.voice_manager import VoiceManager
@@ -31,8 +31,9 @@ from .tts_helpers import ensure_tqdm_disabled, get_backend_path
 
 logger = setup_logger(__name__)
 
-# Blueprint定義
-tts_synthesis_bp = Blueprint('tts_synthesis', __name__, url_prefix='/api/tts')
+# Blueprint定義（相対パス化。上位で /api および /api/v1 を付与）
+tts_synthesis_bp = Blueprint('tts_synthesis', __name__, url_prefix='/tts')
+from web.response_utils import success_response, error_response
 
 # サービスインスタンス（tts_helpers.pyで初期化）
 tts_service: Optional[TTSService] = None
@@ -85,10 +86,7 @@ def synthesize_speech():
         JSON response with audio file information or binary audio data
     """
     if not tts_service or not voice_manager:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         # リクエストデータ取得
@@ -316,7 +314,7 @@ def synthesize_speech():
                     'voice_cloned': speaker_sample_path is not None
                 }
             }
-            return jsonify(response)
+            return success_response(response)
         else:
             # send_file前にパス検証
             absolute_output_path = os.path.abspath(output_path)
@@ -341,10 +339,7 @@ def synthesize_speech():
                 audio_id if 'audio_id' in locals() else None
             )
         
-        return jsonify({
-            'error': 'validation_error',
-            'message': str(e)
-        }), 400
+        return error_response(str(e), code='VALIDATION_ERROR', status_code=400)
         
     except (AudioError, ServiceUnavailableError) as e:
         logger.error(f"TTS error in speech synthesis: {e}")
@@ -357,10 +352,7 @@ def synthesize_speech():
                 audio_id if 'audio_id' in locals() else None
             )
         
-        return jsonify({
-            'error': 'synthesis_error',
-            'message': str(e)
-        }), 500
+        return error_response(str(e), code='SYNTHESIS_ERROR', status_code=500)
         
     except Exception as e:
         logger.error(f"Unexpected error in speech synthesis: {e}")
@@ -373,10 +365,7 @@ def synthesize_speech():
                 audio_id if 'audio_id' in locals() else None
             )
         
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'An unexpected error occurred'
-        }), 500
+        return error_response('An unexpected error occurred', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_synthesis_bp.route('/synthesize-fast', methods=['POST'])
@@ -410,10 +399,7 @@ def synthesize_speech_fast():
         Binary audio data
     """
     if not tts_service or not voice_manager:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         # リクエストデータ取得（シンプル版）
@@ -585,7 +571,7 @@ def synthesize_speech_fast():
                 }
             }
             logger.info(f"✅ Fast synthesis completed: {audio_id}")
-            return jsonify(response)
+            return success_response(response)
         else:
             # バイナリ音声データを直接返す
             logger.info(f"✅ Fast synthesis completed, returning binary data: {audio_id}")
@@ -598,22 +584,13 @@ def synthesize_speech_fast():
 
     except ValidationError as e:
         logger.warning(f"Fast synthesis validation error: {e}")
-        return jsonify({
-            'error': 'validation_error',
-            'message': str(e)
-        }), 400
+        return error_response(str(e), code='VALIDATION_ERROR', status_code=400)
     except AudioError as e:
         logger.error(f"Fast synthesis audio error: {e}")
-        return jsonify({
-            'error': 'audio_error',
-            'message': str(e)
-        }), 500
+        return error_response(str(e), code='AUDIO_ERROR', status_code=500)
     except Exception as e:
         logger.error(f"Fast synthesis unexpected error: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Fast synthesis failed due to internal error'
-        }), 500
+        return error_response('Fast synthesis failed due to internal error', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_synthesis_bp.route('/synthesize-advanced', methods=['POST'])
@@ -642,10 +619,7 @@ def synthesize_advanced_speech():
         JSON response with audio file information or binary audio data
     """
     if not tts_service or not voice_manager:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         # リクエストデータ検証
@@ -819,7 +793,7 @@ def synthesize_advanced_speech():
                     'advanced_synthesis': True
                 }
             }
-            return jsonify(response)
+            return success_response(response)
         else:
             emotion_str = emotion_info.get('emotion_name', 'custom')
             return send_file(
@@ -831,21 +805,12 @@ def synthesize_advanced_speech():
     
     except ValidationError as e:
         logger.warning(f"Validation error in advanced speech synthesis: {e}")
-        return jsonify({
-            'error': 'validation_error',
-            'message': str(e)
-        }), 400
+        return error_response(str(e), code='VALIDATION_ERROR', status_code=400)
         
     except (AudioError, ServiceUnavailableError) as e:
         logger.error(f"TTS error in advanced speech synthesis: {e}")
-        return jsonify({
-            'error': 'synthesis_error',
-            'message': str(e)
-        }), 500
+        return error_response(str(e), code='SYNTHESIS_ERROR', status_code=500)
         
     except Exception as e:
         logger.error(f"Unexpected error in advanced speech synthesis: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'An unexpected error occurred'
-        }), 500 
+        return error_response('An unexpected error occurred', code='INTERNAL_ERROR', status_code=500)

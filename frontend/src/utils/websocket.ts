@@ -211,9 +211,12 @@ class WebSocketManager {
       return;
     }
 
-    // WebSocketの設定
-    this.socket = io('http://localhost:8000', {
+    // WebSocketの設定（Viteプロキシを利用し相対接続、websocket専用でヘッダ不整合を回避）
+    this.socket = io({
+      path: '/socket.io',
       transports: ['websocket'],
+      forceNew: true,
+      withCredentials: false,
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000

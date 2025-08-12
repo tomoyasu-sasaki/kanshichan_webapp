@@ -1,4 +1,4 @@
-import { extendTheme } from '@chakra-ui/theme-utils'
+import { extendTheme } from '@chakra-ui/react'
 import { type ThemeConfig } from '@chakra-ui/theme'
 
 const config: ThemeConfig = {

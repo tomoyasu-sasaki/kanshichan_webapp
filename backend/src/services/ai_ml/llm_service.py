@@ -34,7 +34,7 @@ class LLMService:
             config: 設定辞書
         """
         self.config = config.get('llm', {})
-        self.primary_model = self.config.get('primary_model', 'huggingface.co/elyza/Llama-3-ELYZA-JP-8B-GGUF:latest')
+        self.primary_model = self.config.get('primary_model', 'gpt-oss:20b')
         self.fallback_model = self.config.get('fallback_model', 'qwen2:7b')
         self.temperature = self.config.get('temperature', 0.7)
         self.max_tokens = self.config.get('max_tokens', 300)

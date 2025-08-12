@@ -196,7 +196,7 @@ directory_structure:
           - "ScheduleView.tsx (299行): スケジュール管理"
           - "SettingsPanel.tsx (311行): 設定パネル"
           - "PerformanceStats.tsx (123行): パフォーマンス統計"
-          - "LanguageSwitcher.tsx (41行): 言語切り替え"
+          - "LanguageSwitcher.tsx (~50行): 言語切り替え"
         analytics:
           - "AdvancedAnalyticsDashboard.tsx (563行): 高度分析"
           - "PredictiveInsights.tsx (513行): 予測分析"

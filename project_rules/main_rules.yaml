@@ -36,7 +36,6 @@ technology_stack:
     ai_services:
       - "Zonos TTS (Zyphra/Zonos-v0.1-transformer)"
       - "ollama >=0.4.3"
-      - "openai >=1.70.0"
     utilities:
       - "PyYAML >=6.0.2"
       - "Pillow >=10.0.0"
@@ -82,7 +81,6 @@ project_structure:
       services: 
         - "アラート管理（alert_manager.py）"
         - "LLM連携（llm_service.py）"
-        - "LINE通知（line_service.py）"
         - "TTS音声（tts/）"
         - "スケジュール（schedule_manager.py）"
       web: "Flask API と WebSocket（api.py, app.py）"

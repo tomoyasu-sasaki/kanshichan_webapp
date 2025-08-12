@@ -7,7 +7,7 @@ TTS Emotion Processing API Routes - 感情処理API
 
 import logging
 from typing import Dict, Any, List, Optional
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request
 
 from services.tts.tts_service import TTSService
 from services.voice_manager import VoiceManager
@@ -17,7 +17,8 @@ from utils.exceptions import ValidationError, ServiceUnavailableError, wrap_exce
 logger = setup_logger(__name__)
 
 # Blueprint定義
-tts_emotion_bp = Blueprint('tts_emotion', __name__, url_prefix='/api/tts')
+tts_emotion_bp = Blueprint('tts_emotion', __name__, url_prefix='/tts')
+from web.response_utils import success_response, error_response
 
 # サービスインスタンス（tts_helpers.pyで初期化）
 tts_service: Optional[TTSService] = None
@@ -44,26 +45,19 @@ def get_available_emotions():
         JSON response with available emotions
     """
     if not tts_service:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         emotions = tts_service.get_available_emotions()
         
-        return jsonify({
-            'success': True,
+        return success_response({
             'emotions': emotions,
             'total_count': len(emotions)
         })
         
     except Exception as e:
         logger.error(f"Error getting available emotions: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to get available emotions'
-        }), 500
+        return error_response('Failed to get available emotions', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_emotion_bp.route('/emotions/custom', methods=['POST'])
@@ -83,10 +77,7 @@ def create_custom_emotion():
     logger.info("🎭 Custom emotion creation request received")
     
     if not tts_service:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         # リクエストデータ検証
@@ -117,32 +108,22 @@ def create_custom_emotion():
             description=description
         )
         
-        return jsonify({
-            'success': True,
+        return success_response({
             'custom_emotion': result,
             'message': f'Custom emotion "{name}" created successfully'
         })
         
     except ValidationError as e:
         logger.warning(f"Validation error in custom emotion creation: {e}")
-        return jsonify({
-            'error': 'validation_error',
-            'message': str(e)
-        }), 400
+        return error_response(str(e), code='VALIDATION_ERROR', status_code=400)
         
     except ServiceUnavailableError as e:
         logger.error(f"Service error in custom emotion creation: {e}")
-        return jsonify({
-            'error': 'service_error',
-            'message': str(e)
-        }), 503
+        return error_response(str(e), code='SERVICE_ERROR', status_code=503)
         
     except Exception as e:
         logger.error(f"Error creating custom emotion: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to create custom emotion'
-        }), 500
+        return error_response('Failed to create custom emotion', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_emotion_bp.route('/emotions/mix', methods=['POST'])
@@ -160,10 +141,7 @@ def mix_emotions():
     logger.info("🎨 Emotion mixing request received")
     
     if not tts_service:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         # リクエストデータ検証
@@ -199,8 +177,7 @@ def mix_emotions():
             result_name=result_name
         )
         
-        return jsonify({
-            'success': True,
+        return success_response({
             'mixed_emotion': result,
             'input_emotions': emotions,
             'message': f'Emotions mixed successfully as "{result_name}"'
@@ -208,24 +185,15 @@ def mix_emotions():
         
     except ValidationError as e:
         logger.warning(f"Validation error in emotion mixing: {e}")
-        return jsonify({
-            'error': 'validation_error',
-            'message': str(e)
-        }), 400
+        return error_response(str(e), code='VALIDATION_ERROR', status_code=400)
         
     except ServiceUnavailableError as e:
         logger.error(f"Service error in emotion mixing: {e}")
-        return jsonify({
-            'error': 'service_error',
-            'message': str(e)
-        }), 503
+        return error_response(str(e), code='SERVICE_ERROR', status_code=503)
         
     except Exception as e:
         logger.error(f"Error mixing emotions: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to mix emotions'
-        }), 500
+        return error_response('Failed to mix emotions', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_emotion_bp.route('/emotions/presets', methods=['GET'])
@@ -240,10 +208,7 @@ def get_emotion_presets():
         JSON response with emotion presets
     """
     if not tts_service:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         category = request.args.get('category')
@@ -256,8 +221,7 @@ def get_emotion_presets():
             language=language
         )
         
-        return jsonify({
-            'success': True,
+        return success_response({
             'presets': presets,
             'total_count': len(presets),
             'filters': {
@@ -268,10 +232,7 @@ def get_emotion_presets():
         
     except Exception as e:
         logger.error(f"Error getting emotion presets: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to get emotion presets'
-        }), 500
+        return error_response('Failed to get emotion presets', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_emotion_bp.route('/emotions/presets', methods=['POST'])
@@ -292,10 +253,7 @@ def create_emotion_preset():
     logger.info("🎭 Emotion preset creation request received")
     
     if not tts_service:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         # リクエストデータ検証
@@ -328,32 +286,22 @@ def create_emotion_preset():
             tags=tags
         )
         
-        return jsonify({
-            'success': True,
+        return success_response({
             'preset': result,
             'message': f'Emotion preset "{name}" created successfully'
         })
         
     except ValidationError as e:
         logger.warning(f"Validation error in emotion preset creation: {e}")
-        return jsonify({
-            'error': 'validation_error',
-            'message': str(e)
-        }), 400
+        return error_response(str(e), code='VALIDATION_ERROR', status_code=400)
         
     except ServiceUnavailableError as e:
         logger.error(f"Service error in emotion preset creation: {e}")
-        return jsonify({
-            'error': 'service_error',
-            'message': str(e)
-        }), 503
+        return error_response(str(e), code='SERVICE_ERROR', status_code=503)
         
     except Exception as e:
         logger.error(f"Error creating emotion preset: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to create emotion preset'
-        }), 500
+        return error_response('Failed to create emotion preset', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_emotion_bp.route('/emotions/presets/<preset_id>', methods=['DELETE'])
@@ -367,10 +315,7 @@ def delete_emotion_preset(preset_id: str):
         JSON response with deletion result
     """
     if not tts_service:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         logger.info(f"🗑️ Deleting emotion preset: {preset_id}")
@@ -378,22 +323,15 @@ def delete_emotion_preset(preset_id: str):
         success = tts_service.delete_emotion_preset(preset_id)
         
         if success:
-            return jsonify({
-                'success': True,
+            return success_response({
                 'message': f'Emotion preset {preset_id} deleted successfully'
             })
         else:
-            return jsonify({
-                'error': 'preset_not_found',
-                'message': f'Emotion preset {preset_id} not found'
-            }), 404
+            return error_response(f'Emotion preset {preset_id} not found', code='PRESET_NOT_FOUND', status_code=404)
             
     except Exception as e:
         logger.error(f"Error deleting emotion preset {preset_id}: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to delete emotion preset'
-        }), 500
+        return error_response('Failed to delete emotion preset', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_emotion_bp.route('/emotions/analyze', methods=['POST'])
@@ -411,10 +349,7 @@ def analyze_text_emotion():
     logger.info("🔍 Text emotion analysis request received")
     
     if not tts_service:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         # リクエストデータ検証
@@ -438,8 +373,7 @@ def analyze_text_emotion():
             return_confidence=return_confidence
         )
         
-        return jsonify({
-            'success': True,
+        return success_response({
             'text': text,
             'analysis': result,
             'language': language
@@ -447,24 +381,15 @@ def analyze_text_emotion():
         
     except ValidationError as e:
         logger.warning(f"Validation error in emotion analysis: {e}")
-        return jsonify({
-            'error': 'validation_error',
-            'message': str(e)
-        }), 400
+        return error_response(str(e), code='VALIDATION_ERROR', status_code=400)
         
     except ServiceUnavailableError as e:
         logger.error(f"Service error in emotion analysis: {e}")
-        return jsonify({
-            'error': 'service_error',
-            'message': str(e)
-        }), 503
+        return error_response(str(e), code='SERVICE_ERROR', status_code=503)
         
     except Exception as e:
         logger.error(f"Error analyzing text emotion: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to analyze text emotion'
-        }), 500
+        return error_response('Failed to analyze text emotion', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_emotion_bp.route('/emotions/apply', methods=['POST'])
@@ -484,10 +409,7 @@ def apply_emotion_to_speech():
     logger.info("🎭 Emotion application to speech request received")
     
     if not tts_service:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         # リクエストデータ検証
@@ -518,8 +440,7 @@ def apply_emotion_to_speech():
             language=language
         )
         
-        return jsonify({
-            'success': True,
+        return success_response({
             'audio_file_id': result['audio_file_id'],
             'applied_emotion': {
                 'emotion': emotion,
@@ -531,21 +452,12 @@ def apply_emotion_to_speech():
         
     except ValidationError as e:
         logger.warning(f"Validation error in emotion application: {e}")
-        return jsonify({
-            'error': 'validation_error',
-            'message': str(e)
-        }), 400
+        return error_response(str(e), code='VALIDATION_ERROR', status_code=400)
         
     except ServiceUnavailableError as e:
         logger.error(f"Service error in emotion application: {e}")
-        return jsonify({
-            'error': 'service_error',
-            'message': str(e)
-        }), 503
+        return error_response(str(e), code='SERVICE_ERROR', status_code=503)
         
     except Exception as e:
         logger.error(f"Error applying emotion to speech: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Failed to apply emotion to speech'
-        }), 500 
+        return error_response('Failed to apply emotion to speech', code='INTERNAL_ERROR', status_code=500)

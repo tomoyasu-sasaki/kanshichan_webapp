@@ -9,7 +9,7 @@ import logging
 import hashlib
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, current_app
 
 from models.behavior_log import BehaviorLog
 from models.user_profile import UserProfile
@@ -27,11 +27,12 @@ from .analysis_helpers import (
     _evaluate_data_freshness
 )
 from services.analysis.service_loader import get_advanced_behavior_analyzer
+from web.response_utils import success_response, error_response
 
 logger = setup_logger(__name__)
 
-# Blueprint定義
-basic_analysis_bp = Blueprint('basic_analysis', __name__, url_prefix='/api/analysis')
+# Blueprint定義（相対パス化。上位で /api および /api/v1 を付与）
+basic_analysis_bp = Blueprint('basic_analysis', __name__, url_prefix='/analysis')
 
 
 @basic_analysis_bp.route('/status', methods=['GET'])
@@ -63,30 +64,21 @@ def get_analysis_status():
         ])
         health_score = active_services / 4.0
         
-        return jsonify({
-            'status': 'success',
-            'data': {
-                'overall_status': 'healthy' if health_score >= 0.75 else 'degraded' if health_score >= 0.5 else 'critical',
-                'health_score': health_score,
-                'services': {
-                    'behavior_analyzer': analyzer_status,
-                    'llm_service': llm_status,
-                    'advanced_analyzer': advanced_analyzer_status,
-                    'database': db_status
-                },
-                'last_check': datetime.now(timezone.utc).isoformat()
+        return success_response({
+            'overall_status': 'healthy' if health_score >= 0.75 else 'degraded' if health_score >= 0.5 else 'critical',
+            'health_score': health_score,
+            'services': {
+                'behavior_analyzer': analyzer_status,
+                'llm_service': llm_status,
+                'advanced_analyzer': advanced_analyzer_status,
+                'database': db_status
             },
-            'timestamp': datetime.now(timezone.utc).isoformat()
+            'last_check': datetime.now(timezone.utc).isoformat()
         })
         
     except Exception as e:
         logger.error(f"Error checking analysis status: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to check analysis system status',
-            'code': 'STATUS_CHECK_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 500
+        return error_response('Failed to check analysis system status', code='STATUS_CHECK_ERROR', status_code=500)
 
 
 @basic_analysis_bp.route('/trends', methods=['GET'])
@@ -108,22 +100,12 @@ def get_behavior_trends():
         user_id = request.args.get('user_id')
         
         if timeframe not in ['hourly', 'daily', 'weekly']:
-            return jsonify({
-                'status': 'error',
-                'error': 'Invalid timeframe. Must be one of: hourly, daily, weekly',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response('Invalid timeframe. Must be one of: hourly, daily, weekly', code='VALIDATION_ERROR', status_code=400)
         
         # BehaviorAnalyzerインスタンス取得
         analyzer = _get_behavior_analyzer()
         if not analyzer:
-            return jsonify({
-                'status': 'error',
-                'error': 'BehaviorAnalyzer not available',
-                'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 500
+            return error_response('BehaviorAnalyzer not available', code='SERVICE_UNAVAILABLE', status_code=500)
         
         # 期間に応じたデータ取得
         hours_map = {'hourly': 1, 'daily': 24, 'weekly': 168}
@@ -133,44 +115,32 @@ def get_behavior_trends():
         logs = BehaviorLog.get_recent_logs(hours=hours, user_id=user_id)
         
         if not logs or len(logs) == 0:
-            return jsonify({
-                'status': 'success',
-                'data': {
-                    'message': 'データ収集中です。しばらくお待ちください。',
-                    'data_collection_status': 'active',
-                    'estimated_wait_time': '2-5分',
-                    'timeframe': timeframe,
-                    'period_hours': hours,
-                    'logs_count': 0
-                },
-                'timestamp': datetime.now(timezone.utc).isoformat()
+            return success_response({
+                'message': 'データ収集中です。しばらくお待ちください。',
+                'data_collection_status': 'active',
+                'estimated_wait_time': '2-5分',
+                'timeframe': timeframe,
+                'period_hours': hours,
+                'logs_count': 0
             })
         
         # 最小データ要件チェック
         if len(logs) < 5:
-            return jsonify({
-                'status': 'success',
-                'data': {
-                    'message': f'データ収集中です（{len(logs)}件収集済み）。より詳細な分析には5件以上のデータが必要です。',
-                    'data_collection_status': 'active',
-                    'estimated_wait_time': '2-3分',
-                    'timeframe': timeframe,
-                    'period_hours': hours,
-                    'logs_count': len(logs)
-                },
-                'timestamp': datetime.now(timezone.utc).isoformat()
+            return success_response({
+                'message': f'データ収集中です（{len(logs)}件収集済み）。より詳細な分析には5件以上のデータが必要です。',
+                'data_collection_status': 'active',
+                'estimated_wait_time': '2-3分',
+                'timeframe': timeframe,
+                'period_hours': hours,
+                'logs_count': len(logs)
             })
         
         if not logs:
-            return jsonify({
-                'status': 'success',
-                'data': {
-                    'message': f'{timeframe}のデータが見つかりません',
-                    'timeframe': timeframe,
-                    'period_hours': hours,
-                    'logs_count': 0
-                },
-                'timestamp': datetime.now(timezone.utc).isoformat()
+            return success_response({
+                'message': f'{timeframe}のデータが見つかりません',
+                'timeframe': timeframe,
+                'period_hours': hours,
+                'logs_count': 0
             })
         
         # 集中度パターン分析
@@ -233,20 +203,11 @@ def get_behavior_trends():
             'trend_summary': _generate_trend_summary(focus_analysis, timeframe)
         }
         
-        return jsonify({
-            'status': 'success',
-            'data': trend_data,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        })
+        return success_response(trend_data)
         
     except Exception as e:
         logger.error(f"Error getting behavior trends: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to analyze behavior trends',
-            'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 500
+        return error_response('Failed to analyze behavior trends', code='ANALYSIS_ERROR', status_code=500)
 
 
 @basic_analysis_bp.route('/insights', methods=['GET'])
@@ -271,22 +232,12 @@ def get_daily_insights():
         try:
             target_date = datetime.strptime(date_str, '%Y-%m-%d')
         except ValueError:
-            return jsonify({
-                'status': 'error',
-                'error': 'Invalid date format. Use YYYY-MM-DD',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response('Invalid date format. Use YYYY-MM-DD', code='VALIDATION_ERROR', status_code=400)
         
         # BehaviorAnalyzerインスタンス取得
         analyzer = _get_behavior_analyzer()
         if not analyzer:
-            return jsonify({
-                'status': 'error',
-                'error': 'BehaviorAnalyzer not available',
-                'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 500
+            return error_response('BehaviorAnalyzer not available', code='SERVICE_UNAVAILABLE', status_code=500)
         
         # 対象日の行動ログ取得
         start_time = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -299,44 +250,32 @@ def get_daily_insights():
         )
         
         if not logs or len(logs) == 0:
-            return jsonify({
-                'status': 'success',
-                'data': {
-                    'message': 'データ収集中です。しばらくお待ちください。',
-                    'data_collection_status': 'active',
-                    'estimated_wait_time': '2-5分',
-                    'target_date': date_str,
-                    'insights': [],
-                    'recommendations': []
-                },
-                'timestamp': datetime.now(timezone.utc).isoformat()
+            return success_response({
+                'message': 'データ収集中です。しばらくお待ちください。',
+                'data_collection_status': 'active',
+                'estimated_wait_time': '2-5分',
+                'target_date': date_str,
+                'insights': [],
+                'recommendations': []
             })
         
         # 最小データ要件チェック
         if len(logs) < 5:
-            return jsonify({
-                'status': 'success',
-                'data': {
-                    'message': f'データ収集中です（{len(logs)}件収集済み）。より詳細な分析には5件以上のデータが必要です。',
-                    'data_collection_status': 'active',
-                    'estimated_wait_time': '2-3分',
-                    'target_date': date_str,
-                    'insights': [],
-                    'recommendations': []
-                },
-                'timestamp': datetime.now(timezone.utc).isoformat()
+            return success_response({
+                'message': f'データ収集中です（{len(logs)}件収集済み）。より詳細な分析には5件以上のデータが必要です。',
+                'data_collection_status': 'active',
+                'estimated_wait_time': '2-3分',
+                'target_date': date_str,
+                'insights': [],
+                'recommendations': []
             })
         
         if not logs:
-            return jsonify({
-                'status': 'success',
-                'data': {
-                    'message': f'{date_str}のデータが見つかりません',
-                    'target_date': date_str,
-                    'insights': [],
-                    'recommendations': []
-                },
-                'timestamp': datetime.now(timezone.utc).isoformat()
+            return success_response({
+                'message': f'{date_str}のデータが見つかりません',
+                'target_date': date_str,
+                'insights': [],
+                'recommendations': []
             })
         
         # インサイト生成
@@ -352,25 +291,16 @@ def get_daily_insights():
             )
             insights_data['llm_analysis'] = llm_insights
         
-        return jsonify({
-            'status': 'success',
-            'data': {
-                'target_date': date_str,
-                'logs_analyzed': len(logs),
-                'insights': insights_data,
-                'summary': _generate_daily_summary(insights_data, logs)
-            },
-            'timestamp': datetime.now(timezone.utc).isoformat()
+        return success_response({
+            'target_date': date_str,
+            'logs_analyzed': len(logs),
+            'insights': insights_data,
+            'summary': _generate_daily_summary(insights_data, logs)
         })
         
     except Exception as e:
         logger.error(f"Error getting daily insights: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to generate daily insights',
-            'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 500
+        return error_response('Failed to generate daily insights', code='ANALYSIS_ERROR', status_code=500)
 
 
 @basic_analysis_bp.route('/recommendations', methods=['GET'])
@@ -399,28 +329,13 @@ def get_recommendations():
         
         # バリデーション
         if priority_filter and priority_filter not in ['high', 'medium', 'low']:
-            return jsonify({
-                'status': 'error',
-                'error': 'Invalid priority. Must be one of: high, medium, low',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response('Invalid priority. Must be one of: high, medium, low', code='VALIDATION_ERROR', status_code=400)
         
         if limit < 1 or limit > 20:
-            return jsonify({
-                'status': 'error',
-                'error': 'Limit must be between 1 and 20',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response('Limit must be between 1 and 20', code='VALIDATION_ERROR', status_code=400)
             
         if page < 1:
-            return jsonify({
-                'status': 'error',
-                'error': 'Page must be 1 or greater',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response('Page must be 1 or greater', code='VALIDATION_ERROR', status_code=400)
         
         # 最近の行動データ取得（過去1時間）
         recent_logs = BehaviorLog.get_recent_logs(hours=1, user_id=user_id)
@@ -428,12 +343,7 @@ def get_recommendations():
         # AdviceGeneratorインスタンス取得
         advice_generator = _get_advice_generator()
         if not advice_generator:
-            return jsonify({
-                'status': 'error',
-                'error': 'AdviceGenerator not available',
-                'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 500
+            return error_response('AdviceGenerator not available', code='SERVICE_UNAVAILABLE', status_code=500)
         
         # 現在の行動状況を分析
         current_behavior = _analyze_current_behavior(recent_logs)
@@ -508,39 +418,25 @@ def get_recommendations():
         # 辞書形式に変換（JSONシリアライズ用）
         recommendations_dict = [rec.to_dict() for rec in paged_recommendations]
         
-        return jsonify({
-            'status': 'success',
-            'data': {
-                'recommendations': recommendations_dict,
-                'pagination': {
-                    'page': page,
-                    'limit': limit,
-                    'total_items': total_items,
-                    'total_pages': total_pages
-                },
-                'filtered_by_priority': priority_filter,
-                'current_behavior_summary': current_behavior,
-                'user_personalized': user_profile is not None,
-                'tts_enabled': tts_enabled
+        return success_response({
+            'recommendations': recommendations_dict,
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total_items': total_items,
+                'total_pages': total_pages
             },
-            'timestamp': datetime.now(timezone.utc).isoformat()
+            'filtered_by_priority': priority_filter,
+            'current_behavior_summary': current_behavior,
+            'user_personalized': user_profile is not None,
+            'tts_enabled': tts_enabled
         })
         
     except ValueError as e:
-        return jsonify({
-            'status': 'error',
-            'error': f'Invalid parameter: {str(e)}',
-            'code': 'VALIDATION_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 400
+        return error_response(f'Invalid parameter: {str(e)}', code='VALIDATION_ERROR', status_code=400)
     except Exception as e:
         logger.error(f"Error getting recommendations: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to generate recommendations',
-            'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 500
+        return error_response('Failed to generate recommendations', code='ANALYSIS_ERROR', status_code=500)
 
 
 # ========== ヘルパー関数 ==========

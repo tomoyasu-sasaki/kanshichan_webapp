@@ -1,15 +1,15 @@
-import { ChakraProvider } from '@chakra-ui/react'
-import { IntegratedDashboard } from './components/IntegratedDashboard'
+import { IntegratedDashboard } from './components/dashboard/IntegratedDashboard'
+import { Box } from '@chakra-ui/react'
 
 function App() {
   return (
-    <ChakraProvider>
-      <IntegratedDashboard 
+    <Box minH="100vh">
+      <IntegratedDashboard
         userId="default"
         autoRefresh={true}
         refreshInterval={30}
       />
-    </ChakraProvider>
+    </Box>
   )
 }
 

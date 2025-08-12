@@ -29,7 +29,7 @@ DEFAULT_CONFIG = {
     'models': {
         'yolo': {
             'model_name': 'yolov8n.pt',
-            'models_dir': 'models'  # プロジェクトルートからの相対パス
+            'models_dir': 'models'  # プロジェクトルートからの相対パス（backend/models を想定）
         }
     }
     # 必要に応じて他のデフォルト設定を追加

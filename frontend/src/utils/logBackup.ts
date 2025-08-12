@@ -215,7 +215,7 @@ class LogBackup {
         logs: allLogs,
       };
 
-      const response = await axios.post('/api/logs/backup', backupData, {
+      const response = await axios.post('/api/v1/logs/backup', backupData, {
         headers: {
           'Content-Type': 'application/json',
         },
@@ -264,7 +264,7 @@ class LogBackup {
         'LogBackup'
       );
 
-      const response = await axios.get(`/api/logs/backup/${backupId}`, {
+      const response = await axios.get(`/api/v1/logs/backup/${backupId}`, {
         timeout: 60000, // 60秒タイムアウト
       });
 
@@ -313,7 +313,7 @@ class LogBackup {
    */
   async getBackupList(): Promise<BackupMetadata[]> {
     try {
-      const response = await axios.get('/api/logs/backups');
+      const response = await axios.get('/api/v1/logs/backups');
       return response.data;
     } catch (error) {
       await logger.error('LogBackup: バックアップ一覧取得エラー', 
@@ -372,7 +372,7 @@ class LogBackup {
 
     while (attempt < maxRetries) {
       try {
-        await axios.post('/api/logs/sync', {
+        await axios.post('/api/v1/logs/sync', {
           logs,
           timestamp: new Date().toISOString(),
           batchId: `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -423,7 +423,7 @@ class LogBackup {
    */
   private async loadConfig(): Promise<void> {
     try {
-      const response = await axios.get('/api/logs/sync-config');
+        const response = await axios.get('/api/v1/logs/sync-config');
       this.syncConfig = { ...this.syncConfig, ...response.data };
     } catch {
       // 設定取得に失敗した場合はデフォルト設定を使用

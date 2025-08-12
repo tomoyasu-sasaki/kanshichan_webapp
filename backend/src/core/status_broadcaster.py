@@ -1,6 +1,7 @@
 import threading
 import cv2
 from typing import Any, Dict, Optional
+import time
 import numpy as np
 from utils.logger import setup_logger
 from core.camera import Camera
@@ -47,6 +48,16 @@ class StatusBroadcaster:
         # フレームバッファの初期化
         self.frame_buffer = None
         self.frame_lock = threading.Lock()
+
+        # 配信の最低間隔（サーバー負荷軽減のため、既定10Hz）
+        try:
+            default_interval = 0.1  # 10Hz
+            self.broadcast_min_interval = float(
+                self.config_manager.get('optimization.status_broadcast_min_interval', default_interval)
+            ) if self.config_manager else default_interval
+        except Exception:
+            self.broadcast_min_interval = 0.1
+        self._last_broadcast_time = 0.0
         
         logger.info("StatusBroadcaster initialized.")
 
@@ -66,8 +77,14 @@ class StatusBroadcaster:
         現在のステータスをWebSocketでブロードキャストする
         """
         try:
+            # レート制御: 最低間隔未満ならスキップ
+            now = time.time()
+            if (now - self._last_broadcast_time) < self.broadcast_min_interval:
+                return
+
             status = self.state.get_status_summary()
             broadcast_status(status)
+            self._last_broadcast_time = now
         except Exception as e:
             broadcast_error = wrap_exception(
                 e, NetworkError,
@@ -189,8 +206,8 @@ class StatusBroadcaster:
 
         if frame_to_encode is not None:
             try:
-                # JPEG形式にエンコード
-                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+                # JPEG形式にエンコード（品質を少し下げてCPU負荷を軽減）
+                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
                 _, buffer = cv2.imencode('.jpg', frame_to_encode, encode_param)
                 return buffer.tobytes()
             except Exception as e:

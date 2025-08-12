@@ -111,24 +111,46 @@ export const PersonalizationPanel: React.FC<PersonalizationPanelProps> = ({
       setError(null);
 
       // Fetch user profile
-      const profileResponse = await fetch(`/api/analysis/user-profile?user_id=${userId}`);
+      const profileResponse = await fetch(`/api/v1/analysis/user-profile?user_id=${userId}`);
       if (!profileResponse.ok) throw new Error('Failed to fetch user profile');
       const profileData = await profileResponse.json();
 
       // Fetch personalized recommendations
-      const recommendationsResponse = await fetch(`/api/analysis/personalized-recommendations?user_id=${userId}&limit=10`);
+      const recommendationsResponse = await fetch(`/api/v1/analysis/personalized-recommendations?user_id=${userId}&limit=10`);
       if (!recommendationsResponse.ok) throw new Error('Failed to fetch recommendations');
       const recommendationsData = await recommendationsResponse.json();
 
       // Fetch adaptive learning status
-      const learningResponse = await fetch(`/api/analysis/adaptive-learning-status?user_id=${userId}`);
+      const learningResponse = await fetch(`/api/v1/analysis/adaptive-learning-status?user_id=${userId}`);
       if (!learningResponse.ok) throw new Error('Failed to fetch learning status');
       const learningData = await learningResponse.json();
 
-      // Set data
-      setUserProfile(profileData.user_profile || null);
-      setRecommendations(recommendationsData.recommendations || []);
-      setLearningStatus(learningData.learning_status || null);
+      // Set data（標準レスポンス/旧形式の両対応）
+      const profilePayload = profileData?.data || profileData;
+      const recsPayload = recommendationsData?.data || recommendationsData;
+      const learningPayload = learningData?.data || learningData;
+
+      const rawProfile: any = profilePayload.user_profile || profilePayload.profile || null;
+      const normalizedProfile = rawProfile
+        ? {
+            user_id: rawProfile.user_id ?? userId,
+            work_style: rawProfile.work_style ?? 'unknown',
+            focus_duration_minutes: rawProfile.focus_duration_minutes ?? 0,
+            optimal_time_slots: Array.isArray(rawProfile.optimal_time_slots)
+              ? rawProfile.optimal_time_slots
+              : [],
+            break_frequency_minutes: rawProfile.break_frequency_minutes ?? 0,
+            productivity_rhythm: rawProfile.productivity_rhythm ?? 'unknown',
+            health_habits: Array.isArray(rawProfile.health_habits)
+              ? rawProfile.health_habits
+              : [],
+            learning_speed: rawProfile.learning_speed ?? 0,
+          }
+        : null;
+
+      setUserProfile(normalizedProfile);
+      setRecommendations(recsPayload.recommendations || []);
+      setLearningStatus(learningPayload.learning_status || learningPayload.status || null);
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
@@ -148,7 +170,7 @@ export const PersonalizationPanel: React.FC<PersonalizationPanelProps> = ({
   // Submit feedback
   const submitFeedback = async (recommendationId: string, isHelpful: boolean) => {
     try {
-      const response = await fetch('/api/analysis/recommendation-feedback', {
+      const response = await fetch('/api/v1/analysis/recommendation-feedback', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -239,19 +261,19 @@ export const PersonalizationPanel: React.FC<PersonalizationPanelProps> = ({
             <SimpleGrid columns={2} spacing={4}>
               <Stat>
                 <StatLabel>作業スタイル</StatLabel>
-                <StatNumber fontSize="lg">{userProfile.work_style}</StatNumber>
+                <StatNumber fontSize="lg">{userProfile.work_style ?? 'N/A'}</StatNumber>
               </Stat>
               <Stat>
                 <StatLabel>集中持続時間</StatLabel>
-                <StatNumber fontSize="lg">{userProfile.focus_duration_minutes}分</StatNumber>
+                <StatNumber fontSize="lg">{(userProfile.focus_duration_minutes ?? 0)}分</StatNumber>
               </Stat>
               <Stat>
                 <StatLabel>休憩頻度</StatLabel>
-                <StatNumber fontSize="lg">{userProfile.break_frequency_minutes}分毎</StatNumber>
+                <StatNumber fontSize="lg">{(userProfile.break_frequency_minutes ?? 0)}分毎</StatNumber>
               </Stat>
               <Stat>
                 <StatLabel>学習速度</StatLabel>
-                <StatNumber fontSize="lg">{(userProfile.learning_speed * 100).toFixed(0)}%</StatNumber>
+                <StatNumber fontSize="lg">{(((userProfile.learning_speed ?? 0) * 100).toFixed(0))}%</StatNumber>
               </Stat>
             </SimpleGrid>
 
@@ -260,7 +282,7 @@ export const PersonalizationPanel: React.FC<PersonalizationPanelProps> = ({
             <Box>
               <Text fontWeight="bold" mb={2}>最適時間帯</Text>
               <HStack wrap="wrap">
-                {userProfile.optimal_time_slots.map((slot, index) => (
+                {(userProfile.optimal_time_slots ?? []).map((slot, index) => (
                   <Tag key={index} colorScheme="blue" size="sm">
                     <TagLabel>{slot}</TagLabel>
                   </Tag>
@@ -271,7 +293,7 @@ export const PersonalizationPanel: React.FC<PersonalizationPanelProps> = ({
             <Box>
               <Text fontWeight="bold" mb={2}>健康習慣</Text>
               <HStack wrap="wrap">
-                {userProfile.health_habits.map((habit, index) => (
+                {(userProfile.health_habits ?? []).map((habit, index) => (
                   <Tag key={index} colorScheme="green" size="sm">
                     <TagLabel>{habit}</TagLabel>
                   </Tag>
@@ -447,7 +469,7 @@ export const PersonalizationPanel: React.FC<PersonalizationPanelProps> = ({
   }
 
   return (
-    <Box bg={bgColor} minH="100vh" p={6}>
+    <Box bg={bgColor} minH="100vh" p={6} maxW="1200px" mx="auto">
       <VStack spacing={6} align="stretch">
         {/* Header */}
         <HStack justify="space-between" align="center">

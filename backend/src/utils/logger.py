@@ -8,6 +8,8 @@ import absl.logging
 import time
 from typing import Dict, Any, Optional
 from functools import wraps
+import json
+from datetime import datetime
 
 # 頻繁なログの抑制用グローバル辞書
 _log_suppression_cache: Dict[str, Dict[str, Any]] = {}
@@ -89,6 +91,53 @@ class FrequentLogFilter(logging.Filter):
         counter_info['last_time'] = current_time
         return False
 
+class JSONFormatter(logging.Formatter):
+    """シンプルなJSONフォーマッタ（追加依存なし）"""
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def _safe(self, value: Any) -> Any:
+        try:
+            json.dumps(value)
+            return value
+        except Exception:
+            return repr(value)
+
+    def format(self, record: logging.LogRecord) -> str:
+        base: Dict[str, Any] = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+
+        # 代表的な属性を抽出して付与（存在するものだけ）
+        for attr in ("pathname", "lineno", "funcName", "process", "threadName"):
+            if hasattr(record, attr):
+                base[attr] = getattr(record, attr)
+
+        # 例外情報
+        if record.exc_info:
+            try:
+                base["exc_info"] = self.formatException(record.exc_info)
+            except Exception:
+                base["exc_info"] = "<unavailable>"
+
+        # 任意のextra（辞書）を拾う（存在しない場合は無視）
+        if hasattr(record, "extra") and isinstance(record.extra, dict):
+            try:
+                base["extra"] = {k: self._safe(v) for k, v in record.extra.items()}
+            except Exception:
+                base["extra"] = {"_error": "failed to serialize extra"}
+
+        # 最終的にすべてをJSONに
+        try:
+            return json.dumps(base, ensure_ascii=False)
+        except Exception:
+            # フォールバック（最低限メッセージは出す）
+            return json.dumps({"message": record.getMessage()}, ensure_ascii=False)
+
 def setup_logger(name, config=None):
     """ロガーを設定
     
@@ -125,6 +174,10 @@ def setup_logger(name, config=None):
         log_dir_config = log_config.get('log_dir', 'logs')
         max_file_size_mb = log_config.get('max_file_size_mb', 50)  # 10→50MB
         backup_count = log_config.get('backup_count', 3)  # 5→3
+        # JSON構造化ログの有効化フラグ（env優先）
+        json_enabled_env = str(os.environ.get('KANSHICHAN_LOG_JSON', '0')).lower() in ('1', 'true', 'yes')
+        json_enabled_cfg = bool(log_config.get('json_format', False))
+        json_enabled = json_enabled_env or json_enabled_cfg
         
         # 絶対パス解決：プロジェクトルート（backend）のlogsディレクトリに統一
         current_file = Path(__file__)  # backend/src/utils/logger.py
@@ -143,8 +196,11 @@ def setup_logger(name, config=None):
         # コンソールハンドラー
         if enable_console_output:
             console_handler = StreamHandler()
-            console_formatter = Formatter('[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
-            console_handler.setFormatter(console_formatter)
+            if json_enabled:
+                console_handler.setFormatter(JSONFormatter())
+            else:
+                console_formatter = Formatter('[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+                console_handler.setFormatter(console_formatter)
             console_handler.setLevel(console_level)
             console_handler.addFilter(log_filter)
             logger.addHandler(console_handler)
@@ -157,8 +213,11 @@ def setup_logger(name, config=None):
                 backupCount=backup_count,
                 encoding='utf-8'
             )
-            file_formatter = Formatter('[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
-            file_handler.setFormatter(file_formatter)
+            if json_enabled:
+                file_handler.setFormatter(JSONFormatter())
+            else:
+                file_formatter = Formatter('[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+                file_handler.setFormatter(file_formatter)
             file_handler.setLevel(file_level)
             file_handler.addFilter(log_filter)
             logger.addHandler(file_handler)

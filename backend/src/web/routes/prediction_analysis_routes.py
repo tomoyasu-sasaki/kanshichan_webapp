@@ -8,7 +8,7 @@ Prediction Analysis API Routes - 予測・パーソナライゼーション分�
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, current_app
 
 from models.behavior_log import BehaviorLog
 from utils.logger import setup_logger
@@ -24,8 +24,9 @@ from services.analysis.service_loader import get_pattern_recognizer
 
 logger = setup_logger(__name__)
 
-# Blueprint定義
-prediction_analysis_bp = Blueprint('prediction_analysis', __name__, url_prefix='/api/analysis')
+# Blueprint定義（相対パス化。上位で /api および /api/v1 を付与）
+prediction_analysis_bp = Blueprint('prediction_analysis', __name__, url_prefix='/analysis')
+from web.response_utils import success_response, error_response
 
 
 @prediction_analysis_bp.route('/predictions', methods=['GET'])
@@ -63,44 +64,28 @@ def get_predictions():
         invalid_metrics = [m for m in target_metrics if m not in valid_metrics]
         
         if invalid_metrics:
-            return jsonify({
-                'status': 'error',
-                'error': f'Invalid metrics: {", ".join(invalid_metrics)}. Valid metrics: {", ".join(valid_metrics)}',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response(
+                f'Invalid metrics: {", ".join(invalid_metrics)}. Valid metrics: {", ".join(valid_metrics)}',
+                code='VALIDATION_ERROR', status_code=400
+            )
         
         if horizon < 5 or horizon > 1440:  # 5分〜24時間
-            return jsonify({
-                'status': 'error',
-                'error': 'Horizon must be between 5 and 1440 minutes',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response('Horizon must be between 5 and 1440 minutes', code='VALIDATION_ERROR', status_code=400)
         
         # パターン認識エンジン取得
         pattern_recognizer = _get_pattern_recognizer()
         if not pattern_recognizer:
-            return jsonify({
-                'status': 'error',
-                'error': 'Pattern recognizer not available',
-                'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 500
+            return error_response('Pattern recognizer not available', code='SERVICE_UNAVAILABLE', status_code=500)
         
         # 予測に必要な十分なデータを取得
         hours = max(24, horizon // 60 * 4)  # 最低24時間、予測期間の4倍
         logs = BehaviorLog.get_recent_logs(hours=hours, user_id=user_id)
         
         if len(logs) < 30:  # 最低30データポイント必要
-            return jsonify({
-                'status': 'success',
-                'data': {
-                    'message': '予測に十分なデータがありません（最低30データポイント必要）',
-                    'available_logs': len(logs),
-                    'required_logs': 30
-                },
-                'timestamp': datetime.now(timezone.utc).isoformat()
+            return success_response({
+                'message': '予測に十分なデータがありません（最低30データポイント必要）',
+                'available_logs': len(logs),
+                'required_logs': 30
             })
         
         # 予測実行
@@ -117,27 +102,13 @@ def get_predictions():
             'prediction_summary': _generate_prediction_summary(predictions, target_metrics)
         }
         
-        return jsonify({
-            'status': 'success',
-            'data': result_data,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        })
+        return success_response(result_data)
         
     except ValueError as e:
-        return jsonify({
-            'status': 'error',
-            'error': 'Invalid parameter format',
-            'code': 'VALIDATION_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 400
+        return error_response('Invalid parameter format', code='VALIDATION_ERROR', status_code=400)
     except Exception as e:
         logger.error(f"Error getting predictions: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to generate predictions',
-            'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 500
+        return error_response('Failed to generate predictions', code='ANALYSIS_ERROR', status_code=500)
 
 
 @prediction_analysis_bp.route('/personalized-recommendations', methods=['GET'])
@@ -162,39 +133,22 @@ def get_personalized_recommendations():
         
         # バリデーション
         if not user_id:
-            return jsonify({
-                'status': 'error',
-                'error': 'user_id is required',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response('user_id is required', code='VALIDATION_ERROR', status_code=400)
         
         valid_context_types = ['time_based', 'behavior_based', 'environment_based']
         if context_type not in valid_context_types:
-            return jsonify({
-                'status': 'error',
-                'error': f'Invalid context_type. Must be one of: {", ".join(valid_context_types)}',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response(
+                f'Invalid context_type. Must be one of: {", ".join(valid_context_types)}',
+                code='VALIDATION_ERROR', status_code=400
+            )
         
         if max_recommendations < 1 or max_recommendations > 10:
-            return jsonify({
-                'status': 'error',
-                'error': 'max_recommendations must be between 1 and 10',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response('max_recommendations must be between 1 and 10', code='VALIDATION_ERROR', status_code=400)
         
         # パーソナライゼーションエンジン取得
         personalization_engine = _get_personalization_engine()
         if not personalization_engine:
-            return jsonify({
-                'status': 'error',
-                'error': 'Personalization engine not available',
-                'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 500
+            return error_response('Personalization engine not available', code='SERVICE_UNAVAILABLE', status_code=500)
         
         # 行動ログ取得
         logs = BehaviorLog.get_recent_logs(hours=24, user_id=user_id)
@@ -227,27 +181,13 @@ def get_personalized_recommendations():
             }
         }
         
-        return jsonify({
-            'status': 'success',
-            'data': result_data,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        })
+        return success_response(result_data)
         
     except ValueError as e:
-        return jsonify({
-            'status': 'error',
-            'error': 'Invalid parameter format',
-            'code': 'VALIDATION_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 400
+        return error_response('Invalid parameter format', code='VALIDATION_ERROR', status_code=400)
     except Exception as e:
         logger.error(f"Error getting personalized recommendations: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to generate personalized recommendations',
-            'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 500
+        return error_response('Failed to generate personalized recommendations', code='ANALYSIS_ERROR', status_code=500)
 
 
 @prediction_analysis_bp.route('/user-profile', methods=['GET'])
@@ -269,22 +209,12 @@ def get_user_profile():
         include_insights = request.args.get('include_insights', 'true').lower() == 'true'
         
         if not user_id:
-            return jsonify({
-                'status': 'error',
-                'error': 'user_id is required',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response('user_id is required', code='VALIDATION_ERROR', status_code=400)
         
         # ユーザープロファイルビルダー取得
         profile_builder = _get_user_profile_builder()
         if not profile_builder:
-            return jsonify({
-                'status': 'error',
-                'error': 'User profile builder not available',
-                'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 500
+            return error_response('User profile builder not available', code='SERVICE_UNAVAILABLE', status_code=500)
         
         # 行動ログ取得
         logs = BehaviorLog.get_recent_logs(hours=720, user_id=user_id)  # 30日分
@@ -307,21 +237,10 @@ def get_user_profile():
                 'profile_confidence': comprehensive_profile.get('confidence_score', 0.0)
             }
         }
-        
-        return jsonify({
-            'status': 'success',
-            'data': result_data,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        })
-        
+        return success_response(result_data)
     except Exception as e:
         logger.error(f"Error getting user profile: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to get user profile',
-            'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 500
+        return error_response('Failed to get user profile', code='ANALYSIS_ERROR', status_code=500)
 
 
 @prediction_analysis_bp.route('/recommendation-feedback', methods=['POST'])
@@ -348,33 +267,18 @@ def submit_recommendation_feedback():
         # リクエストデータ取得
         data = request.get_json()
         if not data:
-            return jsonify({
-                'status': 'error',
-                'error': 'Request body is required',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response('Request body is required', code='VALIDATION_ERROR', status_code=400)
         
         # 必須フィールド検証
         required_fields = ['user_id', 'recommendation_id', 'feedback']
         for field in required_fields:
             if field not in data:
-                return jsonify({
-                    'status': 'error',
-                    'error': f'Required field missing: {field}',
-                    'code': 'VALIDATION_ERROR',
-                    'timestamp': datetime.now(timezone.utc).isoformat()
-                }), 400
+                return error_response(f'Required field missing: {field}', code='VALIDATION_ERROR', status_code=400)
         
         # パーソナライゼーションエンジン取得
         personalization_engine = _get_personalization_engine()
         if not personalization_engine:
-            return jsonify({
-                'status': 'error',
-                'error': 'Personalization engine not available',
-                'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 500
+            return error_response('Personalization engine not available', code='SERVICE_UNAVAILABLE', status_code=500)
         
         # フィードバック更新
         success = personalization_engine.update_recommendation_feedback(
@@ -384,31 +288,17 @@ def submit_recommendation_feedback():
         )
         
         if success:
-            return jsonify({
-                'status': 'success',
-                'data': {
-                    'message': 'Feedback processed successfully',
-                    'user_id': data['user_id'],
-                    'recommendation_id': data['recommendation_id']
-                },
-                'timestamp': datetime.now(timezone.utc).isoformat()
+            return success_response({
+                'message': 'Feedback processed successfully',
+                'user_id': data['user_id'],
+                'recommendation_id': data['recommendation_id']
             })
         else:
-            return jsonify({
-                'status': 'error',
-                'error': 'Failed to process feedback',
-                'code': 'PROCESSING_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 500
+            return error_response('Failed to process feedback', code='PROCESSING_ERROR', status_code=500)
         
     except Exception as e:
         logger.error(f"Error submitting recommendation feedback: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to submit feedback',
-            'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 500
+        return error_response('Failed to submit feedback', code='ANALYSIS_ERROR', status_code=500)
 
 
 @prediction_analysis_bp.route('/adaptive-learning-status', methods=['GET'])
@@ -430,30 +320,15 @@ def get_adaptive_learning_status():
         time_window_days = int(request.args.get('time_window_days', 30))
         
         if not user_id:
-            return jsonify({
-                'status': 'error',
-                'error': 'user_id is required',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response('user_id is required', code='VALIDATION_ERROR', status_code=400)
         
         if time_window_days < 1 or time_window_days > 365:
-            return jsonify({
-                'status': 'error',
-                'error': 'time_window_days must be between 1 and 365',
-                'code': 'VALIDATION_ERROR',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 400
+            return error_response('time_window_days must be between 1 and 365', code='VALIDATION_ERROR', status_code=400)
         
         # 適応学習システム取得
         adaptive_learning = _get_adaptive_learning_system()
         if not adaptive_learning:
-            return jsonify({
-                'status': 'error',
-                'error': 'Adaptive learning system not available',
-                'code': 'SERVICE_UNAVAILABLE',
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }), 500
+            return error_response('Adaptive learning system not available', code='SERVICE_UNAVAILABLE', status_code=500)
         
         # 学習効果測定
         learning_metrics = adaptive_learning.measure_learning_effectiveness(user_id, time_window_days)
@@ -482,27 +357,13 @@ def get_adaptive_learning_status():
             'performance_summary': _generate_learning_performance_summary(learning_metrics)
         }
         
-        return jsonify({
-            'status': 'success',
-            'data': result_data,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        })
+        return success_response(result_data)
         
     except ValueError as e:
-        return jsonify({
-            'status': 'error',
-            'error': 'Invalid parameter format',
-            'code': 'VALIDATION_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 400
+        return error_response('Invalid parameter format', code='VALIDATION_ERROR', status_code=400)
     except Exception as e:
         logger.error(f"Error getting adaptive learning status: {e}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to get adaptive learning status',
-            'code': 'ANALYSIS_ERROR',
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }), 500
+        return error_response('Failed to get adaptive learning status', code='ANALYSIS_ERROR', status_code=500)
 
 
 # ========== ヘルパー関数 ==========
@@ -680,13 +541,22 @@ def _identify_improvement_areas(learning_metrics) -> List[str]:
     """改善エリアの特定"""
     areas = []
     
-    if learning_metrics.get('accuracy_trend', 0) < 0.05:
+    accuracy_trend = getattr(learning_metrics, 'accuracy_trend', None)
+    if accuracy_trend is None and isinstance(learning_metrics, dict):
+        accuracy_trend = learning_metrics.get('accuracy_trend')
+    if (accuracy_trend or 0) < 0.05:
         areas.append("予測精度の向上")
     
-    if learning_metrics.get('adaptation_speed', 0.5) < 0.3:
+    adaptation_speed = getattr(learning_metrics, 'adaptation_speed', None)
+    if adaptation_speed is None and isinstance(learning_metrics, dict):
+        adaptation_speed = learning_metrics.get('adaptation_speed', 0.5)
+    if (adaptation_speed or 0.5) < 0.3:
         areas.append("学習適応速度の改善")
     
-    if learning_metrics.get('user_satisfaction', 0.5) < 0.6:
+    user_satisfaction = getattr(learning_metrics, 'user_satisfaction', None)
+    if user_satisfaction is None and isinstance(learning_metrics, dict):
+        user_satisfaction = learning_metrics.get('user_satisfaction', 0.5)
+    if (user_satisfaction or 0.5) < 0.6:
         areas.append("ユーザー満足度の向上")
     
     return areas 

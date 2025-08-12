@@ -14,7 +14,7 @@ import io
 from typing import Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, send_file
 
 from services.tts.tts_service import TTSService
 from services.voice_manager import VoiceManager
@@ -26,8 +26,9 @@ from .tts_helpers import ensure_tqdm_disabled, get_backend_path
 
 logger = setup_logger(__name__)
 
-# Blueprint定義
-tts_voice_clone_bp = Blueprint('tts_voice_clone', __name__, url_prefix='/api/tts')
+# Blueprint定義（相対パス化。上位で /api および /api/v1 を付与）
+tts_voice_clone_bp = Blueprint('tts_voice_clone', __name__, url_prefix='/tts')
+from web.response_utils import success_response, error_response
 
 # サービスインスタンス（tts_helpers.pyで初期化）
 tts_service: Optional[TTSService] = None
@@ -61,10 +62,7 @@ def clone_voice():
         JSON response with cloned audio information or binary audio data
     """
     if not tts_service or not voice_manager:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         # テキスト取得
@@ -149,7 +147,7 @@ def clone_voice():
                         'language': language
                     }
                 }
-                return jsonify(response)
+                return success_response(response)
             else:
                 return send_file(
                     output_path,
@@ -165,25 +163,16 @@ def clone_voice():
     
     except ValidationError as e:
         logger.warning(f"Validation error in voice cloning: {e}")
-        return jsonify({
-            'error': 'validation_error',
-            'message': str(e)
-        }), 400
+        return error_response(str(e), code='VALIDATION_ERROR', status_code=400)
         
     except (AudioError, ServiceUnavailableError) as e:
         logger.error(f"TTS error in voice cloning: {e}")
-        return jsonify({
-            'error': 'cloning_error',
-            'message': str(e)
-        }), 500
+        return error_response(str(e), code='CLONING_ERROR', status_code=500)
         
     except Exception as e:
         error = wrap_exception(e, AudioError, "Unexpected error in voice cloning")
         logger.error(f"Unexpected error in voice cloning: {error.to_dict()}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'An unexpected error occurred'
-        }), 500
+        return error_response('An unexpected error occurred', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_voice_clone_bp.route('/clone-voice-enhanced', methods=['POST'])
@@ -203,10 +192,7 @@ def clone_voice_enhanced():
         JSON response with enhanced cloned audio information or binary audio data
     """
     if not tts_service or not voice_manager:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         # テキスト取得
@@ -317,7 +303,7 @@ def clone_voice_enhanced():
                 if quality_info:
                     response['quality_info'] = quality_info
                 
-                return jsonify(response)
+                return success_response(response)
             else:
                 return send_file(
                     output_path,
@@ -333,25 +319,16 @@ def clone_voice_enhanced():
     
     except ValidationError as e:
         logger.warning(f"Validation error in enhanced voice cloning: {e}")
-        return jsonify({
-            'error': 'validation_error',
-            'message': str(e)
-        }), 400
+        return error_response(str(e), code='VALIDATION_ERROR', status_code=400)
         
     except (AudioError, ServiceUnavailableError) as e:
         logger.error(f"TTS error in enhanced voice cloning: {e}")
-        return jsonify({
-            'error': 'cloning_error',
-            'message': str(e)
-        }), 500
+        return error_response(str(e), code='CLONING_ERROR', status_code=500)
         
     except Exception as e:
         error = wrap_exception(e, AudioError, "Unexpected error in enhanced voice cloning")
         logger.error(f"Unexpected error in enhanced voice cloning: {error.to_dict()}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'An unexpected error occurred'
-        }), 500
+        return error_response('An unexpected error occurred', code='INTERNAL_ERROR', status_code=500)
 
 
 @tts_voice_clone_bp.route('/clone-voice-fast', methods=['POST'])
@@ -370,10 +347,7 @@ def clone_voice_fast():
         JSON response with audio file information or binary audio data
     """
     if not tts_service or not voice_manager:
-        return jsonify({
-            'error': 'service_unavailable',
-            'message': 'TTS service is not available'
-        }), 503
+        return error_response('TTS service is not available', code='SERVICE_UNAVAILABLE', status_code=503)
     
     try:
         # フォームデータから取得
@@ -445,7 +419,7 @@ def clone_voice_fast():
                     'language': language
                 }
                 logger.info(f"✅ Fast voice cloning completed: {audio_id}")
-                return jsonify(response)
+                return success_response(response)
             else:
                 logger.info(f"✅ Fast voice cloning completed, returning binary data: {audio_id}")
                 return send_file(
@@ -464,19 +438,10 @@ def clone_voice_fast():
 
     except ValidationError as e:
         logger.warning(f"Fast voice cloning validation error: {e}")
-        return jsonify({
-            'error': 'validation_error',
-            'message': str(e)
-        }), 400
+        return error_response(str(e), code='VALIDATION_ERROR', status_code=400)
     except AudioError as e:
         logger.error(f"Fast voice cloning audio error: {e}")
-        return jsonify({
-            'error': 'audio_error',
-            'message': str(e)
-        }), 500
+        return error_response(str(e), code='AUDIO_ERROR', status_code=500)
     except Exception as e:
         logger.error(f"Fast voice cloning unexpected error: {e}")
-        return jsonify({
-            'error': 'internal_error',
-            'message': 'Fast voice cloning failed due to internal error'
-        }), 500 
+        return error_response('Fast voice cloning failed due to internal error', code='INTERNAL_ERROR', status_code=500)
