@@ -12,11 +12,6 @@ import {
   CardHeader,
   CardBody,
   Button,
-  Select,
-  Switch,
-  FormControl,
-  FormLabel,
-  Progress,
   Divider,
   useColorModeValue,
   useToast,
@@ -27,19 +22,24 @@ import {
   AlertDescription,
   Icon,
   SimpleGrid,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalFooter,
-  ModalBody,
-  ModalCloseButton,
-  useDisclosure
+  Container,
+  Flex,
+  Avatar,
+  Stat,
+  StatLabel,
+  StatNumber,
+  StatHelpText,
+  StatArrow,
+  Tooltip,
+  CircularProgress,
+  CircularProgressLabel
 } from '@chakra-ui/react';
-import { 
+import {
   FiHome, FiVolumeX, FiActivity, FiTarget, FiRefreshCw,
-  FiSettings, FiTrendingUp, FiCalendar
+  FiSettings, FiTrendingUp, FiCalendar, FiMonitor, FiCpu,
+  FiWifi, FiDatabase, FiZap, FiShield, FiUsers, FiBarChart
 } from 'react-icons/fi';
+import { FaRobot, FaMicrophone, FaChartLine, FaBell } from 'react-icons/fa';
 import { useTranslation } from 'react-i18next';
 import { LanguageSwitcher } from '../LanguageSwitcher';
 
@@ -83,24 +83,16 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
   // 重複リクエスト抑制（StrictModeのダブルマウント対策）
   const statusFetchLockRef = useRef(false);
   const lastStatusFetchAtRef = useRef(0);
-  
+
   // Settings modal state
-  const [localAutoRefresh, setLocalAutoRefresh] = useState(autoRefresh);
-  const [localRefreshInterval, setLocalRefreshInterval] = useState(refreshInterval);
-  
+  // ダッシュボード専用の設定ダイアログは廃止（UI設定は親や個別画面に委譲）
+
   // UI theming
   const bgColor = useColorModeValue('gray.50', 'gray.900');
   const cardBg = useColorModeValue('white', 'gray.800');
   const toast = useToast();
-  const { isOpen, onOpen, onClose } = useDisclosure();
-  
-  // Initialize local settings when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setLocalAutoRefresh(autoRefresh);
-      setLocalRefreshInterval(refreshInterval);
-    }
-  }, [isOpen, autoRefresh, refreshInterval]);
+
+  // 設定ダイアログ廃止に伴い、初期化ロジックは不要
 
   // Hash navigation sync
   useEffect(() => {
@@ -135,8 +127,9 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
     if (now - lastStatusFetchAtRef.current < 500) return;
     statusFetchLockRef.current = true;
     try {
+      setIsLoading(true);
       setError(null);
-      
+
       // Parallel API calls for comprehensive status
       const [monitorStatus, ttsStatus, analysisStatus] = await Promise.allSettled([
         fetch('/api/v1/monitor/status'),
@@ -211,9 +204,13 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
         console.error('Analysis API call failed:', analysisStatus.reason);
       }
 
-      // Calculate overall health
-      const activePhases = Object.values(statusData).filter(status => status === 'active').length;
-      statusData.overall_health = (activePhases - 1) / 3; // Exclude last_update from count
+      // Calculate overall health（対象フェーズのみで算出）
+      const activePhases =
+        (statusData.data_collection === 'active' ? 1 : 0) +
+        (statusData.tts_system === 'active' ? 1 : 0) +
+        (statusData.integration === 'active' ? 1 : 0) +
+        (statusData.ai_analysis === 'active' ? 1 : 0);
+      statusData.overall_health = activePhases / 4;
 
       console.log('Final status data:', statusData);
       setSystemStatus(statusData);
@@ -252,137 +249,224 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
     return undefined;
   }, [fetchSystemStatus, autoRefresh, refreshInterval, selectedView]);
 
-  // Render system status
+  // Render system status with enhanced design
   const renderSystemStatus = () => {
     if (!systemStatus) return null;
 
     const statusMapping = {
-      'active': { color: 'green', label: 'アクティブ' },
-      'inactive': { color: 'yellow', label: '非アクティブ' },
-      'error': { color: 'red', label: 'エラー' }
+      'active': { color: 'green', label: 'アクティブ', icon: FiZap },
+      'inactive': { color: 'yellow', label: '非アクティブ', icon: FiWifi },
+      'error': { color: 'red', label: 'エラー', icon: FiShield }
     };
 
+    const systemComponents = [
+      {
+        key: 'data_collection',
+        title: 'データ収集',
+        description: 'リアルタイム監視',
+        icon: FiDatabase,
+        color: 'blue.500',
+        status: systemStatus.data_collection
+      },
+      {
+        key: 'tts_system',
+        title: 'TTS音声',
+        description: '音声合成エンジン',
+        icon: FaMicrophone,
+        color: 'purple.500',
+        status: systemStatus.tts_system
+      },
+      {
+        key: 'integration',
+        title: '統合システム',
+        description: 'コンポーネント連携',
+        icon: FiCpu,
+        color: 'green.500',
+        status: systemStatus.integration
+      },
+      {
+        key: 'ai_analysis',
+        title: 'AI分析',
+        description: '行動パターン解析',
+        icon: FaRobot,
+        color: 'orange.500',
+        status: systemStatus.ai_analysis
+      }
+    ];
+
     return (
-      <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={4}>
-        <Card bg={cardBg}>
-          <CardBody>
-            <HStack justify="space-between">
-              <VStack align="start" spacing={1}>
-                <Text fontSize="sm" color="gray.500">データ収集</Text>
-                <Badge colorScheme={statusMapping[systemStatus.data_collection].color}>
-                  {statusMapping[systemStatus.data_collection].label}
-                </Badge>
-              </VStack>
-              <Icon as={FiHome} color="blue.500" />
-            </HStack>
-          </CardBody>
-        </Card>
+      <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={6}>
+        {systemComponents.map((component) => {
+          const statusInfo = statusMapping[component.status];
+          return (
+            <Card
+              key={component.key}
+              bg={cardBg}
+              shadow="lg"
+              border="1px solid"
+              borderColor={useColorModeValue('gray.200', 'gray.600')}
+              _hover={{
+                transform: 'translateY(-2px)',
+                shadow: 'xl'
+              }}
+              transition="all 0.2s"
+            >
+              <CardBody p={6}>
+                <VStack spacing={4} align="stretch">
+                  <HStack justify="space-between" align="center">
+                    <Avatar
+                      icon={<Icon as={component.icon} />}
+                      bg={component.color}
+                      size="md"
+                    />
+                    <Tooltip label={`状態: ${statusInfo.label}`}>
+                      <Icon
+                        as={statusInfo.icon}
+                        color={`${statusInfo.color}.500`}
+                        boxSize={5}
+                      />
+                    </Tooltip>
+                  </HStack>
 
-        <Card bg={cardBg}>
-          <CardBody>
-            <HStack justify="space-between">
-              <VStack align="start" spacing={1}>
-                <Text fontSize="sm" color="gray.500">TTS音声</Text>
-                <Badge colorScheme={statusMapping[systemStatus.tts_system].color}>
-                  {statusMapping[systemStatus.tts_system].label}
-                </Badge>
-              </VStack>
-              <Icon as={FiVolumeX} color="purple.500" />
-            </HStack>
-          </CardBody>
-        </Card>
-
-        <Card bg={cardBg}>
-          <CardBody>
-            <HStack justify="space-between">
-              <VStack align="start" spacing={1}>
-                <Text fontSize="sm" color="gray.500">統合</Text>
-                <Badge colorScheme={statusMapping[systemStatus.integration].color}>
-                  {statusMapping[systemStatus.integration].label}
-                </Badge>
-              </VStack>
-              <Icon as={FiActivity} color="green.500" />
-            </HStack>
-          </CardBody>
-        </Card>
-
-        <Card bg={cardBg}>
-          <CardBody>
-            <HStack justify="space-between">
-              <VStack align="start" spacing={1}>
-                <Text fontSize="sm" color="gray.500">AI分析</Text>
-                <Badge colorScheme={statusMapping[systemStatus.ai_analysis].color}>
-                  {statusMapping[systemStatus.ai_analysis].label}
-                </Badge>
-              </VStack>
-              <Icon as={FiTarget} color="orange.500" />
-            </HStack>
-          </CardBody>
-        </Card>
+                  <VStack align="start" spacing={2}>
+                    <Heading size="sm" color="gray.700" _dark={{ color: 'gray.100' }}>
+                      {component.title}
+                    </Heading>
+                    <Text fontSize="xs" color="gray.500">
+                      {component.description}
+                    </Text>
+                    <Badge
+                      colorScheme={statusInfo.color}
+                      variant="subtle"
+                      px={3}
+                      py={1}
+                      borderRadius="full"
+                      fontSize="xs"
+                    >
+                      {statusInfo.label}
+                    </Badge>
+                  </VStack>
+                </VStack>
+              </CardBody>
+            </Card>
+          );
+        })}
       </SimpleGrid>
     );
   };
 
-  // Render overall health
+  // Render overall health with enhanced design
   const renderOverallHealth = () => {
     if (!systemStatus) return null;
 
-    const healthColor = systemStatus.overall_health > 0.8 ? 'green' : 
-                       systemStatus.overall_health > 0.6 ? 'yellow' : 'red';
+    const healthColor = systemStatus.overall_health > 0.8 ? 'green' :
+      systemStatus.overall_health > 0.6 ? 'yellow' : 'red';
+    const healthPercentage = Math.round(systemStatus.overall_health * 100);
 
     return (
-      <Card bg={cardBg}>
-        <CardHeader>
-          <HStack justify="space-between">
-            <Heading size="md">{t('dashboard.overall_health')}</Heading>
-            <Text fontSize="sm" color="gray.500">
-              {t('dashboard.last_update')}: {lastRefresh.toLocaleTimeString()}
-            </Text>
+      <Card bg={cardBg} shadow="lg">
+        <CardHeader pb={2}>
+          <HStack justify="space-between" align="center">
+            <HStack spacing={3}>
+              <Avatar
+                icon={<Icon as={FiMonitor} />}
+                bg="blue.500"
+                size="md"
+              />
+              <VStack align="start" spacing={0}>
+                <Heading size="md" color="gray.700" _dark={{ color: 'gray.100' }}>
+                  システム健康度
+                </Heading>
+                <Text fontSize="sm" color="gray.500">
+                  最終更新: {lastRefresh.toLocaleTimeString()}
+                </Text>
+              </VStack>
+            </HStack>
+            <CircularProgress
+              value={healthPercentage}
+              color={`${healthColor}.500`}
+              size="60px"
+              thickness="8px"
+            >
+              <CircularProgressLabel fontSize="sm" fontWeight="bold">
+                {healthPercentage}%
+              </CircularProgressLabel>
+            </CircularProgress>
           </HStack>
         </CardHeader>
-        <CardBody>
-          <VStack spacing={4}>
-            <Box width="100%">
-              <HStack justify="space-between" mb={2}>
-                <Text>健康度スコア</Text>
-                <Text fontWeight="bold" color={`${healthColor}.500`}>
-                  {(systemStatus.overall_health * 100).toFixed(0)}%
-                </Text>
+        <CardBody pt={2}>
+          <VStack spacing={5}>
+            {/* 詳細メトリクス */}
+            <SimpleGrid columns={2} spacing={4} width="100%">
+              <Stat>
+                <StatLabel fontSize="xs">アクティブ</StatLabel>
+                <StatNumber fontSize="lg" color="green.500">
+                  {Object.values(systemStatus).filter(status => status === 'active').length}
+                </StatNumber>
+                <StatHelpText fontSize="xs">
+                  <StatArrow type="increase" />
+                  システム
+                </StatHelpText>
+              </Stat>
+              <Stat>
+                <StatLabel fontSize="xs">稼働時間</StatLabel>
+                <StatNumber fontSize="lg" color="blue.500">
+                  24h
+                </StatNumber>
+                <StatHelpText fontSize="xs">
+                  <StatArrow type="increase" />
+                  連続稼働
+                </StatHelpText>
+              </Stat>
+            </SimpleGrid>
+
+            {/* ステータスインジケーター */}
+            <Box
+              width="100%"
+              p={4}
+              bg={useColorModeValue('green.50', 'green.900')}
+              borderRadius="lg"
+              border="1px solid"
+              borderColor={useColorModeValue('green.200', 'green.700')}
+            >
+              <HStack justify="center" spacing={3}>
+                <Icon as={FiActivity} color="green.500" boxSize={5} />
+                <VStack spacing={0} align="center">
+                  <Text fontSize="sm" color="green.700" _dark={{ color: 'green.300' }} fontWeight="medium">
+                    監視システム稼働中
+                  </Text>
+                  <Text fontSize="xs" color="green.600" _dark={{ color: 'green.400' }}>
+                    リアルタイム監視アクティブ
+                  </Text>
+                </VStack>
               </HStack>
-              <Progress 
-                value={systemStatus.overall_health * 100}
-                colorScheme={healthColor}
-                size="lg"
-              />
             </Box>
-            
-            {/* 監視常時アクティブ状態表示 */}
-              <HStack justify="center" width="100%" p={3} bg="green.50" borderRadius="md" role="status" aria-live="polite">
-              <Icon as={FiActivity} color="green.500" />
-              <Text fontSize="sm" color="green.700" fontWeight="medium">
-                監視システム: 常時アクティブ
-              </Text>
-            </HStack>
-            
-            <HStack spacing={4} width="100%">
+
+            {/* アクションボタン */}
+            <HStack spacing={3} width="100%">
               <Button
                 leftIcon={<Icon as={FiRefreshCw} />}
                 onClick={fetchSystemStatus}
                 isLoading={isLoading}
-                size="sm"
+                colorScheme="blue"
                 variant="outline"
+                flex={1}
+                borderRadius="lg"
               >
-                {t('common.update')}
+                更新
               </Button>
-              
-              <Button
-                leftIcon={<Icon as={FiSettings} />}
-                onClick={onOpen}
-                size="sm"
-                variant="outline"
-              >
-                {t('common.settings')}
-              </Button>
+              <Tooltip label="詳細な監視画面を開く">
+                <Button
+                  leftIcon={<Icon as={FiMonitor} />}
+                  onClick={() => handleViewChange('monitor')}
+                  colorScheme="green"
+                  variant="outline"
+                  flex={1}
+                  borderRadius="lg"
+                >
+                  詳細
+                </Button>
+              </Tooltip>
             </HStack>
           </VStack>
         </CardBody>
@@ -417,36 +501,300 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
         return <LearningProgress userId={userId} />;
       default:
         return (
-          <VStack spacing={6} align="stretch">
-            <Text fontSize="lg" fontWeight="bold">{t('dashboard.title')}</Text>
-            <Text color="gray.600">{t('dashboard.description')}</Text>
-            {renderSystemStatus()}
-            {renderOverallHealth()}
-          </VStack>
+          <Container maxW="1400px" px={0}>
+            <VStack spacing={8} align="stretch">
+              {/* ヘッダーセクション */}
+              <Box
+                bgGradient={useColorModeValue(
+                  'linear(to-r, blue.50, purple.50)',
+                  'linear(to-r, blue.900, purple.900)'
+                )}
+                borderRadius="xl"
+                border="1px solid"
+                borderColor={useColorModeValue('gray.200', 'gray.600')}
+                p={8}
+                shadow="lg"
+              >
+                <Flex justify="space-between" align="center" wrap="wrap" gap={4}>
+                  <VStack align="start" spacing={3}>
+                    <HStack spacing={4}>
+                      <Avatar
+                        icon={<Icon as={FiBarChart} />}
+                        bg="blue.500"
+                        size="lg"
+                      />
+                      <VStack align="start" spacing={1}>
+                        <Heading size="xl" color="gray.700" _dark={{ color: 'gray.100' }}>
+                          システム概要ダッシュボード
+                        </Heading>
+                        <Text fontSize="md" color="gray.600" _dark={{ color: 'gray.300' }}>
+                          リアルタイム監視とシステム状態の統合管理
+                        </Text>
+                      </VStack>
+                    </HStack>
+
+                    {/* クイックステータス */}
+                    <HStack spacing={4} wrap="wrap">
+                      <Badge colorScheme="green" px={3} py={1} borderRadius="full">
+                        <HStack spacing={1}>
+                          <Icon as={FiZap} boxSize={3} />
+                          <Text fontSize="sm">システム稼働中</Text>
+                        </HStack>
+                      </Badge>
+                      <Badge colorScheme="blue" px={3} py={1} borderRadius="full">
+                        <HStack spacing={1}>
+                          <Icon as={FiUsers} boxSize={3} />
+                          <Text fontSize="sm">監視アクティブ</Text>
+                        </HStack>
+                      </Badge>
+                      <Badge colorScheme="purple" px={3} py={1} borderRadius="full">
+                        <HStack spacing={1}>
+                          <Icon as={FaBell} boxSize={3} />
+                          <Text fontSize="sm">通知有効</Text>
+                        </HStack>
+                      </Badge>
+                    </HStack>
+                  </VStack>
+
+                  {/* クイックアクション */}
+                  <VStack spacing={3}>
+                    <HStack spacing={3}>
+                      <Tooltip label="監視画面を開く">
+                        <Button
+                          leftIcon={<Icon as={FiHome} />}
+                          onClick={() => handleViewChange('monitor')}
+                          colorScheme="blue"
+                          variant="solid"
+                          borderRadius="lg"
+                        >
+                          監視
+                        </Button>
+                      </Tooltip>
+                      <Tooltip label="音声設定を開く">
+                        <Button
+                          leftIcon={<Icon as={FiVolumeX} />}
+                          onClick={() => handleViewChange('voice')}
+                          colorScheme="purple"
+                          variant="solid"
+                          borderRadius="lg"
+                        >
+                          音声
+                        </Button>
+                      </Tooltip>
+                      <Tooltip label="分析画面を開く">
+                        <Button
+                          leftIcon={<Icon as={FiTarget} />}
+                          onClick={() => handleViewChange('analytics')}
+                          colorScheme="green"
+                          variant="solid"
+                          borderRadius="lg"
+                        >
+                          分析
+                        </Button>
+                      </Tooltip>
+                    </HStack>
+                    <Text fontSize="xs" color="gray.500" textAlign="center">
+                      最終更新: {lastRefresh.toLocaleTimeString()}
+                    </Text>
+                  </VStack>
+                </Flex>
+              </Box>
+
+              {/* システム状態カード */}
+              <Card bg={cardBg} shadow="lg">
+                <CardHeader pb={2}>
+                  <HStack justify="space-between" align="center">
+                    <HStack spacing={3}>
+                      <Icon as={FiCpu} color="blue.500" boxSize={6} />
+                      <VStack align="start" spacing={0}>
+                        <Heading size="md" color="gray.700" _dark={{ color: 'gray.100' }}>
+                          システムコンポーネント状態
+                        </Heading>
+                        <Text fontSize="sm" color="gray.500">
+                          各サブシステムの稼働状況
+                        </Text>
+                      </VStack>
+                    </HStack>
+                    <Button
+                      leftIcon={<Icon as={FiRefreshCw} />}
+                      onClick={fetchSystemStatus}
+                      isLoading={isLoading}
+                      size="sm"
+                      variant="outline"
+                      borderRadius="lg"
+                    >
+                      更新
+                    </Button>
+                  </HStack>
+                </CardHeader>
+                <CardBody pt={2}>
+                  {renderSystemStatus()}
+                </CardBody>
+              </Card>
+
+              {/* 下段: 健康度とクイックアクセス */}
+              <SimpleGrid columns={{ base: 1, xl: 2 }} spacing={8} alignItems="stretch">
+                {renderOverallHealth()}
+
+                {/* クイックアクセスパネル */}
+                <Card bg={cardBg} shadow="lg">
+                  <CardHeader pb={2}>
+                    <HStack spacing={3}>
+                      <Icon as={FiTarget} color="green.500" boxSize={6} />
+                      <VStack align="start" spacing={0}>
+                        <Heading size="md" color="gray.700" _dark={{ color: 'gray.100' }}>
+                          クイックアクセス
+                        </Heading>
+                        <Text fontSize="sm" color="gray.500">
+                          よく使用する機能への直接アクセス
+                        </Text>
+                      </VStack>
+                    </HStack>
+                  </CardHeader>
+                  <CardBody pt={2}>
+                    <VStack spacing={6} align="stretch">
+                      {/* 主要機能 */}
+                      <Box>
+                        <Text fontSize="sm" fontWeight="semibold" color="gray.600" mb={3}>
+                          主要機能
+                        </Text>
+                        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                          <Button
+                            variant="outline"
+                            leftIcon={<Icon as={FiHome} />}
+                            onClick={() => handleViewChange('monitor')}
+                            justifyContent="flex-start"
+                            h="50px"
+                            borderRadius="lg"
+                            _hover={{ bg: useColorModeValue('blue.50', 'blue.900') }}
+                          >
+                            <VStack align="start" spacing={0} flex={1}>
+                              <Text fontSize="sm" fontWeight="medium">監視</Text>
+                              <Text fontSize="xs" color="gray.500">リアルタイム監視</Text>
+                            </VStack>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            leftIcon={<Icon as={FiVolumeX} />}
+                            onClick={() => handleViewChange('voice')}
+                            justifyContent="flex-start"
+                            h="50px"
+                            borderRadius="lg"
+                            _hover={{ bg: useColorModeValue('purple.50', 'purple.900') }}
+                          >
+                            <VStack align="start" spacing={0} flex={1}>
+                              <Text fontSize="sm" fontWeight="medium">音声設定</Text>
+                              <Text fontSize="xs" color="gray.500">TTS・音声合成</Text>
+                            </VStack>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            leftIcon={<Icon as={FiCalendar} />}
+                            onClick={() => handleViewChange('schedule')}
+                            justifyContent="flex-start"
+                            h="50px"
+                            borderRadius="lg"
+                            _hover={{ bg: useColorModeValue('green.50', 'green.900') }}
+                          >
+                            <VStack align="start" spacing={0} flex={1}>
+                              <Text fontSize="sm" fontWeight="medium">スケジュール</Text>
+                              <Text fontSize="xs" color="gray.500">予定管理</Text>
+                            </VStack>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            leftIcon={<Icon as={FiSettings} />}
+                            onClick={() => handleViewChange('settings')}
+                            justifyContent="flex-start"
+                            h="50px"
+                            borderRadius="lg"
+                            _hover={{ bg: useColorModeValue('orange.50', 'orange.900') }}
+                          >
+                            <VStack align="start" spacing={0} flex={1}>
+                              <Text fontSize="sm" fontWeight="medium">設定</Text>
+                              <Text fontSize="xs" color="gray.500">システム設定</Text>
+                            </VStack>
+                          </Button>
+                        </SimpleGrid>
+                      </Box>
+
+                      <Divider />
+
+                      {/* 分析・解析機能 */}
+                      <Box>
+                        <Text fontSize="sm" fontWeight="semibold" color="gray.600" mb={3}>
+                          分析・解析
+                        </Text>
+                        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                          <Button
+                            variant="outline"
+                            leftIcon={<Icon as={FiActivity} />}
+                            onClick={() => handleViewChange('behavior')}
+                            justifyContent="flex-start"
+                            h="50px"
+                            borderRadius="lg"
+                            _hover={{ bg: useColorModeValue('teal.50', 'teal.900') }}
+                          >
+                            <VStack align="start" spacing={0} flex={1}>
+                              <Text fontSize="sm" fontWeight="medium">行動分析</Text>
+                              <Text fontSize="xs" color="gray.500">パターン解析</Text>
+                            </VStack>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            leftIcon={<Icon as={FiTarget} />}
+                            onClick={() => handleViewChange('analytics')}
+                            justifyContent="flex-start"
+                            h="50px"
+                            borderRadius="lg"
+                            _hover={{ bg: useColorModeValue('cyan.50', 'cyan.900') }}
+                          >
+                            <VStack align="start" spacing={0} flex={1}>
+                              <Text fontSize="sm" fontWeight="medium">詳細分析</Text>
+                              <Text fontSize="xs" color="gray.500">高度な解析</Text>
+                            </VStack>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            leftIcon={<Icon as={FiTrendingUp} />}
+                            onClick={() => handleViewChange('predictions')}
+                            justifyContent="flex-start"
+                            h="50px"
+                            borderRadius="lg"
+                            _hover={{ bg: useColorModeValue('pink.50', 'pink.900') }}
+                          >
+                            <VStack align="start" spacing={0} flex={1}>
+                              <Text fontSize="sm" fontWeight="medium">予測分析</Text>
+                              <Text fontSize="xs" color="gray.500">将来予測</Text>
+                            </VStack>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            leftIcon={<Icon as={FaChartLine} />}
+                            onClick={() => handleViewChange('learning')}
+                            justifyContent="flex-start"
+                            h="50px"
+                            borderRadius="lg"
+                            _hover={{ bg: useColorModeValue('indigo.50', 'indigo.900') }}
+                          >
+                            <VStack align="start" spacing={0} flex={1}>
+                              <Text fontSize="sm" fontWeight="medium">学習進捗</Text>
+                              <Text fontSize="xs" color="gray.500">AI学習状況</Text>
+                            </VStack>
+                          </Button>
+                        </SimpleGrid>
+                      </Box>
+                    </VStack>
+                  </CardBody>
+                </Card>
+              </SimpleGrid>
+            </VStack>
+          </Container>
         );
     }
   };
 
-  // Settings save handler
-  const handleSaveSettings = useCallback(() => {
-    // 設定値の保存とtoast表示
-    toast({
-      title: '設定を保存しました',
-      description: `自動更新: ${localAutoRefresh ? 'ON' : 'OFF'}, 更新間隔: ${localRefreshInterval}秒`,
-      status: 'success',
-      duration: 3000,
-      isClosable: true,
-    });
-    
-    // モーダルを閉じる
-    onClose();
-    
-    // 設定が変更されている場合は再レンダリングを促す
-    if (localAutoRefresh !== autoRefresh || localRefreshInterval !== refreshInterval) {
-      // propsが変更された場合の処理は親コンポーネントでハンドリング
-      console.log('Settings changed:', { localAutoRefresh, localRefreshInterval });
-    }
-  }, [localAutoRefresh, localRefreshInterval, autoRefresh, refreshInterval, toast, onClose]);
+  // 設定ダイアログは削除済みのため、保存ハンドラは不要
 
   if (error) {
     return (
@@ -466,7 +814,7 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
           <Box role="navigation" position="fixed" height="100vh" width="250px" bg={cardBg} p={4} overflowY="auto" display="flex" flexDirection="column">
             <VStack spacing={3} align="stretch" flex="1">
               <Heading size="md" mb={4}>{t('app.title')}</Heading>
-              
+
               <Button
                 variant={selectedView === 'overview' ? 'solid' : 'ghost'}
                 justifyContent="flex-start"
@@ -477,10 +825,10 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
               >
                 {t('tabs.overview')}
               </Button>
-              
+
               <Divider />
               <Text fontSize="sm" fontWeight="bold" color="gray.500">{t('nav.sections.core')}</Text>
-              
+
               <Button
                 variant={selectedView === 'monitor' ? 'solid' : 'ghost'}
                 justifyContent="flex-start"
@@ -491,7 +839,7 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
               >
                 {t('tabs.monitor')}
               </Button>
-              
+
               <Button
                 variant={selectedView === 'voice' ? 'solid' : 'ghost'}
                 justifyContent="flex-start"
@@ -524,7 +872,7 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
               >
                 {t('tabs.settings')}
               </Button>
-              
+
               <Button
                 variant={selectedView === 'behavior' ? 'solid' : 'ghost'}
                 justifyContent="flex-start"
@@ -535,10 +883,10 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
               >
                 {t('tabs.behavior')}
               </Button>
-              
+
               <Divider />
               <Text fontSize="sm" fontWeight="bold" color="gray.500">{t('nav.sections.advanced')}</Text>
-              
+
               <Button
                 variant={selectedView === 'analytics' ? 'solid' : 'ghost'}
                 justifyContent="flex-start"
@@ -549,7 +897,7 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
               >
                 {t('tabs.analytics')}
               </Button>
-              
+
               <Button
                 variant={selectedView === 'personalization' ? 'solid' : 'ghost'}
                 justifyContent="flex-start"
@@ -560,7 +908,7 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
               >
                 {t('tabs.personalization')}
               </Button>
-              
+
               <Button
                 variant={selectedView === 'predictions' ? 'solid' : 'ghost'}
                 justifyContent="flex-start"
@@ -571,7 +919,7 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
               >
                 {t('tabs.predictions')}
               </Button>
-              
+
               <Button
                 variant={selectedView === 'learning' ? 'solid' : 'ghost'}
                 justifyContent="flex-start"
@@ -598,61 +946,13 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
                 <Text>システム状態を確認中...</Text>
               </HStack>
             )}
-            
+
             {!isLoading && renderMainContent()}
           </Box>
         </GridItem>
       </Grid>
 
-      {/* Settings Modal */}
-      <Modal isOpen={isOpen} onClose={onClose} size="xl">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>統合ダッシュボード設定</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <VStack spacing={4} align="stretch">
-              <FormControl display="flex" alignItems="center">
-                <FormLabel htmlFor="auto-refresh" mb="0">
-                  自動更新
-                </FormLabel>
-                <Switch 
-                  id="auto-refresh" 
-                  isChecked={localAutoRefresh}
-                  onChange={(e) => setLocalAutoRefresh(e.target.checked)}
-                />
-              </FormControl>
-              
-              <FormControl>
-                <FormLabel>更新間隔（秒）</FormLabel>
-                <Select 
-                  value={localRefreshInterval}
-                  onChange={(e) => setLocalRefreshInterval(Number(e.target.value))}
-                >
-                  <option value={15}>15秒</option>
-                  <option value={30}>30秒</option>
-                  <option value={60}>1分</option>
-                  <option value={300}>5分</option>
-                </Select>
-              </FormControl>
-              
-              <FormControl>
-                <FormLabel>ユーザーID</FormLabel>
-                <Text fontSize="sm" color="gray.600">{userId}</Text>
-              </FormControl>
-            </VStack>
-          </ModalBody>
-
-          <ModalFooter>
-            <Button variant="ghost" mr={3} onClick={onClose}>
-              キャンセル
-            </Button>
-            <Button colorScheme="blue" onClick={handleSaveSettings}>
-              保存
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      {/* 設定ダイアログは廃止 */}
     </Box>
   );
 }; 

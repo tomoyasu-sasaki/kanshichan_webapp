@@ -1,7 +1,7 @@
 """
 サウンド再生サービス
 
-OSごとの再生手段を抽象化し、`src/sounds` 配下の音声を再生します。
+OSごとの再生手段を抽象化し、`backend/sounds` 配下の音声を再生します。
 存在しない場合のフォールバックや簡易的なファイル名マッチングも提供します。
 """
 
@@ -21,7 +21,7 @@ class SoundService:
     def __init__(self):
         # プロジェクトのルートディレクトリを基準に絶対パスを構築
         project_root = Path(__file__).resolve().parent.parent.parent.parent
-        self.sound_dir = project_root / 'src' / 'sounds'
+        self.sound_dir = project_root / 'sounds'
         
         logger.info(f"Sound directory set to: {self.sound_dir}")
         self._initialize_sound_system()

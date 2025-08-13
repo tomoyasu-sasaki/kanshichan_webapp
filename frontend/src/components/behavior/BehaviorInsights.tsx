@@ -1,144 +1,35 @@
-import {
-  Box,
-  VStack,
-  HStack,
-  Text,
-  Card,
-  CardBody,
-  CardHeader,
-  Heading,
-  Badge,
-  Progress,
-  Alert,
-  AlertIcon,
-  Button,
-  Select,
-  Stat,
-  StatLabel,
-  StatNumber,
-  StatHelpText,
-  StatArrow,
-  Divider,
-  List,
-  ListItem,
-  ListIcon,
-  useToast,
-  Grid,
-  Skeleton,
-  SkeletonText,
-  Tabs,
-  TabList,
-  Tab,
-  Collapse,
-  IconButton,
-} from "@chakra-ui/react";
+import { Box, VStack, useToast, useColorModeValue } from "@chakra-ui/react";
 import { useEffect, useState, useCallback, useRef } from "react";
-import {
-  FaChartLine,
-  FaLightbulb,
-  FaEye,
-  FaExclamationTriangle,
-  FaCheckCircle,
-  FaArrowUp,
-  FaArrowDown,
-  FaMinus,
-  FaVolumeUp,
-  FaCopy,
-} from "react-icons/fa";
 import { logger } from "../../utils/logger";
 import { Recommendation, PaginationInfo } from "../../types/recommendation";
 
-interface BehaviorInsightsProps {
-  refreshInterval?: number; // リフレッシュ間隔（秒）
-  onNavigate?: (view: string) => void; // ナビゲーション関数
-}
+// Types
+import type {
+  BehaviorTrend,
+  DailyInsight,
+  BehaviorSummary,
+  BehaviorInsightsProps
+} from "./types";
 
-interface BehaviorTrend {
-  timeframe: string;
-  period_start?: string;
-  period_end?: string;
-  total_logs: number;
-  focus_analysis?: {
-    average_focus?: number;
-    trend_direction?: "up" | "down" | "stable";
-    trend_percentage?: number;
-    good_posture_percentage?: number;
-    presence_rate?: number;
-    smartphone_usage_rate?: number;
-    total_sessions?: number;
-    basic_statistics?: {
-      mean?: number;
-      high_focus_ratio?: number;
-      low_focus_ratio?: number;
-    };
-    trend_analysis?: {
-      trend?: "improving" | "declining" | "stable";
-      trend_strength?: number;
-    };
-    hourly_patterns?: {
-      hourly_statistics?: { [key: string]: number };
-    };
-  };
-  anomalies?: unknown[];
-  trend_summary?: unknown;
-  message?: string;
-  period_hours?: number;
-  logs_count?: number;
-}
+// Components
+import { InsightsHeader } from "./components/InsightsHeader";
+import { SummaryCards } from "./components/SummaryCards";
+import { TrendsChart } from "./components/TrendsChart";
+import { DailyInsightsCard } from "./components/DailyInsightsCard";
+import { RecommendationsPanel } from "./components/RecommendationsPanel";
+import { QuickActions } from "./components/QuickActions";
 
-interface DailyInsight {
-  target_date: string;
-  logs_analyzed?: number;
-  insights?: {
-    focus_score?: number;
-    productivity_score?: number;
-    key_findings?: (string | InsightItem)[];
-    improvement_areas?: (string | InsightItem)[];
-  };
-  summary?: {
-    summary?: string;
-  };
-  message?: string;
-  recommendations?: unknown[];
-}
 
-interface BehaviorSummary {
-  today?: {
-    total_time?: number;
-    focus_time?: number;
-    break_time?: number;
-    absence_time?: number;
-    smartphone_usage_time?: number;
-    posture_alerts?: number;
-  };
-  yesterday?: {
-    total_time?: number;
-    focus_time?: number;
-    break_time?: number;
-    absence_time?: number;
-    smartphone_usage_time?: number;
-    posture_alerts?: number;
-  };
-}
-
-interface InsightItem {
-  message?: string;
-  action?: string;
-  [key: string]: unknown;
-}
 
 export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
-  refreshInterval = 300, // 30秒 → 5分（300秒）に変更
+  refreshInterval = 300,
   onNavigate,
 }) => {
-  // 分析データ状態
-  const [behaviorTrends, setBehaviorTrends] = useState<BehaviorTrend | null>(
-    null,
-  );
+  // Data states
+  const [behaviorTrends, setBehaviorTrends] = useState<BehaviorTrend | null>(null);
   const [dailyInsights, setDailyInsights] = useState<DailyInsight | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
-  const [behaviorSummary, setBehaviorSummary] =
-    useState<BehaviorSummary | null>(null);
+  const [behaviorSummary, setBehaviorSummary] = useState<BehaviorSummary | null>(null);
   const [paginationInfo, setPaginationInfo] = useState<PaginationInfo>({
     page: 1,
     limit: 5,
@@ -146,22 +37,24 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
     total_pages: 1,
   });
 
-  // UI状態（段階的ローディング対応）
-  const [summaryLoading, setSummaryLoading] = useState(true); // サマリー専用ローディング
-  const [insightsLoading, setInsightsLoading] = useState(true); // インサイト専用ローディング
-  const [trendsLoading, setTrendsLoading] = useState(true); // トレンド専用ローディング
-  const [recommendationsLoading, setRecommendationsLoading] = useState(false); // 推奨事項ローディング
+  // UI states
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [insightsLoading, setInsightsLoading] = useState(true);
+  const [trendsLoading, setTrendsLoading] = useState(true);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [timeframe, setTimeframe] = useState("today"); // today, week, month
-  const [priorityFilter, setPriorityFilter] = useState("all"); // all, high, medium, low
-  const [expandedItems, setExpandedItems] = useState<Record<number, boolean>>(
-    {},
-  );
+  const [timeframe, setTimeframe] = useState("today");
+  const [priorityFilter, setPriorityFilter] = useState("all");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  // StrictMode のダブルマウント対策（初期化は一度だけ）
-  const didInitRef = useRef(false);
 
+  const didInitRef = useRef(false);
   const toast = useToast();
+
+  // Theme
+  const bgGradient = useColorModeValue(
+    'linear(to-br, gray.50, blue.50)',
+    'linear(to-br, gray.900, blue.900)'
+  );
 
   // --- 重複リクエスト防止のためのグローバルロック ---
   const acquireGlobalLock = (key: string): boolean => {
@@ -268,10 +161,10 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
         `/api/v1/analysis/trends?timeframe=${apiTimeframe}`,
       );
       if (response.ok) {
-      const data = await response.json();
-      const isSuccess2 = data?.success === true || data?.status === "success";
-      if (isSuccess2) {
-        setBehaviorTrends(data.data || data || null);
+        const data = await response.json();
+        const isSuccess2 = data?.success === true || data?.status === "success";
+        if (isSuccess2) {
+          setBehaviorTrends(data.data || data || null);
           await logger.info(
             "BehaviorInsights: トレンドデータ取得完了",
             {
@@ -312,11 +205,11 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
 
       const response = await fetch("/api/v1/analysis/insights");
       if (response.ok) {
-      const data = await response.json();
-      const isSuccess3 = data?.success === true || data?.status === "success";
-      if (isSuccess3) {
+        const data = await response.json();
+        const isSuccess3 = data?.success === true || data?.status === "success";
+        if (isSuccess3) {
           // API応答データの構造に合わせて設定
-        const insights = data.data || data || {};
+          const insights = data.data || data || {};
 
           // insights.summary.insights から focus_score と productivity_score を取得
           const summaryInsights = insights.summary?.insights || {};
@@ -527,847 +420,85 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
     };
   }, [refreshAllData, refreshFastData, refreshInterval]);
 
-  // 時間枠変更ハンドラ
-  const handleTimeframeChange = useCallback(
-    (newTimeframe: string) => {
-      setTimeframe(newTimeframe);
-      fetchBehaviorTrends(newTimeframe);
-    },
-    [fetchBehaviorTrends],
-  );
 
-  // 優先度フィルタ変更ハンドラ
-  const handlePriorityFilterChange = useCallback(
-    (newPriority: string) => {
-      setPriorityFilter(newPriority);
-      fetchRecommendations(newPriority);
-    },
-    [fetchRecommendations],
-  );
 
-  // 時間をフォーマット
-  const formatTime = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    return `${hours}時間${minutes}分`;
+  // Handler functions
+  const handleTimeframeChange = useCallback((newTimeframe: string) => {
+    setTimeframe(newTimeframe);
+    fetchBehaviorTrends(newTimeframe);
+  }, [fetchBehaviorTrends]);
+
+  const handlePriorityFilterChange = useCallback((newPriority: string) => {
+    setPriorityFilter(newPriority);
+    fetchRecommendations(newPriority);
+  }, [fetchRecommendations]);
+
+  const handleLoadMoreRecommendations = useCallback(() => {
+    setRecommendationsLoading(true);
+    const nextPage = paginationInfo.page + 1;
+    fetchRecommendations(priorityFilter, nextPage, paginationInfo.limit)
+      .finally(() => setRecommendationsLoading(false));
+  }, [fetchRecommendations, priorityFilter, paginationInfo]);
+
+  const isAnyLoading = summaryLoading || trendsLoading || insightsLoading;
+  const loadingProgress = {
+    summary: summaryLoading,
+    trends: trendsLoading,
+    insights: insightsLoading
   };
-
-  // パーセンテージをフォーマット
-  const formatPercentage = (value: number): string => {
-    return `${Math.round(value * 100)}%`;
-  };
-
-  // トレンド方向のアイコンとカラーを取得
-  const getTrendDisplay = (
-    direction: "up" | "down" | "stable",
-    percentage: number,
-  ) => {
-    switch (direction) {
-      case "up":
-        return {
-          icon: <FaArrowUp />,
-          color: "green",
-          text: `+${percentage.toFixed(1)}%`,
-        };
-      case "down":
-        return {
-          icon: <FaArrowDown />,
-          color: "red",
-          text: `-${percentage.toFixed(1)}%`,
-        };
-      default:
-        return {
-          icon: <FaMinus />,
-          color: "gray",
-          text: "変化なし",
-        };
-    }
-  };
-
-  // 折りたたみ状態切り替え
-  const toggleItemExpansion = (index: number) => {
-    setExpandedItems((prev) => ({
-      ...prev,
-      [index]: !prev[index],
-    }));
-  };
-
-  // 音声再生関数
-  const playAudio = (url: string) => {
-    const audio = new Audio(url);
-    audio.play().catch((error) => {
-      console.error("音声再生エラー:", error);
-      toast({
-        title: "音声再生エラー",
-        description: "音声の再生に失敗しました",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    });
-  };
-
-  // 優先度の選択肢
-  const priorities = ["all", "high", "medium", "low"];
 
   return (
-    <Box width="100%" maxWidth="1200px" mx="auto" p={6}>
-      <VStack spacing={6} align="stretch">
-        {/* ヘッダー */}
-        <Card>
-          <CardHeader>
-            <HStack justify="space-between" align="center">
-              <Heading size="md">行動分析インサイト</Heading>
-              <HStack spacing={4}>
-                <Select
-                  value={timeframe}
-                  onChange={(e) => handleTimeframeChange(e.target.value)}
-                  size="sm"
-                  width="120px"
-                >
-                  <option value="today">今日</option>
-                  <option value="week">今週</option>
-                  <option value="month">今月</option>
-                </Select>
-                <Button
-                  onClick={refreshAllData}
-                  size="sm"
-                  isLoading={summaryLoading || trendsLoading || insightsLoading}
-                >
-                  更新
-                </Button>
-                {lastUpdated && (
-                  <Text fontSize="xs" color="gray.500">
-                    最終更新: {lastUpdated.toLocaleTimeString()}
-                  </Text>
-                )}
-                {/* ローディング進捗インジケーター */}
-                {(summaryLoading || trendsLoading || insightsLoading) && (
-                  <VStack spacing={1} align="start">
-                    <Text fontSize="xs" color="blue.500">
-                      {summaryLoading && "📊 基本データ取得中..."}
-                      {!summaryLoading &&
-                        trendsLoading &&
-                        "📈 トレンド分析中..."}
-                      {!summaryLoading &&
-                        !trendsLoading &&
-                        insightsLoading &&
-                        "🧠 AI洞察生成中..."}
-                    </Text>
-                    <Box
-                      bg="gray.200"
-                      height="2px"
-                      width="100px"
-                      borderRadius="full"
-                      overflow="hidden"
-                    >
-                      <Box
-                        bg="blue.400"
-                        height="100%"
-                        width={
-                          !summaryLoading && !trendsLoading && !insightsLoading
-                            ? "100%"
-                            : !summaryLoading && !trendsLoading
-                              ? "80%"
-                              : !summaryLoading
-                                ? "50%"
-                                : "20%"
-                        }
-                        transition="width 0.3s ease"
-                      />
-                    </Box>
-                  </VStack>
-                )}
-              </HStack>
-            </HStack>
-          </CardHeader>
-        </Card>
+    <Box
+      minH="100vh"
+      bgGradient={bgGradient}
+      py={8}
+      px={4}
+    >
+      <Box width="100%" maxWidth="1400px" mx="auto">
+        <VStack spacing={8} align="stretch">
+          {/* Header */}
+          <InsightsHeader
+            timeframe={timeframe}
+            onTimeframeChange={handleTimeframeChange}
+            onRefresh={refreshAllData}
+            isLoading={isAnyLoading}
+            lastUpdated={lastUpdated}
+            loadingProgress={loadingProgress}
+          />
 
-        {/* サマリー統計 */}
-        <Grid templateColumns="repeat(auto-fit, minmax(200px, 1fr))" gap={4}>
-          {error ? (
-            <Card gridColumn="1 / -1">
-              <CardBody>
-                <Alert status="error">
-                  <AlertIcon />
-                  {error}
-                </Alert>
-              </CardBody>
-            </Card>
-          ) : summaryLoading ? (
-            Array.from({ length: 4 }).map((_, index) => (
-              <Card key={index}>
-                <CardBody>
-                  <Skeleton height="60px" />
-                  <Text fontSize="xs" color="blue.500" mt={2}>
-                    高速データ取得中... 約1秒で表示されます
-                  </Text>
-                </CardBody>
-              </Card>
-            ))
-          ) : behaviorSummary ? (
-            <>
-              <Card>
-                <CardBody>
-                  <Stat>
-                    <StatLabel>今日の監視時間</StatLabel>
-                    <StatNumber>
-                      {formatTime(behaviorSummary.today?.total_time ?? 0)}
-                    </StatNumber>
-                    <StatHelpText>
-                      {(behaviorSummary.today?.total_time ?? 0) >
-                      (behaviorSummary.yesterday?.total_time ?? 0) ? (
-                        <StatArrow type="increase" />
-                      ) : (
-                        <StatArrow type="decrease" />
-                      )}
-                      前日比:{" "}
-                      {formatTime(
-                        Math.abs(
-                          (behaviorSummary.today?.total_time ?? 0) -
-                            (behaviorSummary.yesterday?.total_time ?? 0),
-                        ),
-                      )}
-                    </StatHelpText>
-                  </Stat>
-                </CardBody>
-              </Card>
+          {/* Summary Cards */}
+          <SummaryCards
+            behaviorSummary={behaviorSummary}
+            isLoading={summaryLoading}
+            error={error}
+          />
 
-              <Card>
-                <CardBody>
-                  <Stat>
-                    <StatLabel>今日の集中時間</StatLabel>
-                    <StatNumber>
-                      {formatTime(behaviorSummary.today?.focus_time ?? 0)}
-                    </StatNumber>
-                    <StatHelpText>
-                      {(behaviorSummary.today?.focus_time ?? 0) >
-                      (behaviorSummary.yesterday?.focus_time ?? 0) ? (
-                        <StatArrow type="increase" />
-                      ) : (
-                        <StatArrow type="decrease" />
-                      )}
-                      前日比:{" "}
-                      {formatTime(
-                        Math.abs(
-                          (behaviorSummary.today?.focus_time ?? 0) -
-                            (behaviorSummary.yesterday?.focus_time ?? 0),
-                        ),
-                      )}
-                    </StatHelpText>
-                  </Stat>
-                </CardBody>
-              </Card>
+          {/* Trends Chart */}
+          <TrendsChart
+            behaviorTrends={behaviorTrends}
+            isLoading={trendsLoading}
+          />
 
-              <Card>
-                <CardBody>
-                  <Stat>
-                    <StatLabel>在席率</StatLabel>
-                    <StatNumber>
-                      {formatPercentage(
-                        (behaviorSummary.today?.total_time ?? 0) > 0
-                          ? ((behaviorSummary.today?.total_time ?? 0) -
-                              (behaviorSummary.today?.absence_time ?? 0)) /
-                              (behaviorSummary.today?.total_time ?? 0)
-                          : 0,
-                      )}
-                    </StatNumber>
-                    <StatHelpText>
-                      不在時間:{" "}
-                      {formatTime(behaviorSummary.today?.absence_time ?? 0)}
-                    </StatHelpText>
-                  </Stat>
-                </CardBody>
-              </Card>
+          {/* Daily Insights */}
+          <DailyInsightsCard
+            dailyInsights={dailyInsights}
+            isLoading={insightsLoading}
+          />
 
-              <Card>
-                <CardBody>
-                  <Stat>
-                    <StatLabel>スマホ使用時間</StatLabel>
-                    <StatNumber>
-                      {formatTime(
-                        behaviorSummary.today?.smartphone_usage_time ?? 0,
-                      )}
-                    </StatNumber>
-                    <StatHelpText>
-                      {(behaviorSummary.today?.smartphone_usage_time ?? 0) <
-                      (behaviorSummary.yesterday?.smartphone_usage_time ??
-                        0) ? (
-                        <StatArrow type="decrease" />
-                      ) : (
-                        <StatArrow type="increase" />
-                      )}
-                      前日比:{" "}
-                      {formatTime(
-                        Math.abs(
-                          (behaviorSummary.today?.smartphone_usage_time ?? 0) -
-                            (behaviorSummary.yesterday?.smartphone_usage_time ??
-                              0),
-                        ),
-                      )}
-                    </StatHelpText>
-                  </Stat>
-                </CardBody>
-              </Card>
+          {/* Recommendations */}
+          <RecommendationsPanel
+            recommendations={recommendations}
+            paginationInfo={paginationInfo}
+            priorityFilter={priorityFilter}
+            isLoading={recommendationsLoading}
+            onPriorityChange={handlePriorityFilterChange}
+            onLoadMore={handleLoadMoreRecommendations}
+          />
 
-              <Card>
-                <CardBody>
-                  <Stat>
-                    <StatLabel>姿勢アラート</StatLabel>
-                    <StatNumber>
-                      {behaviorSummary.today?.posture_alerts ?? 0}回
-                    </StatNumber>
-                    <StatHelpText>
-                      {(behaviorSummary.today?.posture_alerts ?? 0) <
-                      (behaviorSummary.yesterday?.posture_alerts ?? 0) ? (
-                        <StatArrow type="decrease" />
-                      ) : (
-                        <StatArrow type="increase" />
-                      )}
-                      前日: {behaviorSummary.yesterday?.posture_alerts ?? 0}回
-                    </StatHelpText>
-                  </Stat>
-                </CardBody>
-              </Card>
-            </>
-          ) : (
-            <Card gridColumn="1 / -1">
-              <CardBody>
-                <Alert status="info">
-                  <AlertIcon />
-                  データが不足しています。しばらく使用してからご確認ください。
-                </Alert>
-              </CardBody>
-            </Card>
-          )}
-        </Grid>
-
-        {/* 行動トレンド */}
-        <Card>
-          <CardHeader>
-            <HStack>
-              <FaChartLine />
-              <Heading size="sm">行動トレンド</Heading>
-            </HStack>
-          </CardHeader>
-          <CardBody>
-            {trendsLoading ? (
-              <SkeletonText noOfLines={4} spacing="4" />
-            ) : behaviorTrends ? (
-              <Grid
-                templateColumns="repeat(auto-fit, minmax(250px, 1fr))"
-                gap={6}
-              >
-                <Box>
-                  <Text fontWeight="bold" mb={2}>
-                    集中度トレンド
-                  </Text>
-                  <HStack justify="space-between">
-                    <Text>平均集中度:</Text>
-                    <HStack>
-                      <Badge colorScheme="blue">
-                        {formatPercentage(
-                          behaviorTrends.focus_analysis?.average_focus ||
-                            behaviorTrends.focus_analysis?.basic_statistics
-                              ?.mean ||
-                            0,
-                        )}
-                      </Badge>
-                      {(() => {
-                        const trendDirection =
-                          behaviorTrends.focus_analysis?.trend_direction ||
-                          (behaviorTrends.focus_analysis?.trend_analysis
-                            ?.trend === "improving"
-                            ? "up"
-                            : behaviorTrends.focus_analysis?.trend_analysis
-                                  ?.trend === "declining"
-                              ? "down"
-                              : "stable");
-                        const trendPercentage =
-                          behaviorTrends.focus_analysis?.trend_percentage ||
-                          behaviorTrends.focus_analysis?.trend_analysis
-                            ?.trend_strength ||
-                          0;
-
-                        const trend = getTrendDisplay(
-                          trendDirection,
-                          trendPercentage,
-                        );
-                        return (
-                          <HStack color={trend.color}>
-                            {trend.icon}
-                            <Text fontSize="sm">{trend.text}</Text>
-                          </HStack>
-                        );
-                      })()}
-                    </HStack>
-                  </HStack>
-                </Box>
-
-                <Box>
-                  <Text fontWeight="bold" mb={2}>
-                    姿勢トレンド
-                  </Text>
-                  <HStack justify="space-between">
-                    <Text>良い姿勢:</Text>
-                    <HStack>
-                      <Badge colorScheme="green">
-                        {formatPercentage(
-                          behaviorTrends.focus_analysis
-                            ?.good_posture_percentage ||
-                            behaviorTrends.focus_analysis?.basic_statistics
-                              ?.high_focus_ratio ||
-                            0,
-                        )}
-                      </Badge>
-                      {(() => {
-                        const trendDirection =
-                          behaviorTrends.focus_analysis?.trend_direction ||
-                          (behaviorTrends.focus_analysis?.trend_analysis
-                            ?.trend === "improving"
-                            ? "up"
-                            : behaviorTrends.focus_analysis?.trend_analysis
-                                  ?.trend === "declining"
-                              ? "down"
-                              : "stable");
-
-                        const trend = getTrendDisplay(trendDirection, 0);
-                        return (
-                          <HStack color={trend.color}>{trend.icon}</HStack>
-                        );
-                      })()}
-                    </HStack>
-                  </HStack>
-                </Box>
-
-                <Box>
-                  <Text fontWeight="bold" mb={2}>
-                    活動状況
-                  </Text>
-                  <VStack spacing={1} align="stretch" fontSize="sm">
-                    <HStack justify="space-between">
-                      <Text>在席率:</Text>
-                      <Badge>
-                        {formatPercentage(
-                          behaviorTrends.focus_analysis?.presence_rate ||
-                            1 -
-                              (behaviorTrends.focus_analysis?.basic_statistics
-                                ?.low_focus_ratio || 0),
-                        )}
-                      </Badge>
-                    </HStack>
-                    <HStack justify="space-between">
-                      <Text>スマホ使用率:</Text>
-                      <Badge colorScheme="orange">
-                        {formatPercentage(
-                          behaviorTrends.focus_analysis
-                            ?.smartphone_usage_rate ||
-                            behaviorTrends.focus_analysis?.basic_statistics
-                              ?.low_focus_ratio ||
-                            0,
-                        )}
-                      </Badge>
-                    </HStack>
-                    <HStack justify="space-between">
-                      <Text>セッション数:</Text>
-                      <Badge colorScheme="purple">
-                        {behaviorTrends.focus_analysis?.total_sessions ||
-                          Object.keys(
-                            behaviorTrends.focus_analysis?.hourly_patterns
-                              ?.hourly_statistics || {},
-                          ).length}
-                        回
-                      </Badge>
-                    </HStack>
-                  </VStack>
-                </Box>
-              </Grid>
-            ) : (
-              <Alert status="info">
-                <AlertIcon />
-                トレンドデータが不足しています
-              </Alert>
-            )}
-          </CardBody>
-        </Card>
-
-        {/* 今日の洞察 */}
-        <Card>
-          <CardHeader>
-            <HStack>
-              <FaLightbulb />
-              <Heading size="sm">今日の洞察</Heading>
-            </HStack>
-          </CardHeader>
-          <CardBody>
-            {insightsLoading ? (
-              <SkeletonText noOfLines={6} spacing="4" />
-            ) : dailyInsights ? (
-              <VStack spacing={4} align="stretch">
-                <Text>{dailyInsights.summary?.summary || ""}</Text>
-
-                <Divider />
-
-                <Grid
-                  templateColumns="repeat(auto-fit, minmax(200px, 1fr))"
-                  gap={4}
-                >
-                  <Box>
-                    <Text fontWeight="bold" mb={2}>
-                      集中スコア
-                    </Text>
-                    <Progress
-                      value={(dailyInsights.insights?.focus_score ?? 0) * 100}
-                      colorScheme="blue"
-                      size="lg"
-                    />
-                    <Text fontSize="sm" color="gray.600">
-                      {Math.round(
-                        (dailyInsights.insights?.focus_score ?? 0) * 100,
-                      )}
-                      /100
-                    </Text>
-                  </Box>
-
-                  <Box>
-                    <Text fontWeight="bold" mb={2}>
-                      生産性スコア
-                    </Text>
-                    <Progress
-                      value={
-                        (dailyInsights.insights?.productivity_score ?? 0) * 100
-                      }
-                      colorScheme="green"
-                      size="lg"
-                    />
-                    <Text fontSize="sm" color="gray.600">
-                      {Math.round(
-                        (dailyInsights.insights?.productivity_score ?? 0) * 100,
-                      )}
-                      /100
-                    </Text>
-                  </Box>
-                </Grid>
-
-                {(dailyInsights.insights?.key_findings?.length ?? 0) > 0 && (
-                  <>
-                    <Divider />
-                    <Box>
-                      <Text fontWeight="bold" mb={2}>
-                        主な発見
-                      </Text>
-                      <List spacing={1}>
-                        {(dailyInsights.insights?.key_findings ?? []).map(
-                          (finding, index: number) => {
-                            // 型安全な文字列変換
-                            const findingText =
-                              typeof finding === "string"
-                                ? finding
-                                : typeof finding === "object" &&
-                                    finding !== null
-                                  ? (finding as InsightItem).message ||
-                                    JSON.stringify(finding)
-                                  : String(finding);
-
-                            return (
-                              <ListItem key={index}>
-                                <ListIcon as={FaEye} color="blue.500" />
-                                <Text as="span">{findingText}</Text>
-                              </ListItem>
-                            );
-                          },
-                        )}
-                      </List>
-                    </Box>
-                  </>
-                )}
-
-                {(dailyInsights.insights?.improvement_areas?.length ?? 0) >
-                  0 && (
-                  <>
-                    <Divider />
-                    <Box>
-                      <Text fontWeight="bold" mb={2}>
-                        改善領域
-                      </Text>
-                      <List spacing={1}>
-                        {(dailyInsights.insights?.improvement_areas ?? []).map(
-                          (area, index: number) => {
-                            // 型安全な文字列変換
-                            const areaText =
-                              typeof area === "string"
-                                ? area
-                                : typeof area === "object" && area !== null
-                                  ? (area as InsightItem).message ||
-                                    (area as InsightItem).action ||
-                                    JSON.stringify(area)
-                                  : String(area);
-
-                            return (
-                              <ListItem key={index}>
-                                <ListIcon
-                                  as={FaExclamationTriangle}
-                                  color="orange.500"
-                                />
-                                <Text as="span">{areaText}</Text>
-                              </ListItem>
-                            );
-                          },
-                        )}
-                      </List>
-                    </Box>
-                  </>
-                )}
-              </VStack>
-            ) : (
-              <Alert status="info">
-                <AlertIcon />
-                十分なデータが蓄積されていません。継続的な使用で洞察が生成されます。
-              </Alert>
-            )}
-          </CardBody>
-        </Card>
-
-        {/* 改善提案 */}
-        <Card>
-          <CardHeader>
-            <HStack justify="space-between" align="center">
-              <HStack>
-                <FaCheckCircle />
-                <Heading size="sm">改善提案</Heading>
-              </HStack>
-              <Tabs
-                variant="soft-rounded"
-                colorScheme="blue"
-                size="sm"
-                onChange={(index) => {
-                  const priorities = ["all", "high", "medium", "low"];
-                  handlePriorityFilterChange(priorities[index]);
-                }}
-                defaultIndex={priorities.indexOf(priorityFilter)}
-              >
-                <TabList>
-                  <Tab px={3} py={1}>
-                    すべて
-                  </Tab>
-                  <Tab px={3} py={1}>
-                    重要
-                  </Tab>
-                  <Tab px={3} py={1}>
-                    普通
-                  </Tab>
-                  <Tab px={3} py={1}>
-                    軽微
-                  </Tab>
-                </TabList>
-              </Tabs>
-            </HStack>
-          </CardHeader>
-          <CardBody>
-            {insightsLoading || recommendationsLoading ? (
-              <SkeletonText noOfLines={4} spacing="4" />
-            ) : recommendations.length > 0 ? (
-              <VStack spacing={3} align="stretch">
-                {recommendations.map((rec, index) => (
-                  <Alert
-                    key={index}
-                    status={
-                      rec.priority === "high"
-                        ? "warning"
-                        : rec.priority === "medium"
-                          ? "info"
-                          : "success"
-                    }
-                    variant="left-accent"
-                  >
-                    <AlertIcon />
-                    <Box flex="1">
-                      <Collapse
-                        startingHeight={50}
-                        in={expandedItems[index]}
-                        animateOpacity
-                      >
-                        <Text fontSize="sm">{rec.message}</Text>
-                        <Text fontSize="xs" color="gray.500" mt={1}>
-                          {rec.source} •{" "}
-                          {new Date(rec.timestamp).toLocaleString()}
-                        </Text>
-                      </Collapse>
-                      {rec.message.length > 100 && (
-                        <Button
-                          size="xs"
-                          variant="link"
-                          onClick={() => toggleItemExpansion(index)}
-                          mt={1}
-                        >
-                          {expandedItems[index] ? "折りたたむ" : "もっと見る"}
-                        </Button>
-                      )}
-                    </Box>
-                    <HStack spacing={2}>
-                      {rec.audio_url && (
-                        <IconButton
-                          aria-label="音声再生"
-                          icon={<FaVolumeUp />}
-                          size="sm"
-                          variant="ghost"
-                          colorScheme="blue"
-                          onClick={() => playAudio(rec.audio_url!)}
-                        />
-                      )}
-                      <IconButton
-                        aria-label="コピー"
-                        icon={<FaCopy />}
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          navigator.clipboard.writeText(rec.message);
-                          toast({
-                            title: "コピーしました",
-                            status: "success",
-                            duration: 2000,
-                            isClosable: true,
-                          });
-                        }}
-                      />
-                      <Badge
-                        colorScheme={
-                          rec.priority === "high"
-                            ? "red"
-                            : rec.priority === "medium"
-                              ? "orange"
-                              : "green"
-                        }
-                      >
-                        {rec.priority === "high"
-                          ? "重要"
-                          : rec.priority === "medium"
-                            ? "普通"
-                            : "軽微"}
-                      </Badge>
-                    </HStack>
-                  </Alert>
-                ))}
-
-                {/* ページネーション */}
-                {paginationInfo.total_pages > 1 && (
-                  <Box mt={4} display="flex" justifyContent="center">
-                    <Button
-                      isDisabled={
-                        paginationInfo.page >= paginationInfo.total_pages
-                      }
-                      size="sm"
-                      onClick={() => {
-                        setRecommendationsLoading(true);
-                        const nextPage = paginationInfo.page + 1;
-                        fetchRecommendations(
-                          priorityFilter,
-                          nextPage,
-                          paginationInfo.limit,
-                        ).finally(() => setRecommendationsLoading(false));
-                      }}
-                      leftIcon={<FaArrowDown />}
-                    >
-                      もっと見る
-                    </Button>
-                  </Box>
-                )}
-              </VStack>
-            ) : (
-              <Alert status="info">
-                <AlertIcon />
-                現在利用可能な改善提案はありません
-              </Alert>
-            )}
-          </CardBody>
-        </Card>
-
-        {/* 高度分析リンク */}
-        <Card>
-          <CardHeader>
-            <Heading size="sm">🚀 高度分析機能</Heading>
-          </CardHeader>
-          <CardBody>
-            <Text mb={4} color="gray.600">
-              より詳細な分析機能を利用できます：
-            </Text>
-            <Grid
-              templateColumns="repeat(auto-fit, minmax(200px, 1fr))"
-              gap={4}
-            >
-              <Button
-                leftIcon={<FaChartLine />}
-                colorScheme="blue"
-                variant="outline"
-                onClick={() => {
-                  if (onNavigate) {
-                    onNavigate("analytics");
-                  } else {
-                    // Tab構造での使用時の代替処理
-                    alert(
-                      "統合ダッシュボード機能はIntegratedDashboard使用時のみ利用可能です。",
-                    );
-                  }
-                }}
-                size="sm"
-              >
-                高度分析ダッシュボード
-              </Button>
-              <Button
-                leftIcon={<FaLightbulb />}
-                colorScheme="purple"
-                variant="outline"
-                onClick={() => {
-                  if (onNavigate) {
-                    onNavigate("personalization");
-                  } else {
-                    alert(
-                      "統合ダッシュボード機能はIntegratedDashboard使用時のみ利用可能です。",
-                    );
-                  }
-                }}
-                size="sm"
-              >
-                パーソナライゼーション
-              </Button>
-              <Button
-                leftIcon={<FaEye />}
-                colorScheme="green"
-                variant="outline"
-                onClick={() => {
-                  if (onNavigate) {
-                    onNavigate("predictions");
-                  } else {
-                    alert(
-                      "統合ダッシュボード機能はIntegratedDashboard使用時のみ利用可能です。",
-                    );
-                  }
-                }}
-                size="sm"
-              >
-                予測インサイト
-              </Button>
-              <Button
-                leftIcon={<FaCheckCircle />}
-                colorScheme="orange"
-                variant="outline"
-                onClick={() => {
-                  if (onNavigate) {
-                    onNavigate("learning");
-                  } else {
-                    alert(
-                      "統合ダッシュボード機能はIntegratedDashboard使用時のみ利用可能です。",
-                    );
-                  }
-                }}
-                size="sm"
-              >
-                学習進捗
-              </Button>
-            </Grid>
-          </CardBody>
-        </Card>
-      </VStack>
+          {/* Quick Actions */}
+          <QuickActions onNavigate={onNavigate} />
+        </VStack>
+      </Box>
     </Box>
   );
 };
