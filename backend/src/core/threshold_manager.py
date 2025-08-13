@@ -1,3 +1,9 @@
+"""
+閾値管理モジュール
+
+離席閾値の延長・リセット、表示情報管理、設定永続化のサポートを提供します。
+"""
+
 import time
 from typing import Optional
 from utils.logger import setup_logger

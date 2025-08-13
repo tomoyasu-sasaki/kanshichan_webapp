@@ -7,5 +7,6 @@
     "python.analysis.extraPaths": [
         "./backend/src/web",
         "./backend/src/services/tts/Zonos"
-    ]
+    ],
+    "kiroAgent.configureMCP": "Disabled"
 }

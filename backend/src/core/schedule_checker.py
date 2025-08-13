@@ -1,3 +1,9 @@
+"""
+スケジュール監視モジュール
+
+スケジュールの定期チェック、実行、通知、および WebSocket 連携を行います。
+"""
+
 import time
 import os
 from datetime import datetime, timedelta

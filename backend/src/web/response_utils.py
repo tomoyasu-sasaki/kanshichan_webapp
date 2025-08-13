@@ -1,3 +1,11 @@
+"""
+レスポンスユーティリティ
+
+Flask 用の標準化された成功/エラーレスポンスを生成します。
+フロントエンドとバックエンド間のレスポンス形式を一貫化し、
+タイムスタンプや処理時間などの共通メタ情報を付与します。
+"""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -9,6 +17,7 @@ from utils.exceptions import KanshiChanError
 
 
 def _now_iso() -> str:
+    """現在のUTC時刻をISO 8601文字列で返します。"""
     return datetime.utcnow().isoformat()
 
 
@@ -19,6 +28,17 @@ def success_response(
     status_code: int = 200,
     processing_time_ms: Optional[float] = None,
 ):
+    """成功レスポンスを生成します。
+
+    Args:
+        data: 返却するデータ辞書。未指定時は空辞書。
+        message: 追加のメッセージ（任意）。
+        status_code: HTTP ステータスコード（デフォルト: 200）。
+        processing_time_ms: 処理時間ミリ秒（任意）。
+
+    Returns:
+        tuple: (Flask JSONレスポンス, HTTPステータスコード)
+    """
     payload: Dict[str, Any] = {
         "success": True,
         "status": "success",
@@ -41,6 +61,18 @@ def error_response(
     details: Optional[Dict[str, Any]] = None,
     status_code: int = 400,
 ):
+    """エラーレスポンスを生成します。
+
+    Args:
+        message: エラーメッセージ。
+        code: アプリ内エラーコード（デフォルト: "ERROR"）。
+        error_type: エラー種別（例: ValidationError）。
+        details: 追加の詳細情報（任意）。
+        status_code: HTTP ステータスコード（デフォルト: 400）。
+
+    Returns:
+        tuple: (Flask JSONレスポンス, HTTPステータスコード)
+    """
     payload: Dict[str, Any] = {
         "success": False,
         "status": "error",
@@ -63,6 +95,16 @@ def error_from_exception(
     status_code: int = 400,
     include_details: bool = False,
 ):
+    """ドメイン例外から標準化エラーレスポンスを生成します。
+
+    Args:
+        exc: `KanshiChanError` 派生例外。
+        status_code: HTTP ステータスコード（デフォルト: 400）。
+        include_details: 例外の詳細情報を含めるか。
+
+    Returns:
+        tuple: (Flask JSONレスポンス, HTTPステータスコード)
+    """
     details = exc.details if include_details else None
     return error_response(
         message=exc.message,

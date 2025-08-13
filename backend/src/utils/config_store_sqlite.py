@@ -1,3 +1,10 @@
+"""
+SQLite 設定ストア
+
+フレームワーク非依存の軽量な設定ストア。`config.db` から辞書構造を読み出し、
+一部の設定を書き戻します（アップサート対応）。
+"""
+
 from __future__ import annotations
 
 import sqlite3

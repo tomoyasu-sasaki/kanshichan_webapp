@@ -1,3 +1,11 @@
+"""
+検出統合モジュール
+
+`ObjectDetector` による検出処理と `DetectionRenderer` による描画処理を
+統合的に扱い、既存API互換のメソッドを提供します。設定変更に応じた
+フラグ更新や再読込にも対応します。
+"""
+
 from typing import Dict, Any, Optional
 import cv2
 import torch

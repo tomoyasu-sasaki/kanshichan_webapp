@@ -1,3 +1,10 @@
+"""
+設定管理ユーティリティ
+
+SQLite ベースの `config.db` を用いた設定ロード/保存、
+環境変数による上書き、バリデーション、エクスポート/インポートを提供します。
+"""
+
 # backend/src/utils/config_manager.py
 
 import os

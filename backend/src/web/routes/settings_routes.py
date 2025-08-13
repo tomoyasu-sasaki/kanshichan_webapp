@@ -1,3 +1,10 @@
+"""
+設定APIルート
+
+`config` バインドのSQLite上の設定テーブルを読み書きするAPI。
+現行UIに合わせた集約レスポンス、および閾値/検出対象/ランドマークの更新に対応。
+"""
+
 from __future__ import annotations
 
 from flask import Blueprint, current_app, request
@@ -16,6 +23,11 @@ settings_bp = Blueprint('settings', __name__)
 
 @settings_bp.get('/')
 def get_settings():
+    """設定の集約取得。
+
+    Returns:
+        Flaskレスポンス: 集約済み設定 JSON
+    """
     try:
         gs = GeneralSettings.query.get(1)
         cond = ConditionsSettings.query.get(1)
@@ -53,6 +65,7 @@ def get_settings():
 
 @settings_bp.post('/')
 def update_settings():
+    """設定の更新を反映し保存します。"""
     try:
         data = request.get_json(silent=True) or {}
         # thresholds

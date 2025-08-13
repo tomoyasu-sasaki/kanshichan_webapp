@@ -1,3 +1,10 @@
+"""
+設定DBモデル群
+
+アプリ設定・検出オブジェクト・ランドマーク・最適化など、
+構成情報を保持する SQLAlchemy モデル定義。
+"""
+
 from sqlalchemy import CheckConstraint
 from sqlalchemy import Integer, String, Text, Float, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
@@ -6,6 +13,7 @@ from . import db
 
 
 class GeneralSettings(db.Model):
+    """一般設定モデル（サーバーポート等）。config バインドの単一行テーブル。"""
     __bind_key__ = 'config'
     __tablename__ = 'general_settings'
 
@@ -18,6 +26,7 @@ class GeneralSettings(db.Model):
 
 
 class LoggingSettings(db.Model):
+    """ロギング設定モデル（出力先/レベル/ローテーション等）。単一行テーブル。"""
     __bind_key__ = 'config'
     __tablename__ = 'logging_settings'
 
@@ -39,6 +48,7 @@ class LoggingSettings(db.Model):
 
 
 class ModelsYolo(db.Model):
+    """YOLO モデル設定（モデル名・格納ディレクトリ）。単一行テーブル。"""
     __bind_key__ = 'config'
     __tablename__ = 'models_yolo'
 
@@ -52,6 +62,7 @@ class ModelsYolo(db.Model):
 
 
 class DetectorSettings(db.Model):
+    """検出器の使用可否設定（MediaPipe/YOLO）。単一行テーブル。"""
     __bind_key__ = 'config'
     __tablename__ = 'detector_settings'
 
@@ -65,6 +76,7 @@ class DetectorSettings(db.Model):
 
 
 class ConditionsSettings(db.Model):
+    """条件設定（離席・スマホ使用の閾値/猶予）。単一行テーブル。"""
     __bind_key__ = 'config'
     __tablename__ = 'conditions_settings'
 
@@ -79,6 +91,7 @@ class ConditionsSettings(db.Model):
 
 
 class DetectionSmootherSettings(db.Model):
+    """検出平滑化設定（ヒステリシス/補間/移動平均）。単一行テーブル。"""
     __bind_key__ = 'config'
     __tablename__ = 'detection_smoother_settings'
 
@@ -103,6 +116,7 @@ class DetectionSmootherSettings(db.Model):
 
 
 class DetectionObject(db.Model):
+    """検出対象オブジェクト設定（クラス名・アラート・描画色/太さ等）。"""
     __bind_key__ = 'config'
     __tablename__ = 'detection_objects'
 
@@ -121,6 +135,7 @@ class DetectionObject(db.Model):
 
 
 class LandmarkSettings(db.Model):
+    """ランドマーク設定（face/hands/pose の有効化・描画設定）。"""
     __bind_key__ = 'config'
     __tablename__ = 'landmark_settings'
 
@@ -138,6 +153,7 @@ class LandmarkSettings(db.Model):
 
 
 class TtsSettings(db.Model):
+    """TTS 設定（キャッシュ/品質/ピッチ/速度/既定ボイス等）。単一行テーブル。"""
     __bind_key__ = 'config'
     __tablename__ = 'tts_settings'
 
@@ -193,6 +209,7 @@ class TtsSettings(db.Model):
 
 
 class VoiceManagerSettings(db.Model):
+    """音声ファイル管理設定（ベースディレクトリ、クリーンアップ、圧縮等）。単一行テーブル。"""
     __bind_key__ = 'config'
     __tablename__ = 'voice_manager_settings'
 
@@ -209,6 +226,7 @@ class VoiceManagerSettings(db.Model):
 
 
 class MemoryCacheSettings(db.Model):
+    """メモリ/キャッシュ設定（しきい値、GC間隔、キャッシュ容量/数）。単一行テーブル。"""
     __bind_key__ = 'config'
     __tablename__ = 'memory_cache_settings'
 
@@ -225,6 +243,7 @@ class MemoryCacheSettings(db.Model):
 
 
 class OptimizationSettings(db.Model):
+    """最適化設定（FPS・フレームスキップ・バッチ・前処理等）。単一行テーブル。"""
     __bind_key__ = 'config'
     __tablename__ = 'optimization_settings'
 

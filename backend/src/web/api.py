@@ -1,3 +1,10 @@
+"""
+レガシー互換APIおよびユーティリティAPI
+
+設定取得・更新、ストリーム配信、スケジュール、パフォーマンス情報など
+アプリの基本API群を提供します（/api と /api/v1 の互換運用）。
+"""
+
 from flask import Blueprint, jsonify, request, Response, current_app
 import cv2
 import time
@@ -13,6 +20,16 @@ api = Blueprint('api', __name__)
 
 @api.route('/settings-legacy', methods=['GET'])
 def get_settings():
+    """設定取得（レガシー互換）
+
+    Monitor 未初期化でも設定のみを返却する、後方互換エンドポイント。
+
+    Returns:
+        Flaskレスポンス: 設定値の集約JSON
+
+    Raises:
+        InitializationError: アプリ設定が注入されていない場合
+    """
     # モニタが未注入でも設定取得だけは返す
     config_manager = current_app.config.get('config_manager')
     if config_manager is None:
@@ -35,6 +52,18 @@ def get_settings():
 
 @api.route('/settings-legacy', methods=['POST'])
 def update_settings():
+    """設定更新（レガシー互換）
+
+    しきい値・ランドマーク設定・検出対象設定を更新し、必要に応じて
+    StateManager 等のメモリ上パラメータへ反映します。
+
+    Returns:
+        Flaskレスポンス: 更新有無フラグ `{"updated": bool}`
+
+    Raises:
+        InitializationError: 依存サービス未初期化時
+        ValidationError: 入力値が不正な場合
+    """
     state = current_app.config.get('monitor_instance', {}).state
     config_manager = current_app.config.get('config_manager')
 

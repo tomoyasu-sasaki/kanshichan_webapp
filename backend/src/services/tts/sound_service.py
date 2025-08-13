@@ -1,3 +1,10 @@
+"""
+サウンド再生サービス
+
+OSごとの再生手段を抽象化し、`src/sounds` 配下の音声を再生します。
+存在しない場合のフォールバックや簡易的なファイル名マッチングも提供します。
+"""
+
 import platform
 import os
 import threading

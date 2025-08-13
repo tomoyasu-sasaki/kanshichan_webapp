@@ -1,3 +1,10 @@
+"""
+アラート配信サービス
+
+音声アラートおよびメール等の外部チャネルへの通知送信を行います。
+設定は `ConfigManager` から取得し、`NotificationDeliveryService` と連携します。
+"""
+
 import asyncio
 from typing import List, Optional, Dict, Any
 from ..tts.sound_service import SoundService

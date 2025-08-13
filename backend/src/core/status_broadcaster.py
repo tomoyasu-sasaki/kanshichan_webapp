@@ -1,3 +1,10 @@
+"""
+ステータス配信モジュール
+
+WebSocket を介したステータス・行動・分析結果の配信、および
+フレームバッファ管理と表示制御を担当します。
+"""
+
 import threading
 import cv2
 from typing import Any, Dict, Optional

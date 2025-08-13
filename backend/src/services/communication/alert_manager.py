@@ -1,3 +1,10 @@
+"""
+アラート管理サービス
+
+状態管理等からの通知要求を受け取り、`AlertService` に委譲する
+薄いファサードレイヤーを提供します。
+"""
+
 from typing import List, Optional
 from .alert_service import AlertService
 from .enums import AlertChannel

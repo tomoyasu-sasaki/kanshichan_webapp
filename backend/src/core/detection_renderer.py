@@ -1,3 +1,10 @@
+"""
+描画モジュール
+
+MediaPipe ランドマーク、YOLO バウンディングボックス、ステータス情報の
+描画を行います。
+"""
+
 import cv2
 import mediapipe as mp
 import numpy as np

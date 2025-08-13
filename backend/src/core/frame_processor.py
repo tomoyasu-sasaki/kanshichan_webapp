@@ -1,3 +1,10 @@
+"""
+フレーム処理モジュール
+
+カメラからのフレーム取得、検出実行、検出結果の形式変換と
+StateManager への状態伝播を行います。
+"""
+
 import time
 import threading
 from typing import Any, Dict, List, Optional, Tuple

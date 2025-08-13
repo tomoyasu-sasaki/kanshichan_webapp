@@ -1,3 +1,10 @@
+"""
+ロギングユーティリティ
+
+構造化JSONログ、ファイルローテーション、頻度抑制フィルタ、
+外部ライブラリのログレベル調整などを提供します。
+"""
+
 import logging
 from logging import getLogger, StreamHandler, FileHandler, Formatter
 from logging.handlers import RotatingFileHandler

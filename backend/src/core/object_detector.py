@@ -1,3 +1,10 @@
+"""
+物体検出中核モジュール
+
+YOLO と MediaPipe の初期化・推論、AI 最適化や検出平滑化、
+検出ログ保存・サマリー作成など、検出パイプラインの中核機能を提供します。
+"""
+
 import cv2
 import torch
 from ultralytics import YOLO

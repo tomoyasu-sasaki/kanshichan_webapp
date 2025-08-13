@@ -1,3 +1,15 @@
+"""
+検出管理モジュール
+
+DetectionManager を介して `Detector` の出力をフロントエンド/描画用の
+統一フォーマットに変換します。人物・スマートフォンなどの検出結果と、
+MediaPipe ランドマークを一貫した構造にまとめて後段へ受け渡します。
+
+Typical usage example:
+    manager = DetectionManager(detector)
+    detections = manager.detect(frame)
+"""
+
 # backend/src/core/detection.py
 
 from typing import Any, Dict, List
@@ -19,7 +31,10 @@ class DetectionManager:
         DetectionManagerを初期化します。
 
         Args:
-            detector (Detector): 物体検出を実行するためのDetectorインスタンス。
+            detector (Detector): 物体検出を実行するための `Detector` インスタンス。
+
+        Raises:
+            ValueError: `detector` が `None` の場合。
         """
         if detector is None:
             logger.error("Detector instance is required for DetectionManager.")

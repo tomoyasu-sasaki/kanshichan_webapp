@@ -1,3 +1,11 @@
+"""
+状態管理モジュール
+
+人物検出・スマートフォン使用検出などの状態を管理し、
+しきい値やグレース期間に基づいてアラート発火を制御します。
+`ConfigManager` から設定を読み込み、`AlertManager` を介して通知を実行します。
+"""
+
 import time
 from collections import defaultdict
 from utils.logger import setup_logger

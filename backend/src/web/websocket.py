@@ -1,3 +1,10 @@
+"""
+WebSocket 配信モジュール
+
+Flask-SocketIO による接続管理、音声ストリーミング、
+システムメトリクス配信、イベント通知を提供します。
+"""
+
 from flask_socketio import SocketIO, emit
 from flask import request
 from utils.logger import setup_logger
