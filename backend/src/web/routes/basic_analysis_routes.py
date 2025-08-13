@@ -15,8 +15,8 @@ from models.behavior_log import BehaviorLog
 from models.user_profile import UserProfile
 from models.recommendation import RecommendationSchema, standardize_recommendations
 from utils.logger import setup_logger
-from services.ai_ml.llm_service import LLMService
-from services.ai_ml.advice_generator import AdviceGenerator
+from services.ai.llm_service import LLMService
+from services.ai.advice_generator import AdviceGenerator
 from services.analysis.behavior_analyzer import BehaviorAnalyzer
 from .analysis_helpers import (
     generate_comprehensive_insights,

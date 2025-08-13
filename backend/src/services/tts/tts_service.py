@@ -34,7 +34,7 @@ from .audio_processor import AudioProcessor
 from .quality_evaluator import QualityEvaluator
 
 # 埋め込みZonosへのパスを追加
-EMBEDDED_ZONOS_PATH = os.path.join(os.path.dirname(__file__), 'Zonos')
+EMBEDDED_ZONOS_PATH = os.path.join(os.path.dirname(__file__), 'vendor', 'zonos')
 if EMBEDDED_ZONOS_PATH not in sys.path:
     sys.path.insert(0, EMBEDDED_ZONOS_PATH)
 

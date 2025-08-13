@@ -18,8 +18,8 @@ import random
 
 from models.behavior_log import BehaviorLog
 from models.user_profile import UserProfile
-from ..ai_ml.advanced_behavior_analyzer import AdvancedBehaviorAnalyzer
-from ..ai_ml.pattern_recognition import PatternRecognizer
+from ..ai.advanced_behavior_analyzer import AdvancedBehaviorAnalyzer
+from ..ai.pattern_recognition import PatternRecognizer
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)

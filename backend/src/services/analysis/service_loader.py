@@ -63,7 +63,7 @@ def get_advanced_behavior_analyzer() -> Optional[Any]:
         ServiceUnavailableError: サービス初期化に失敗した場合
     """
     try:
-        from services.ai_ml.advanced_behavior_analyzer import AdvancedBehaviorAnalyzer
+        from services.ai.advanced_behavior_analyzer import AdvancedBehaviorAnalyzer
         
         # 設定取得
         config_manager = current_app.config.get('config_manager')
@@ -113,7 +113,7 @@ def get_pattern_recognizer() -> Optional[Any]:
         ServiceUnavailableError: サービス初期化に失敗した場合
     """
     try:
-        from services.ai_ml.pattern_recognition import PatternRecognizer
+        from services.ai.pattern_recognition import PatternRecognizer
         
         # 設定取得
         config_manager = current_app.config.get('config_manager')

@@ -209,14 +209,14 @@ class ObjectDetector:
             
             # モデルディレクトリの設定
             if self.config_manager:
-                models_dir_rel = self.config_manager.get('models.yolo.models_dir', 'models')
+                models_dir_rel = self.config_manager.get('models.yolo.models_dir', 'model_artifacts')
                 # プロジェクトルートからの相対パスを絶対パスに変換
                 project_root = Path(__file__).resolve().parent.parent.parent
                 models_dir = project_root / models_dir_rel
             else:
                 # 設定がない場合はデフォルトパスを使用
                 project_root = Path(__file__).resolve().parent.parent.parent
-                models_dir = project_root / "models"
+                models_dir = project_root / "model_artifacts"
             
             # モデルディレクトリが存在しない場合は作成
             os.makedirs(models_dir, exist_ok=True)

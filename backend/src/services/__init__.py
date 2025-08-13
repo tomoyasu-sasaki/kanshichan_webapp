@@ -15,7 +15,7 @@ from .voice_manager import VoiceManager
 
 # サブパッケージのインポート
 from . import tts
-from . import ai_ml
+from . import ai
 from . import personalization
 from . import monitoring
 from . import streaming
@@ -27,7 +27,7 @@ from . import automation
 __all__ = [
     'VoiceManager',
     'tts',
-    'ai_ml', 
+    'ai', 
     'personalization',
     'monitoring',
     'streaming',
