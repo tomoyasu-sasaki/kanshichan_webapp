@@ -15,7 +15,13 @@ import os
 from datetime import datetime
 
 logger = setup_logger(__name__)
-socketio = SocketIO()
+# ping/pong 間隔とタイムアウトを適度に延ばし、ポーリング頻度を下げる
+socketio = SocketIO(
+    cors_allowed_origins="*",
+    ping_interval=25,   # default 25s だが明示
+    ping_timeout=60,    # サーバ側タイムアウト許容
+    transports=["websocket", "polling"],
+)
 
 # 音声配信用のキューとスレッド管理
 audio_queue = queue.Queue()

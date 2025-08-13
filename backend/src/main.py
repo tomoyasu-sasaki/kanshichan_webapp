@@ -142,6 +142,8 @@ if __name__ == '__main__':
         app_logger.info("データベース初期化が完了しました。")
         
         # --- 依存コンポーネントのインスタンス化 (ConfigManager を渡す) ---
+        # ヘッドレスでの安定動作のため、OpenCVウィンドウはデフォルト無効化
+        os.environ.setdefault('KANSHICHAN_HEADLESS', '1')
         app_logger.info("依存コンポーネントを初期化中...")
         camera = Camera(config_manager) # Cameraにも ConfigManager を渡す
         detector = Detector(config_manager) # Detector に ConfigManager を渡す
@@ -208,7 +210,10 @@ if __name__ == '__main__':
         app_logger.info("Flask サーバーを起動します...")
         # port を config_manager から取得
         port = config_manager.get('server.port', 8000)
-        socketio.run(app, host='0.0.0.0', port=port, debug=False, use_reloader=False)
+        # macOSでのOpenCV UIとSocketIOの相性問題を避けるため、環境変数でヘッドレス起動を許容
+        # ヘッドレス時はフレーム表示を行わない
+        os.environ.setdefault('KANSHICHAN_HEADLESS', '1')
+        socketio.run(app, host='0.0.0.0', port=port, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
 
     except Exception as e:
         # アプリケーション開始前のエラーの場合はsetup_loggerを直接使用

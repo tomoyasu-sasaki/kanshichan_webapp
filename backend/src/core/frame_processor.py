@@ -69,20 +69,8 @@ class FrameProcessor:
         # 検出処理の実行 (DetectionManagerを使用)
         detections_list = self.detection_manager.detect(frame)
 
-        # StateManager への情報連携
+        # StateManager への情報連携（内部で安定化処理を行う）
         self.state_manager.update_detection_state(detections_list)
-
-        # StateManager を使った状態更新とアラートチェック
-        person_now_detected = self.state_manager.person_detected
-        if person_now_detected:
-            self.state_manager.handle_person_presence()
-        else:
-            self.state_manager.handle_person_absence()
-
-        smartphone_found_in_current_frame = any(
-            det.get('label') == 'smartphone' for det in detections_list
-        )
-        self.state_manager.handle_smartphone_usage(smartphone_found_in_current_frame)
         
         return frame, detections_list
 

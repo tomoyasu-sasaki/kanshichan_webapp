@@ -168,66 +168,48 @@ export const MonitorView = () => {
   }, [isStatusStable, shouldLogChange]);
 
   useEffect(() => {
-    const initMonitorView = async () => {
-      try {
-        await logger.info('MonitorView: コンポーネント初期化開始', 
-          { component: 'MonitorView', action: 'initialize' }, 
-          'MonitorView'
-        );
+    // 初期化
+    logger.info('MonitorView: コンポーネント初期化開始', 
+      { component: 'MonitorView', action: 'initialize' }, 
+      'MonitorView'
+    );
 
-        // WebSocketマネージャーを初期化
-        websocketManager.initialize();
-        
-        await logger.info('MonitorView: WebSocket初期化完了', 
-          { component: 'MonitorView', action: 'websocket_init' }, 
-          'MonitorView'
-        );
+    // WebSocket 初期化（多重初期化は内部で抑止される）
+    websocketManager.initialize();
+    logger.info('MonitorView: WebSocket初期化完了', 
+      { component: 'MonitorView', action: 'websocket_init' }, 
+      'MonitorView'
+    );
 
-        // 接続エラーのハンドリング
-        const errorUnsubscribe = websocketManager.onError(async () => {
-          await logger.error('MonitorView: WebSocket接続エラー', 
-            { component: 'MonitorView', action: 'websocket_error' }, 
-            'MonitorView'
-          );
-          
-          toast({
-            title: '接続エラー',
-            description: 'サーバーとの接続に失敗しました',
-            status: 'error',
-            duration: 3000,
-            isClosable: true,
-          });
-        });
+    // イベント購読
+    const errorUnsubscribe = websocketManager.onError(async () => {
+      await logger.error('MonitorView: WebSocket接続エラー', 
+        { component: 'MonitorView', action: 'websocket_error' }, 
+        'MonitorView'
+      );
+      
+      toast({
+        title: '接続エラー',
+        description: 'サーバーとの接続に失敗しました',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    });
 
-        // ステータス更新のハンドリング（useCallbackで定義したハンドラーを使用）
-        const statusUnsubscribe = websocketManager.onStatusUpdate(handleStatusUpdate);
+    const statusUnsubscribe = websocketManager.onStatusUpdate(handleStatusUpdate);
 
-        // クリーンアップ関数の登録
-        return () => {
-          errorUnsubscribe();
-          statusUnsubscribe();
-          // 初期化フラグをリセット
-          isInitializedRef.current = false;
-          logger.info('MonitorView: コンポーネントクリーンアップ', 
-            { component: 'MonitorView', action: 'cleanup' }, 
-            'MonitorView'
-          );
-        };
-
-      } catch (error) {
-        await logger.error('MonitorView: 初期化エラー', 
-          { 
-            component: 'MonitorView', 
-            action: 'init_error',
-            error: error instanceof Error ? error.message : String(error)
-          }, 
-          'MonitorView'
-        );
-      }
+    // クリーンアップ（StrictModeの二重マウントでも多重購読を確実に解除）
+    return () => {
+      errorUnsubscribe();
+      statusUnsubscribe();
+      isInitializedRef.current = false;
+      logger.info('MonitorView: コンポーネントクリーンアップ', 
+        { component: 'MonitorView', action: 'cleanup' }, 
+        'MonitorView'
+      );
     };
-
-    void initMonitorView();
-  }, [toast, handleStatusUpdate]);
+  }, [handleStatusUpdate, toast]);
 
   useEffect(() => {
     const setupVideoStream = async () => {

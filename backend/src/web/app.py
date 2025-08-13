@@ -78,6 +78,11 @@ def create_app(config_manager: ConfigManager):
     csrf.exempt(tts_synthesis_bp)       # /api/tts/synthesize* すべて
     # 音声設定などTTSシステム管理系はフォーム送信ではなくJSON APIのためCSRFを除外
     csrf.exempt(tts_system_bp)         # /api/tts/* システム管理API
+    # 解析系APIはJSONのみのためCSRFを除外
+    csrf.exempt(basic_analysis_bp)
+    csrf.exempt(advanced_analysis_bp)
+    csrf.exempt(prediction_analysis_bp)
+    csrf.exempt(realtime_analysis_bp)
     # スケジュール管理APIを除外（/api/schedules*）
     for ep in [
         'api.add_schedule',
@@ -111,13 +116,28 @@ def create_app(config_manager: ConfigManager):
             return True
         logger.warning("Rate limiting is disabled for development environment")
     
+    # 特定エンドポイントのレート制限除外: TTS ステータス
+    @limiter.request_filter
+    def _exempt_tts_status_endpoint():
+        try:
+            path = request.path or ""
+            # 正式版（/api/v1/tts/status）と万一の後方互換（/api/tts/status）を除外
+            return path.endswith('/api/v1/tts/status') or path.endswith('/api/tts/status')
+        except Exception:
+            return False
+    
     # ConfigManagerをFlaskアプリケーションに注入
     app.config['config_manager'] = config_manager
     
     # データベース設定 - 絶対パスに修正
-    # backend/instance/kanshichan.db への絶対パス
+    # backend/instance/kanshichan.db, backend/instance/config.db の絶対パス
     db_path = Path(__file__).parent.parent.parent / 'instance' / 'kanshichan.db'
+    config_db_path = Path(__file__).parent.parent.parent / 'instance' / 'config.db'
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path.absolute()}'
+    app.config['SQLALCHEMY_BINDS'] = {
+        'config': f'sqlite:///{config_db_path.absolute()}'
+    }
+    logger.info(f"Configured SQLALCHEMY_BINDS['config'] -> {config_db_path.absolute()}")
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # CORS設定
@@ -198,6 +218,11 @@ def create_app(config_manager: ConfigManager):
     app.register_blueprint(tts_system_bp, url_prefix='/api/v1/tts')
     app.register_blueprint(behavior_bp, url_prefix='/api/v1/behavior')
     app.register_blueprint(monitor_bp, url_prefix='/api/v1/monitor')
+    from web.routes import settings_bp
+    # 設定系はJSON APIのみのためCSRF除外
+    csrf.exempt(settings_bp)
+    # 正式ルートで提供（末尾スラッシュ有り/無しの両方を許容するためFlaskに任せる）
+    app.register_blueprint(settings_bp, url_prefix='/api/v1/settings')
 
     # 後方互換ルート（/api 配下）はDeprecatedヘッダを付与して /api/v1 に誘導
     @app.after_request

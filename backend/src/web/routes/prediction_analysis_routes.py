@@ -89,8 +89,47 @@ def get_predictions():
             })
         
         # 予測実行
-        predictions = pattern_recognizer.generate_predictions(logs, target_metrics)
-        
+        raw_predictions = pattern_recognizer.generate_predictions(logs, target_metrics)
+
+        # フロント互換の配列形式に正規化
+        def _normalize_predictions(preds):
+            try:
+                if isinstance(preds, list):
+                    norm = []
+                    for p in preds:
+                        if isinstance(p, dict):
+                            norm.append({
+                                'metric': p.get('metric') or p.get('name') or 'unknown',
+                                'current_value': float(p.get('current_value', p.get('current', 0.5)) or 0.5),
+                                'predicted_value': float(p.get('predicted_value', p.get('value', 0.6)) or 0.6),
+                                'confidence': float(p.get('confidence', p.get('accuracy_score', 0.7)) or 0.7),
+                                'trend': p.get('trend', 'stable'),
+                                'prediction_horizon_hours': int(p.get('prediction_horizon_hours', max(1, horizon // 60))),
+                                'factors_influencing': p.get('factors_influencing') or p.get('factors') or [],
+                                'recommendations': p.get('recommendations') or []
+                            })
+                    return norm
+                if isinstance(preds, dict):
+                    norm = []
+                    for metric, data in preds.items():
+                        if isinstance(data, dict):
+                            norm.append({
+                                'metric': metric,
+                                'current_value': float(data.get('current_value', data.get('current', 0.5)) or 0.5),
+                                'predicted_value': float(data.get('predicted_value', data.get('value', 0.6)) or 0.6),
+                                'confidence': float(data.get('confidence', data.get('accuracy_score', 0.7)) or 0.7),
+                                'trend': data.get('trend', 'stable'),
+                                'prediction_horizon_hours': horizon // 60 if horizon >= 60 else 1,
+                                'factors_influencing': data.get('factors_influencing') or data.get('factors') or [],
+                                'recommendations': data.get('recommendations') or []
+                            })
+                    return norm
+            except Exception:
+                pass
+            return []
+
+        normalized_predictions = _normalize_predictions(getattr(raw_predictions, 'get', lambda *a, **k: raw_predictions)('predictions', raw_predictions))
+
         result_data = {
             'target_metrics': target_metrics,
             'prediction_horizon_minutes': horizon,
@@ -98,8 +137,8 @@ def get_predictions():
             'period_start': logs[-1].timestamp.isoformat() if logs else None,
             'period_end': logs[0].timestamp.isoformat() if logs else None,
             'total_logs': len(logs),
-            'predictions': predictions,
-            'prediction_summary': _generate_prediction_summary(predictions, target_metrics)
+            'predictions': normalized_predictions,
+            'prediction_summary': _generate_prediction_summary(raw_predictions, target_metrics)
         }
         
         return success_response(result_data)
@@ -129,7 +168,8 @@ def get_personalized_recommendations():
         # パラメータ取得
         user_id = request.args.get('user_id')
         context_type = request.args.get('context_type', 'behavior_based')
-        max_recommendations = int(request.args.get('max_recommendations', 5))
+        # frontendは limit パラメータを使用するため、エイリアス対応
+        max_recommendations = int(request.args.get('max_recommendations', request.args.get('limit', 5)))
         
         # バリデーション
         if not user_id:
@@ -265,13 +305,22 @@ def submit_recommendation_feedback():
     """
     try:
         # リクエストデータ取得
-        data = request.get_json()
+        data = request.get_json() or {}
         if not data:
             return error_response('Request body is required', code='VALIDATION_ERROR', status_code=400)
         
         # 必須フィールド検証
-        required_fields = ['user_id', 'recommendation_id', 'feedback']
-        for field in required_fields:
+        # 柔軟に受け取る（frontendは is_helpful を送る）
+        if 'feedback' not in data:
+            data['feedback'] = {
+                'rating': 5 if data.get('is_helpful') else 3,
+                'text_feedback': data.get('text_feedback') or '',
+                'outcome': 'acknowledged' if data.get('is_helpful') else 'ignored'
+            }
+        # user_id が無い場合の既定
+        if 'user_id' not in data:
+            data['user_id'] = request.args.get('user_id', 'default')
+        for field in ['user_id', 'recommendation_id', 'feedback']:
             if field not in data:
                 return error_response(f'Required field missing: {field}', code='VALIDATION_ERROR', status_code=400)
         

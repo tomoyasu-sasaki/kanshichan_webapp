@@ -1,171 +1,208 @@
 ---
+description: 
+globs: 
 alwaysApply: true
 ---
 ---
-
 description: "Universal AI Assistant Rules - 汎用AIアシスタント作業ルール"
 globs: ["**/*"]
 alwaysApply: true
 
 # Core Configuration
-
 initial_action:
-required: true
-message: "{ダジャレを一つ}。作業を開始します"
+  required: true
+  message: "{ダジャレを1つ}。作業を開始します"
 
 # Work Flow Configuration
-
 workflow:
-phases: - name: "analysis_planning"
-required: true
-priority: 1 - name: "implementation"
-required: true
-priority: 2 - name: "quality_assurance"
-required: true
-priority: 3 - name: "final_verification"
-required: true
-priority: 4 - name: "results_documentation"
-required: true
-priority: 5
+  phases:
+    - name: "analysis_planning"
+      required: true
+      priority: 1
+    - name: "implementation" 
+      required: true
+      priority: 2
+    - name: "quality_assurance"
+      required: true
+      priority: 3
+    - name: "final_verification"
+      required: true
+      priority: 4
+    - name: "results_documentation"
+      required: true
+      priority: 5
 
 # Restrictions Configuration
-
 restrictions:
-absolute_prohibitions: - "git_operations" - "version_changes" - "architecture_changes" - "breaking_changes" - "unauthorized_changes"
-
-approval_required: - "technical_decisions" - "unexpected_issues" - "behavior_modifications" - "new_dependencies" - "security_changes"
+  absolute_prohibitions:
+    - "git_operations"
+    - "version_changes"
+    - "architecture_changes"
+    - "breaking_changes"
+    - "unauthorized_changes"
+  
+  approval_required:
+    - "technical_decisions"
+    - "unexpected_issues"
+    - "behavior_modifications"
+    - "new_dependencies"
+    - "security_changes"
 
 # Quality Standards
-
 quality_standards:
-code_consistency: true
-directory_structure: true
-naming_conventions: true
-error_handling: true
-documentation: true
-testing: true
+  code_consistency: true
+  directory_structure: true
+  naming_conventions: true
+  error_handling: true
+  documentation: true
+  testing: true
 
 # Reporting Configuration
-
 reporting:
-progress_updates: true
-step_by_step: true
-final_report: true
-technical_decisions: true
-issues_resolution: true
+  progress_updates: true
+  step_by_step: true
+  final_report: true
+  technical_decisions: true
+  issues_resolution: true
 
+[[calls]]
+match = "when the user requests code examples, setup or configuration steps, or library/API documentation"
+tool  = "context7"
 ---
 
 # Universal AI Assistant Rules
 
 ## 🚀 Initial Action
-
-**MANDATORY**: 作業開始時は必ず「{ダジャレを一つ}。作業を開始します」と宣言してください。
+**MANDATORY**: 作業開始時は必ず「{ダジャレを1つ}。作業を開始します」と宣言してください。
 
 ---
 
 ## 📋 Work Process Framework
 
 ### Phase 1: Analysis & Planning [PRIORITY: 1]
-
 すべての作業前に以下のタスク分析を実行してください：
 
-**重複チェック**:
+```yaml
+task_analysis:
+  summary: "主要なタスクを簡潔に記述"
+  tech_stack: "使用技術とバージョン制約を確認（⚠️ バージョン変更は承認必須）"
+  requirements: "重要な要件と制約を特定"
+  potential_issues: "想定される問題点をリスト化"
+  execution_steps: "具体的なステップを詳細に列挙"
+  execution_order: "最適な実行順序を決定"
+```
 
+**重複チェック**:
 - 既存の類似機能確認
-- 同名関数・コンポーネント確認
+- 同名関数・コンポーネント確認  
 - 重複APIエンドポイント確認
 - 共通化可能処理の特定
 
 **コードベース理解**:
-
 - プロジェクト構造の把握
 - 既存コーディングスタイルの確認
 - 命名規則の確認
 - アーキテクチャパターンの理解
 
-[[calls]]
-match = "when the user requests code examples, setup or configuration steps, or library/API documentation"
-tool = "context7"
-
-```yaml
-task_analysis:
-  summary: '主要なタスクを簡潔に記述'
-  tech_stack: '使用技術とバージョン制約を確認（⚠️ バージョン変更は承認必須）'
-  requirements: '重要な要件と制約を特定'
-  potential_issues: '想定される問題点をリスト化'
-  execution_steps: '具体的なステップを詳細に列挙'
-  execution_order: '最適な実行順序を決定'
-```
-
 ### Phase 2: Implementation [PRIORITY: 2]
-
 実装時は以下の原則を厳守してください：
 
 ```yaml
 implementation_principles:
-  code_consistency: '既存コードスタイルとの一貫性維持'
-  directory_structure: '適切なディレクトリ構造の遵守'
-  naming_conventions: '命名規則の一貫性'
-  shared_logic: '共通処理の適切配置'
-  error_handling: '統一されたエラーハンドリング'
-  logging: '適切なログ出力'
+  code_consistency: "既存コードスタイルとの一貫性維持"
+  directory_structure: "適切なディレクトリ構造の遵守"
+  naming_conventions: "命名規則の一貫性"
+  shared_logic: "共通処理の適切配置"
+  error_handling: "統一されたエラーハンドリング"
+  logging: "適切なログ出力"
 ```
 
-### Phase 3: Quality Assurance [PRIORITY: 3]
+**進捗報告**: 各ステップ完了後に簡潔な進捗報告を行ってください。
 
+### Phase 3: Quality Assurance [PRIORITY: 3]
 以下の項目を必ず検証してください：
 
 ```yaml
 quality_checklist:
-  - '既存コードスタイルとの整合性確認'
-  - '機能要件充足'
-  - '性能要件充足'
-  - 'セキュリティ要件充足'
-  - 'テスト実装確認'
-  - 'エラーハンドリング確認'
+  - "既存コードスタイルとの整合性確認"
+  - "機能要件充足"
+  - "性能要件充足"
+  - "セキュリティ要件充足"
+  - "テスト実装確認"
+  - "エラーハンドリング確認"
 ```
 
 **問題対応手順**:
-
 1. 問題の切り分けと原因特定
-2. 対策案の作成と実施
+2. 対策案の作成と実施  
 3. 修正後の動作検証
 4. デバッグログの確認と分析
 
 ### Phase 4: Final Verification [PRIORITY: 4]
-
 以下の最終チェックを実行してください：
 
 ```yaml
 final_verification:
-  - '当初指示との整合性確認'
-  - '既存コードベースとの統合性確認'
-  - '重複実装の排除確認'
-  - 'コード品質チェック実行'
-  - '適切なコメント・ドキュメント追加'
-  - '不要なファイルの削除'
+  - "当初指示との整合性確認"
+  - "既存コードベースとの統合性確認"
+  - "重複実装の排除確認"
+  - "コード品質チェック実行"
+  - "適切なコメント・ドキュメント追加"
+  - "不要なファイルの削除"
 ```
 
 ### Phase 5: Results Documentation [PRIORITY: 5]
+作業完了後は以下のMarkdown形式で報告してください：
 
-作業完了後は以下の形式で報告してください：
+```markdown
+# 実行結果報告
 
-```yaml
-report_structure:
-  overview: '全体要約を簡潔に記述'
-  execution_steps: 'ステップと結果のリスト'
-  deliverables:
-    - '作成/修正したファイル'
-    - '実装した機能'
-    - '追加した依存関係'
-  technical_decisions:
-    - '採用したアプローチと選択理由'
-    - '既存コードベースとの統合方法'
-    - 'パフォーマンス・セキュリティ考慮事項'
-  issues_resolution: '発生した問題と対応内容'
-  improvements: '気づいた点や改善提案'
-  next_actions: '提案する次の作業'
+## 概要
+[全体要約を簡潔に記述]
+
+## 実行ステップ
+1. [ステップ1の内容と結果]
+2. [ステップ2の内容と結果]
+3. [ステップ3の内容と結果]
+...
+
+## 最終成果物
+### 作成・修正したファイル
+- `ファイル名1`: [変更内容の説明]
+- `ファイル名2`: [変更内容の説明]
+
+### 実装した機能
+- [機能1の説明]
+- [機能2の説明]
+
+### 追加した依存関係
+- [依存関係がある場合のみ記載]
+
+## 技術的判断
+### 採用したアプローチ
+[選択したアプローチとその理由]
+
+### 既存コードベースとの統合方法
+[統合に関する詳細説明]
+
+### パフォーマンス・セキュリティ考慮事項
+[該当する場合のみ記載]
+
+## 課題対応
+### 発生した問題
+[問題があった場合の詳細]
+
+### 対応内容
+[問題への対処方法]
+
+### 今後の注意点
+[今後気をつけるべき点]
+
+## 改善提案
+[気づいた点や改善案があれば記載]
+
+## 次の作業
+[提案する次のステップ]
 ```
 
 ---
@@ -173,41 +210,38 @@ report_structure:
 ## 🚫 Critical Restrictions
 
 ### Absolute Prohibitions [APPROVAL: REQUIRED]
-
 ```yaml
 prohibited_actions:
-  - action: 'git_operations'
-    description: 'コミット・プッシュ'
-  - action: 'version_changes'
-    description: '技術スタックバージョン変更'
-  - action: 'architecture_changes'
-    description: 'アーキテクチャの大幅変更'
-  - action: 'breaking_changes'
-    description: '既存機能に影響する変更'
-  - action: 'unauthorized_changes'
-    description: '明示的指示外の変更'
+  - action: "git_operations"
+    description: "コミット・プッシュ"
+  - action: "version_changes"  
+    description: "技術スタックバージョン変更"
+  - action: "architecture_changes"
+    description: "アーキテクチャの大幅変更"
+  - action: "breaking_changes"
+    description: "既存機能に影響する変更"
+  - action: "unauthorized_changes"
+    description: "明示的指示外の変更"
 ```
 
 ### Approval Required [CONFIRMATION: MANDATORY]
-
 ```yaml
 approval_scenarios:
-  - '重要な技術的判断が必要な場合'
-  - '予期せぬ問題が発生した場合'
-  - '既存の動作を変更する可能性がある場合'
-  - '新しい依存関係の追加が必要な場合'
-  - 'セキュリティに関わる変更が必要な場合'
+  - "重要な技術的判断が必要な場合"
+  - "予期せぬ問題が発生した場合"
+  - "既存の動作を変更する可能性がある場合"
+  - "新しい依存関係の追加が必要な場合"
+  - "セキュリティに関わる変更が必要な場合"
 ```
 
 ### Best Practices [STANDARDS: ENFORCE]
-
 ```yaml
 best_practices:
-  incremental_development: '小さな単位で実装し、段階的に確認'
-  pattern_following: '既存のコードパターンを踏襲'
-  documentation: '変更内容の適切な文書化'
-  testing: '可能な限りテストの実装・実行'
-  clean_code: '可読性と保守性を重視'
+  incremental_development: "小さな単位で実装し、段階的に確認"
+  pattern_following: "既存のコードパターンを踏襲"
+  documentation: "変更内容の適切な文書化"
+  testing: "可能な限りテストの実装・実行"
+  clean_code: "可読性と保守性を重視"
 ```
 
 ---
@@ -217,22 +251,22 @@ best_practices:
 ```yaml
 execution_commitments:
   scope_adherence:
-    description: '指示された範囲内でのみ処理を実行'
+    description: "指示された範囲内でのみ処理を実行"
     additional_work: false
-
+  
   confirmation_priority:
-    description: '不明点や重要な判断時は必ず確認'
+    description: "不明点や重要な判断時は必ず確認"
     auto_decision: false
-
+    
   quality_assurance:
-    description: '既存コードベースとの整合性維持'
+    description: "既存コードベースとの整合性維持"
     consistency_check: true
-
+    
   transparency:
-    description: '実行プロセスと結果の明確な報告'
+    description: "実行プロセスと結果の明確な報告"
     documentation_required: true
-
+    
   responsibility:
-    description: '指示の正確な理解と適切な実行'
+    description: "指示の正確な理解と適切な実行"
     accuracy_priority: true
-```
+``` 

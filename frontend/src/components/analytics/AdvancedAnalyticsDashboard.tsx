@@ -114,33 +114,46 @@ export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProp
       );
       if (!timeseriesResponse.ok) throw new Error('Failed to fetch analytics data');
       const timeseriesRaw = await timeseriesResponse.json();
-      const timeseriesData: any = timeseriesRaw?.data ?? timeseriesRaw;
+      const timeseriesData = (timeseriesRaw?.data ?? timeseriesRaw) as {
+        trends?: { focus_trends?: AnalyticsData[]; [k: string]: unknown };
+        focus_trends?: AnalyticsData[];
+        [k: string]: unknown;
+      };
 
       // Fetch advanced patterns
       const patternsResponse = await fetch(`${API_BASE_URL}/analysis/advanced-patterns?user_id=${userId}&timeframe=${selectedTimeframe}`);
       if (!patternsResponse.ok) throw new Error('Failed to fetch behavior patterns');
       const patternsRaw = await patternsResponse.json();
-      const patternsData: any = patternsRaw?.data ?? patternsRaw;
+      const patternsData = (patternsRaw?.data ?? patternsRaw) as {
+        patterns?: { behavior_patterns?: BehaviorPattern[] };
+        behavior_patterns?: BehaviorPattern[];
+        pattern_analysis?: { behavior_patterns?: BehaviorPattern[] };
+        [k: string]: unknown;
+      };
 
       // Fetch predictions
       const predictionsResponse = await fetch(`${API_BASE_URL}/analysis/predictions?user_id=${userId}&metrics=focus_score,productivity_score,fatigue_level`);
       if (!predictionsResponse.ok) throw new Error('Failed to fetch predictions');
       const predictionsRaw = await predictionsResponse.json();
-      const predictionsData: any = predictionsRaw?.data ?? predictionsRaw;
+      const predictionsData = (predictionsRaw?.data ?? predictionsRaw) as {
+        predictions?: PredictiveInsight[];
+        prediction_summary?: { key_predictions?: PredictiveInsight[] };
+        [k: string]: unknown;
+      };
 
       // Fetch performance metrics
       const performanceResponse = await fetch(`${API_BASE_URL}/analysis/performance-report?hours=24`);
       if (!performanceResponse.ok) throw new Error('Failed to fetch performance metrics');
       const performanceRaw = await performanceResponse.json();
-      const performanceData: any = performanceRaw?.data ?? performanceRaw;
+      const performanceData = (performanceRaw?.data ?? performanceRaw) as unknown;
 
       // Process and set data
-      setAnalyticsData(
-        timeseriesData.trends?.focus_trends ||
-        timeseriesData.focus_trends ||
-        timeseriesData.trends ||
-        []
-      );
+      const focusSeries = Array.isArray(timeseriesData?.trends?.focus_trends)
+        ? (timeseriesData.trends!.focus_trends as AnalyticsData[])
+        : Array.isArray(timeseriesData?.focus_trends)
+        ? (timeseriesData.focus_trends as AnalyticsData[])
+        : [];
+      setAnalyticsData(focusSeries);
       setBehaviorPatterns(
         patternsData.patterns?.behavior_patterns ||
         patternsData.behavior_patterns ||
@@ -170,10 +183,12 @@ export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProp
   }, [selectedTimeframe, userId, toast]);
 
   // Transform performance data for display
-  const transformPerformanceData = (data: any): PerformanceMetric[] => {
-    const payload = data?.performance_report || data;
-    const systemMetrics = payload.system_statistics || payload.system_metrics || {};
-    const analysisMetrics = payload.analysis_statistics || payload.analysis || {};
+  const transformPerformanceData = (data: unknown): PerformanceMetric[] => {
+    const payload = (data as { performance_report?: unknown } | undefined)?.performance_report ?? data;
+    const sys = payload as { system_statistics?: { avg_cpu_usage?: number } ; system_metrics?: { avg_cpu_usage?: number } } | undefined;
+    const ana = payload as { analysis_statistics?: { avg_accuracy?: number; avg_latency?: number } ; analysis?: { avg_accuracy?: number; avg_latency?: number } } | undefined;
+    const systemMetrics: { avg_cpu_usage?: number } = (sys?.system_statistics ?? sys?.system_metrics ?? {}) as { avg_cpu_usage?: number };
+    const analysisMetrics: { avg_accuracy?: number; avg_latency?: number } = (ana?.analysis_statistics ?? ana?.analysis ?? {}) as { avg_accuracy?: number; avg_latency?: number };
     
     return [
       {
@@ -205,12 +220,15 @@ export const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProp
     let socket: Socket | null = null;
 
     if (realtimeEnabled) {
-      // Viteのプロキシ経由でバックエンドの Socket.IO へ接続
-      // 稀に発生する proxy 経由のハンドシェイク不整合を避けるため、
-      // 明示的に websocket のみ・新規接続を指定
-      socket = io({
+      // 開発時(5173)はWSプロキシが効かないため、バックエンド(8000)へ直結
+      const isDev = typeof window !== 'undefined' && window.location.port === '5173';
+      // ポーリングでは http(s) を使うため、開発時は http://localhost:8000 を明示
+      const baseUrl = isDev ? 'http://localhost:8000' : '';
+      socket = io(baseUrl, {
         path: '/socket.io',
-        transports: ['websocket'],
+        // まずは WebSocket を試行し、未対応なら polling にフォールバック
+        transports: ['websocket', 'polling'],
+        upgrade: true,
         forceNew: true,
         withCredentials: false,
         reconnection: true,

@@ -102,7 +102,7 @@ class AdviceGenerator:
                 'advice_type': advice_type,
                 'context': current_context,
                 'personalized': user_profile is not None,
-                'generation_timestamp': datetime.utcnow().isoformat()
+                'generation_timestamp': datetime.now().astimezone().isoformat()
             }
             
         except Exception as e:
@@ -149,7 +149,7 @@ class AdviceGenerator:
                 'personalization_score': personal_patterns.get('personalization_score', 0.5),
                 'learning_adapted': True,
                 'motivation_style': user_profile.motivation_style,
-                'generation_timestamp': datetime.utcnow().isoformat()
+                'generation_timestamp': datetime.now().astimezone().isoformat()
             }
             
         except Exception as e:
@@ -201,7 +201,7 @@ class AdviceGenerator:
                 'time_optimized': True,
                 'target_hour': target_time.hour,
                 'time_characteristics': time_characteristics,
-                'generation_timestamp': datetime.utcnow().isoformat()
+                'generation_timestamp': datetime.now().astimezone().isoformat()
             }
             
         except Exception as e:
@@ -630,5 +630,5 @@ class AdviceGenerator:
             'priority': priority,
             'emotion': 'encouraging',
             'fallback': True,
-            'generation_timestamp': datetime.utcnow().isoformat()
+            'generation_timestamp': datetime.now().astimezone().isoformat()
         } 

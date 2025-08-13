@@ -180,8 +180,8 @@ class Monitor:
             self.data_collector.stop_collection()
             logger.info("DataCollector stopped")
         
+        # カメラ側でメインスレッド判定の上で安全に破棄する
         self.camera.release()
-        cv2.destroyAllWindows()
         logger.info("Monitor cleanup completed.")
 
     def draw_detection_results(self, frame):

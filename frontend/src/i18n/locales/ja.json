@@ -55,18 +55,18 @@
     "thresholds": {
       "title": "閾値設定",
       "absence": "不在判定時間（秒）",
-      "smartphone": "スマホ使用判定時間（秒）"
+      "smartphone": "アラート判定時間（秒)"
     },
     "landmarks": {
       "title": "ランドマーク設定",
-      "pose": "姿勢検出",
+      "pose": "検出箇所",
       "hands": "手の検出",
       "face": "顔の検出",
       "enabled": "有効"
     },
     "detection": {
       "title": "物体検出設定",
-      "smartphone": "スマートフォン",
+      "smartphone": "検出対象",
       "laptop": "ノートパソコン",
       "book": "本",
       "enabled": "有効",

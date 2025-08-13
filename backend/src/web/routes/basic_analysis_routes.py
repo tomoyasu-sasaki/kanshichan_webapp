@@ -173,9 +173,32 @@ def get_behavior_trends():
             avg_focus = focus_analysis.get('basic_statistics', {}).get('mean', 0)
             focus_analysis['average_focus'] = avg_focus
             
-            # 良い姿勢の割合（高集中度の割合を代用）
-            good_posture_percentage = focus_analysis.get('basic_statistics', {}).get('high_focus_ratio', 0)
+            # 良い姿勢の割合（posture_score ベースに変更）
+            try:
+                # 在席ログを優先し、posture_score が算出できるもののみを分母にする
+                present_logs = [log for log in logs if getattr(log, 'presence_status', None) == 'present']
+
+                def _score_from_log(l):
+                    try:
+                        return l._calculate_posture_score()  # BehaviorLog のインスタンスメソッド
+                    except Exception:
+                        return None
+
+                posture_scores = [s for s in (_score_from_log(l) for l in present_logs) if s is not None]
+
+                # 在席ログでスコアがない場合は全ログで再計算
+                if not posture_scores:
+                    posture_scores = [s for s in (_score_from_log(l) for l in logs) if s is not None]
+
+                denom = len(posture_scores)
+                good_count = sum(1 for s in posture_scores if s >= 0.6)
+                good_posture_percentage = (good_count / denom) if denom > 0 else 0
+            except Exception:
+                good_posture_percentage = 0
+
             focus_analysis['good_posture_percentage'] = good_posture_percentage
+            # 参考情報（分母）
+            focus_analysis['posture_sample_size'] = denom if 'denom' in locals() else 0
             
             # トレンド方向（フロントエンド互換用）
             trend_analysis = focus_analysis.get('trend_analysis', {})
@@ -250,25 +273,61 @@ def get_daily_insights():
         )
         
         if not logs or len(logs) == 0:
+            # データが全く無い場合でもフロント互換の summary 構造を返す
+            minimal_insights = {
+                'focus_analysis': {'basic_statistics': {'mean': 0.0}},
+                'productivity_analysis': {'productivity_score': 0.0},
+                'key_insights': [],
+                'recommendations': []
+            }
             return success_response({
                 'message': 'データ収集中です。しばらくお待ちください。',
                 'data_collection_status': 'active',
                 'estimated_wait_time': '2-5分',
                 'target_date': date_str,
-                'insights': [],
+                'logs_analyzed': 0,
+                'insights': minimal_insights,
+                'summary': _generate_daily_summary(minimal_insights, []),
                 'recommendations': []
             })
         
-        # 最小データ要件チェック
+        # 最小データ要件未満でも簡易サマリーを返す（ゼロ表示を避ける）
         if len(logs) < 5:
-            return success_response({
-                'message': f'データ収集中です（{len(logs)}件収集済み）。より詳細な分析には5件以上のデータが必要です。',
-                'data_collection_status': 'active',
-                'estimated_wait_time': '2-3分',
-                'target_date': date_str,
-                'insights': [],
-                'recommendations': []
-            })
+            try:
+                # 簡易スコア計算（この場で算出して依存を避ける）
+                focus_scores = [log.focus_level for log in logs if log.focus_level is not None]
+                avg_focus = sum(focus_scores) / len(focus_scores) if focus_scores else 0.0
+                presence_rate = sum(1 for log in logs if log.presence_status == 'present') / len(logs) if logs else 0.0
+                smartphone_penalty_rate = sum(1 for log in logs if log.smartphone_detected) / len(logs) if logs else 0.0
+                productivity_score = max(0.0, min(1.0, avg_focus * 0.6 + presence_rate * 0.3 - smartphone_penalty_rate * 0.1))
+
+                minimal_insights = {
+                    'focus_analysis': {'basic_statistics': {'mean': avg_focus}},
+                    'productivity_analysis': {'productivity_score': productivity_score},
+                    'key_insights': [],
+                    'recommendations': []
+                }
+
+                return success_response({
+                    'message': f'データ収集中（{len(logs)}件）。暫定サマリーを返します。',
+                    'data_collection_status': 'active',
+                    'estimated_wait_time': '2-3分',
+                    'target_date': date_str,
+                    'logs_analyzed': len(logs),
+                    'insights': minimal_insights,
+                    'summary': _generate_daily_summary(minimal_insights, logs),
+                    'recommendations': []
+                })
+            except Exception:
+                # フォールバック：従来のプレースホルダー
+                return success_response({
+                    'message': f'データ収集中です（{len(logs)}件収集済み）。より詳細な分析には5件以上のデータが必要です。',
+                    'data_collection_status': 'active',
+                    'estimated_wait_time': '2-3分',
+                    'target_date': date_str,
+                    'insights': [],
+                    'recommendations': []
+                })
         
         if not logs:
             return success_response({
@@ -392,6 +451,12 @@ def get_recommendations():
                         schema_rec.audio_url = f"/api/tts/recommendations/{_generate_deterministic_hash(schema_rec.message)}.mp3"
                     all_recommendations.append(schema_rec)
         
+        # UI要件: 改善提案カードでは behavior_analysis を表示しない
+        all_recommendations = [
+            rec for rec in all_recommendations
+            if getattr(rec, 'source', None) == 'llm_advice'
+        ]
+
         # 優先度フィルタ適用
         if priority_filter:
             all_recommendations = [
