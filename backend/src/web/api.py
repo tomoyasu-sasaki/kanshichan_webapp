@@ -11,20 +11,18 @@ from web.response_utils import success_response, error_response, error_from_exce
 logger = setup_logger(__name__)
 api = Blueprint('api', __name__)
 
-@api.route('/settings', methods=['GET'])
+@api.route('/settings-legacy', methods=['GET'])
 def get_settings():
-    state = current_app.config.get('monitor_instance', {}).state
+    # モニタが未注入でも設定取得だけは返す
     config_manager = current_app.config.get('config_manager')
-
-    if state is None or config_manager is None:
+    if config_manager is None:
         init_error = InitializationError(
-            "StateManager or ConfigManager not found in app config",
-            details={'state_available': state is not None, 'config_manager_available': config_manager is not None}
+            "ConfigManager not found in app config",
+            details={'config_manager_available': False}
         )
         logger.error(f"API initialization error: {init_error.to_dict()}")
         return error_from_exception(init_error, status_code=500, include_details=True)
 
-    # 設定をすべてConfigManagerから取得する
     landmark_settings = config_manager.get_landmark_settings()
     detection_objects = config_manager.get_detection_objects()
 
@@ -35,7 +33,7 @@ def get_settings():
         'detection_objects': detection_objects
     })
 
-@api.route('/settings', methods=['POST'])
+@api.route('/settings-legacy', methods=['POST'])
 def update_settings():
     state = current_app.config.get('monitor_instance', {}).state
     config_manager = current_app.config.get('config_manager')

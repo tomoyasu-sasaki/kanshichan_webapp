@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, useRef } from 'react';
 import {
   Box,
   Grid,
@@ -80,6 +80,9 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
   const [selectedView, setSelectedView] = useState('overview');
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const { t } = useTranslation();
+  // 重複リクエスト抑制（StrictModeのダブルマウント対策）
+  const statusFetchLockRef = useRef(false);
+  const lastStatusFetchAtRef = useRef(0);
   
   // Settings modal state
   const [localAutoRefresh, setLocalAutoRefresh] = useState(autoRefresh);
@@ -126,6 +129,11 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
 
   // System status fetch
   const fetchSystemStatus = useCallback(async () => {
+    // 短時間の二重実行を抑止（500ms以内/実行中はスキップ）
+    const now = Date.now();
+    if (statusFetchLockRef.current) return;
+    if (now - lastStatusFetchAtRef.current < 500) return;
+    statusFetchLockRef.current = true;
     try {
       setError(null);
       
@@ -224,16 +232,20 @@ export const IntegratedDashboard: React.FC<IntegratedDashboardProps> = ({
       });
     } finally {
       setIsLoading(false);
+      lastStatusFetchAtRef.current = Date.now();
+      statusFetchLockRef.current = false;
     }
   }, [toast]);
 
-  // Auto-refresh functionality（監視ビュー表示中は余計なポーリングを抑制）
+  // Auto-refresh functionality（ステータス取得は「概要」ビューでのみ実行）
   useEffect(() => {
+    if (selectedView !== 'overview') {
+      return undefined;
+    }
+
     fetchSystemStatus();
 
-    // 監視画面（monitor）ではWebSocketが継続配信するため、
-    // ダッシュボードの定期ポーリングは停止
-    if (autoRefresh && selectedView !== 'monitor') {
+    if (autoRefresh) {
       const interval = setInterval(fetchSystemStatus, refreshInterval * 1000);
       return () => clearInterval(interval);
     }

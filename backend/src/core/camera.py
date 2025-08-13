@@ -10,6 +10,7 @@ from utils.exceptions import (
     ConfigError, HardwareError, wrap_exception
 )
 import threading
+import os
 
 logger = setup_logger(__name__)
 
@@ -139,6 +140,20 @@ class Camera:
         
         # 設定に基づいてウィンドウ表示を制御
         if self.show_window:
+            # ヘッドレスモードやスレッド状況に応じて安全に無効化
+            headless = os.environ.get('KANSHICHAN_HEADLESS', '0').lower() in ('1', 'true', 'yes') or \
+                       os.environ.get('KANSHICHAN_DISABLE_OPENCV_WINDOW', '0').lower() in ('1', 'true', 'yes')
+            if headless:
+                logger.info("OpenCV window disabled due to headless environment variables")
+                self.show_window = False
+                logger.info("Display window setup disabled per configuration")
+                return
+            if threading.current_thread() is not threading.main_thread():
+                # macOS などで非メインスレッドからのUI操作はクラッシュ要因
+                logger.warning("OpenCV window requested but not on main thread; disabling to avoid crash")
+                self.show_window = False
+                logger.info("Display window setup disabled per configuration")
+                return
             try:
                 # ウィンドウ表示の有効化
                 cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
@@ -214,16 +229,19 @@ class Camera:
             
         try:
             # 設定に基づいて表示を制御
-            if self.show_window:
+            if self.show_window and threading.current_thread() is threading.main_thread():
                 # ウィンドウのサイズに合わせてリサイズ
                 window_width = int(self.screen_width * 0.8)
                 window_height = int(self.screen_height * 0.8)
                 display_frame = cv2.resize(frame, (window_width, window_height))
                 cv2.imshow(self.window_name, display_frame)
                 cv2.waitKey(1)  # UIの更新に必要
+            elif self.show_window and threading.current_thread() is not threading.main_thread():
+                # 非メインスレッドからのUI操作は避ける
+                logger.debug("Skipping cv2.imshow from non-main thread to avoid crash")
             else:
-                # 表示せずにUI更新だけ行う
-                cv2.waitKey(1)
+                # 表示なし（waitKeyも不要）
+                pass
         except Exception as e:
             display_error = wrap_exception(
                 e, CameraError,
@@ -239,7 +257,9 @@ class Camera:
                 if self.cap is not None:
                     self.cap.release()
                     self.cap = None
-                cv2.destroyAllWindows()
+                # 非メインスレッドでの破棄は避ける
+                if self.show_window and threading.current_thread() is threading.main_thread():
+                    cv2.destroyAllWindows()
                 logger.info("Camera resources released")
             except Exception as e:
                 release_error = wrap_exception(

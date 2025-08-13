@@ -32,7 +32,7 @@ import {
   Collapse,
   IconButton,
 } from "@chakra-ui/react";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   FaChartLine,
   FaLightbulb,
@@ -158,8 +158,25 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
     {},
   );
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  // StrictMode のダブルマウント対策（初期化は一度だけ）
+  const didInitRef = useRef(false);
 
   const toast = useToast();
+
+  // --- 重複リクエスト防止のためのグローバルロック ---
+  const acquireGlobalLock = (key: string): boolean => {
+    if (typeof window === "undefined") return true;
+    const w = window as unknown as { __kcLocks?: Set<string> };
+    if (!w.__kcLocks) w.__kcLocks = new Set<string>();
+    if (w.__kcLocks.has(key)) return false;
+    w.__kcLocks.add(key);
+    return true;
+  };
+  const releaseGlobalLock = (key: string): void => {
+    if (typeof window === "undefined") return;
+    const w = window as unknown as { __kcLocks?: Set<string> };
+    w.__kcLocks?.delete(key);
+  };
 
   // 行動サマリーを取得（最優先・高速）
   const fetchBehaviorSummary = useCallback(async () => {
@@ -386,7 +403,10 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
         if (response.ok) {
           const data = await response.json();
           if (data.status === "success") {
-            setRecommendations(data.data?.recommendations || []);
+            const recs: Recommendation[] = (data.data?.recommendations || []).filter(
+              (r: Recommendation) => (r.source || "llm_advice") === "llm_advice",
+            );
+            setRecommendations(recs);
             setPaginationInfo(
               data.data?.pagination || {
                 page: 1,
@@ -424,6 +444,15 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
 
   // 全データ更新（段階的実行）
   const refreshAllData = useCallback(async () => {
+    const lockKey = "BI:refreshAll";
+    if (!acquireGlobalLock(lockKey)) {
+      await logger.debug(
+        "BehaviorInsights: 全データ更新スキップ（ロック中）",
+        { component: "BehaviorInsights", action: "refresh_all_skip" },
+        "BehaviorInsights",
+      );
+      return;
+    }
     await logger.info(
       "BehaviorInsights: 全データ更新開始",
       { component: "BehaviorInsights", action: "refresh_all_start" },
@@ -465,6 +494,8 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
         duration: 3000,
         isClosable: true,
       });
+    } finally {
+      releaseGlobalLock(lockKey);
     }
   }, [
     timeframe,
@@ -478,6 +509,12 @@ export const BehaviorInsights: React.FC<BehaviorInsightsProps> = ({
 
   // 初期化とリフレッシュ（段階的実行）
   useEffect(() => {
+    // React 18 StrictMode のダブルマウント対策
+    if (didInitRef.current) {
+      return;
+    }
+    didInitRef.current = true;
+
     refreshAllData();
 
     // 高速データは1分間隔、全データは5分間隔で更新

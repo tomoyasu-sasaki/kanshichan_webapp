@@ -35,8 +35,6 @@ setup(
     version="0.1",
     packages=find_packages("backend/src"),
     package_dir={"": "backend/src"},
-    package_data={
-        "kanshichan": ["config/config.yaml"],
-    },
+    package_data={},
     install_requires=common_requires + platform_requires,
 )

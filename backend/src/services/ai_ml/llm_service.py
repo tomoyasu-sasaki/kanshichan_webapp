@@ -7,7 +7,10 @@ LLM Service
 from typing import Dict, Any, List, Optional
 import json
 import logging
-import ollama
+try:
+    import ollama  # type: ignore
+except Exception:  # noqa: BLE001
+    ollama = None  # lazy optional import
 import hashlib
 import time
 from datetime import datetime, timedelta
@@ -53,7 +56,9 @@ class LLMService:
     def _initialize_models(self) -> None:
         """モデルの初期化とヘルスチェック"""
         try:
-            # Ollamaクライアントの初期化
+            # Ollamaクライアントの初期化（未インストール時はフォールバック）
+            if ollama is None:
+                raise ImportError('ollama not installed')
             self.client = ollama.Client()
             
             # 利用可能モデルの確認（エラーハンドリング強化）
@@ -286,18 +291,24 @@ class LLMService:
             )
             
             advice_text = response['message']['content']
-            
-            # 構造化されたアドバイスを抽出
+
+            # 構造化されたアドバイスを抽出（JSON優先、失敗時はヒューリスティック）
             advice = self._parse_advice_response(advice_text)
+
+            # 表示用メッセージは必ず短い実行可能文にする
+            display_text = advice.get('advice_text') or advice_text
+            if isinstance(display_text, str):
+                display_text = display_text.strip()
             
             return {
-                'advice_text': advice_text,
+                'advice_text': display_text,
                 'structured_advice': advice,
                 'priority': advice.get('priority', 'medium'),
                 'emotion': advice.get('emotion', 'encouraging'),
                 'model_used': self.active_model,
                 'fallback_mode': False,
-                'timestamp': datetime.utcnow().isoformat(),
+                # ローカルタイムスタンプ（タイムゾーン付き）
+                'timestamp': datetime.now().astimezone().isoformat(),
                 'processing_time_ms': (time.time() - start_time) * 1000
             }
             
@@ -356,7 +367,7 @@ class LLMService:
         analysis = analysis_result.get('structured_analysis', {})
         
         prompt = f"""
-以下の行動分析結果に基づいて、適切なアドバイスを生成してください：
+以下の行動分析結果に基づいて、実用的な日本語アドバイスを1つだけ生成してください：
 
 【分析結果】
 {json.dumps(analysis, ensure_ascii=False, indent=2)}
@@ -367,13 +378,16 @@ class LLMService:
         
         prompt += """
 
-以下の要件でアドバイスを生成してください：
-1. 親しみやすく、励ましの言葉を含める
-2. 具体的で実行可能な提案をする
-3. ユーザーの気持ちに寄り添う表現
-4. 短く簡潔（音声再生を考慮）
-5. 優先度レベル（high/medium/low）を判定
-6. 適切な感情トーン（encouraging/gentle/alert）を選択
+出力要件：
+1. JSONのみを返す（前後に説明文や装飾を付けない）
+2. スキーマ：
+{
+  "advice_text": "120文字以内の具体的な提案（です・ます調、肯定的、すぐ行動できる）",
+  "priority": "high|medium|low",
+  "emotion": "encouraging|gentle|alert"
+}
+3. 絵文字・記号・Markdown装飾は入れない
+4. 数字や時間が必要な場合は具体的な値を入れる（例: 5分・10回など）
 """
         
         return prompt
@@ -392,17 +406,15 @@ class LLMService:
 JSON形式での構造化された回答も含めて提供してください。"""
     
     def _get_advice_generation_system_prompt(self) -> str:
-        """アドバイス生成用システムプロンプト"""
-        return """あなたは優しく励ましながら学習をサポートするAIアシスタントです。
+        """アドバイス生成用システムプロンプト（厳格JSON指示）"""
+        return """あなたは生産性コーチです。短く実行可能な日本語アドバイスを1つ作成し、必ず指定のJSONだけを出力してください。
 
-以下の特徴でアドバイスしてください：
-- 親しみやすく温かい口調
-- 具体的で実行しやすい提案
-- ユーザーの努力を認める
-- 短く分かりやすい表現（音声での再生を考慮）
-- 適切な優先度と感情トーンの判定
+原則：
+- 肯定・共感→具体アクション→所要目安 の順で簡潔に
+- 断定口調は避け、「〜しましょう」「〜してみましょう」
+- 医療・法務・危険行為は助言しない
 
-ユーザーが前向きに取り組めるようなアドバイスを心がけてください。"""
+出力はJSONのみ（前後に説明や装飾は一切禁止）。"""
     
     def _parse_behavior_analysis(self, analysis_text: str) -> Dict[str, Any]:
         """分析テキストから構造化データを抽出"""
@@ -417,27 +429,48 @@ JSON形式での構造化された回答も含めて提供してください。"
         }
     
     def _parse_advice_response(self, advice_text: str) -> Dict[str, Any]:
-        """アドバイステキストから構造化データを抽出"""
-        
-        # 優先度の推定（キーワードベース）
+        """アドバイステキストから構造化データを抽出（JSON優先）"""
+        # まずJSON抽出を試みる
+        try:
+            import re
+            match = re.search(r"\{[\s\S]*\}")
+            if match:
+                obj = json.loads(match.group(0))
+                advice_text_clean = str(obj.get('advice_text', '')).strip()
+                priority = str(obj.get('priority', 'medium')).lower()
+                emotion = str(obj.get('emotion', 'encouraging')).lower()
+                if priority not in ['high', 'medium', 'low']:
+                    priority = 'medium'
+                if emotion not in ['encouraging', 'gentle', 'alert']:
+                    emotion = 'encouraging'
+                return {
+                    'advice_text': advice_text_clean,
+                    'priority': priority,
+                    'emotion': emotion,
+                    'action_items': []
+                }
+        except Exception:
+            pass
+
+        # JSONでなければヒューリスティック
+        low_text = advice_text.lower()
         priority = 'medium'
-        if any(word in advice_text.lower() for word in ['緊急', '重要', '注意', '危険']):
+        if any(word in low_text for word in ['緊急', '重要', '注意', '危険']):
             priority = 'high'
-        elif any(word in advice_text.lower() for word in ['良い', '順調', '継続', '素晴らしい']):
+        elif any(word in low_text for word in ['良い', '順調', '継続', '素晴らしい']):
             priority = 'low'
-        
-        # 感情トーンの推定
+
         emotion = 'encouraging'
-        if any(word in advice_text.lower() for word in ['注意', '気をつけ', '改善']):
+        if any(word in low_text for word in ['注意', '気をつけ', '改善']):
             emotion = 'gentle'
-        elif any(word in advice_text.lower() for word in ['緊急', '危険']):
+        elif any(word in low_text for word in ['緊急', '危険']):
             emotion = 'alert'
-        
+
         return {
+            'advice_text': advice_text.strip(),
             'priority': priority,
             'emotion': emotion,
-            'main_message': advice_text[:100],  # メインメッセージ
-            'action_items': []  # 実行すべき項目
+            'action_items': []
         }
     
     def _generate_fallback_analysis(self, behavior_data: Dict[str, Any]) -> Dict[str, Any]:

@@ -211,10 +211,17 @@ class WebSocketManager {
       return;
     }
 
-    // WebSocketの設定（Viteプロキシを利用し相対接続、websocket専用でヘッダ不整合を回避）
-    this.socket = io({
+    // WebSocketの設定
+    // - 本番/同一オリジンでは相対接続
+    // - Vite開発環境では ws://localhost:8000 に向ける（5173からのWSはプロキシされないため）
+    const isDev = typeof window !== 'undefined' && window.location.port === '5173';
+    // ポーリングでは http(s) を使うため、開発時は http://localhost:8000 を明示
+    const baseUrl = isDev ? 'http://localhost:8000' : undefined;
+    this.socket = io(baseUrl ?? '', {
       path: '/socket.io',
-      transports: ['websocket'],
+      // まずは WebSocket を試行し、サーバ未対応の場合は自動で polling にフォールバック
+      transports: ['websocket', 'polling'],
+      upgrade: true,
       forceNew: true,
       withCredentials: false,
       reconnection: true,

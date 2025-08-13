@@ -258,12 +258,12 @@ class StatusBroadcaster:
             display_frame = self.detector.draw_detections(display_frame, results_for_draw)
             # 再度有効化
             self.camera.show_frame(display_frame)
-            
-            # q キーでの終了処理も復活
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                logger.info("'q' key pressed, stopping monitor.")
-                # スレッドを安全に停止させるためのフラグなどを設定する
-                # (現状は直接ループを抜ける仕組みがないため、ログ表示のみ)
+
+            # q キーでの終了処理（メインスレッドのみ）
+            if threading.current_thread() is threading.main_thread():
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    logger.info("'q' key pressed, stopping monitor.")
+                    # 現状はフラグ未導入のためログのみ
 
     def get_frame_buffer_status(self) -> Dict[str, Any]:
         """

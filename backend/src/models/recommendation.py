@@ -78,13 +78,19 @@ class RecommendationSchema:
     @classmethod
     def from_advice_generator_format(cls, advice_result: Dict[str, Any]) -> 'RecommendationSchema':
         """AdviceGeneratorフォーマットから変換"""
+        # 可能な限りLLM側のタイムスタンプを採用（ローカルタイム含むISO想定）
+        ts = advice_result.get('generation_timestamp') or advice_result.get('timestamp')
+        if not ts:
+            # フォールバック：ローカルタイムで付与
+            ts = datetime.now().astimezone().isoformat()
+
         data = {
             'type': 'contextual_advice',
             'message': advice_result.get('advice_text', ''),
             'priority': advice_result.get('priority', 'medium'),
             'emotion': advice_result.get('emotion', 'encouraging'),
             'source': 'llm_advice',
-            'timestamp': advice_result.get('generation_timestamp', datetime.now(timezone.utc).isoformat())
+            'timestamp': ts
         }
         return cls(**data)
 

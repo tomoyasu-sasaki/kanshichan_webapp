@@ -395,32 +395,53 @@ def _calculate_pagination(total_count: int, page: int, per_page: int) -> Dict[st
 
 
 def _get_timeframe_range(timeframe: str, start_date: str = None, end_date: str = None) -> Tuple[datetime, datetime]:
-    """時間枠に基づく期間の取得"""
-    now = datetime.now()
-    
+    """時間枠に基づく期間の取得
+
+    重要: BehaviorLog.timestamp は UTC ベース（datetime.utcnow()）で保存されている。
+    そのため、フロントの「今日（ローカル日付）」に対応する正しい UTC 範囲へ変換してから
+    DB クエリに使用する。
+    """
+    now_local = datetime.now()
+    now_utc = datetime.utcnow()
+    # ローカル→UTCのオフセット（DSTを含む実測差分）
+    offset = now_local - now_utc
+
+    def local_to_utc_naive(dt_local: datetime) -> datetime:
+        # Naive UTC 相当へ変換（DB側も naive UTC を保持）
+        return dt_local - offset
+
     if timeframe == 'today':
-        start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_time = start_time + timedelta(days=1)
+        start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_local = start_local + timedelta(days=1)
+        start_time = local_to_utc_naive(start_local)
+        end_time = local_to_utc_naive(end_local)
     elif timeframe == 'yesterday':
-        start_time = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-        end_time = start_time + timedelta(days=1)
+        start_local = (now_local - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_local = start_local + timedelta(days=1)
+        start_time = local_to_utc_naive(start_local)
+        end_time = local_to_utc_naive(end_local)
     elif timeframe == 'week':
-        start_time = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
-        end_time = now
+        start_local = (now_local - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_local = now_local
+        start_time = local_to_utc_naive(start_local)
+        end_time = local_to_utc_naive(end_local)
     elif timeframe == 'month':
-        start_time = (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
-        end_time = now
+        start_local = (now_local - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_local = now_local
+        start_time = local_to_utc_naive(start_local)
+        end_time = local_to_utc_naive(end_local)
     elif timeframe == 'custom':
         if not start_date or not end_date:
             return {'error': 'start_date and end_date required for custom timeframe', 'code': 'VALIDATION_ERROR'}, None
         try:
+            # 受け取るISOはUTC前提（Z/±hh:mm）。UTCとして解釈した naive UTC へ。
             start_time = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
             end_time = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
         except ValueError:
             return {'error': 'Invalid date format', 'code': 'VALIDATION_ERROR'}, None
     else:
         return {'error': 'Invalid timeframe', 'code': 'VALIDATION_ERROR'}, None
-    
+
     return start_time, end_time
 
 

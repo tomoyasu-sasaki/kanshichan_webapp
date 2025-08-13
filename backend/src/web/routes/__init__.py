@@ -24,6 +24,7 @@ from .tts_helpers import init_tts_services
 # その他のBlueprint
 from .behavior_routes import behavior_bp
 from .monitor_routes import monitor_bp
+from .settings_routes import settings_bp
 
 __all__ = [
     # 分析系Blueprint
@@ -34,5 +35,5 @@ __all__ = [
     # TTS初期化関数
     'init_tts_services',
     # その他Blueprint
-    'behavior_bp', 'monitor_bp'
+    'behavior_bp', 'monitor_bp', 'settings_bp'
 ] 

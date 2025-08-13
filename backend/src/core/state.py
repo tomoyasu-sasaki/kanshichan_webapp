@@ -29,15 +29,18 @@ class StateManager:
         self.last_phone_detection_time = time.time()
         self.smartphone_start_time: float | None = None # スマホ使用開始時刻
         self.person_absence_start_time: float | None = None # 不在開始時刻
+        self.person_last_missing_time: float | None = None   # 瞬断検知用の最終未検出時刻
 
         # アラート状態 (重複しているので削除しても良いが、明示的に残す)
         self.alert_triggered_absence: bool = False
         self.alert_triggered_smartphone: bool = False
 
         # 閾値 (ConfigManager から取得)
-        self.absence_threshold = self.config_manager.get('conditions.absence.threshold_seconds', 10) # デフォルト10秒
+        self.absence_threshold = self.config_manager.get('conditions.absence.threshold_seconds', 10)
         self.smartphone_threshold = self.config_manager.get('conditions.smartphone_usage.threshold_seconds', 5) # デフォルト5秒
         self.smartphone_grace_period = self.config_manager.get('conditions.smartphone_usage.grace_period_seconds', 3.0) # スマホ検知猶予時間
+        # 在席→不在の切替猶予（短すぎると誤検知、長すぎると反応遅延）
+        self.presence_grace_period = self.config_manager.get('conditions.presence.grace_period_seconds', 1.5)
         logger.info("StateManager initialized with ConfigManager.")
         logger.info(f"Absence threshold: {self.absence_threshold}s, Smartphone threshold: {self.smartphone_threshold}s, Smartphone grace period: {self.smartphone_grace_period}s")
 
@@ -67,26 +70,43 @@ class StateManager:
         self.person_detected = True
         self.last_seen_time = time.time()
         self.person_absence_start_time = None # 不在状態をリセット
+        self.person_last_missing_time = None   # 瞬断リセット
         if self.alert_triggered_absence:
             logger.debug("Absence alert reset.") # ログレベル変更
             self.alert_triggered_absence = False
 
     def handle_person_absence(self):
-        """人物が検出されなかった場合の処理"""
+        """人物が検出されなかった場合の処理（グレース期間内は在席維持）"""
         current_time = time.time()
-        if self.person_detected:
-            # 初めて不在になった瞬間
-            logger.debug("Person lost.") # ログレベル変更
-            self.person_absence_start_time = self.last_seen_time # 不在開始は最後に検出された時刻
-        self.person_detected = False # 状態を更新
 
-        # 不在時間が閾値を超えたかチェック
-        # 不在開始時刻が記録されていて、かつまだアラートが発動していない場合
+        # 初回の未検出を記録（グレース期間計測の起点）
+        if self.person_last_missing_time is None:
+            self.person_last_missing_time = current_time
+
+        # 連続未検出時間
+        missing_duration = current_time - self.person_last_missing_time
+
+        if missing_duration >= self.presence_grace_period:
+            # グレース期間を超過 → 在席フラグを不在に遷移、かつ不在開始時刻を確定
+            if self.person_detected:
+                logger.debug("Person lost (grace exceeded).")
+            self.person_detected = False
+            if self.person_absence_start_time is None:
+                # 直前の在席最後の時刻から不在時間を計測
+                self.person_absence_start_time = self.last_seen_time
+        else:
+            # まだグレース期間内 → 在席扱いを維持し、不在開始は確定させない
+            if not self.person_detected:
+                logger.debug("Transient miss ignored (within grace period).")
+            self.person_detected = True
+
+        # アラート判定
         if self.person_absence_start_time and not self.alert_triggered_absence:
             absence_duration = current_time - self.person_absence_start_time
             if absence_duration > self.absence_threshold:
-                logger.warning(f"Absence detected for {absence_duration:.0f} seconds (Threshold: {self.absence_threshold}s). Triggering alert.")
-                # AlertManager を介して AlertService のメソッドを呼ぶ
+                logger.warning(
+                    f"Absence detected for {absence_duration:.0f} seconds (Threshold: {self.absence_threshold}s). Triggering alert."
+                )
                 self.alert_manager.trigger_absence_alert(absence_duration)
                 self.alert_triggered_absence = True
 

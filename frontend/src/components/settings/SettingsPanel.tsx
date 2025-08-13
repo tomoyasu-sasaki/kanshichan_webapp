@@ -21,7 +21,7 @@ import {
   Th,
   Td
 } from '@chakra-ui/react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import axios from 'axios';
 import { logger } from '../../utils/logger';
@@ -55,6 +55,9 @@ export const SettingsPanel = () => {
   });
   const toast = useToast();
 
+  const fetchedOnceRef = useRef(false);
+  const API_BASE = '/api/v1/settings/'; // 末尾スラッシュ付きで直接正しいエンドポイントへ
+
   const fetchSettings = useCallback(async () => {
     try {
       await logger.info('SettingsPanel: 設定取得開始', 
@@ -62,7 +65,7 @@ export const SettingsPanel = () => {
         'SettingsPanel'
       );
 
-      const response = await axios.get('/api/v1/settings');
+      const response = await axios.get(API_BASE);
       
       const payload = response.data?.data || response.data;
       const fetchedSettings = {
@@ -115,8 +118,12 @@ export const SettingsPanel = () => {
         { component: 'SettingsPanel', action: 'initialize' }, 
         'SettingsPanel'
       );
-      
-      await fetchSettings();
+
+      // StrictModeなどで二重実行されないようガード
+      if (!fetchedOnceRef.current) {
+        fetchedOnceRef.current = true;
+        await fetchSettings();
+      }
     };
 
     void initSettingsPanel();
@@ -145,7 +152,7 @@ export const SettingsPanel = () => {
         detection_objects: settings.detection_objects
       };
 
-      await axios.post('/api/v1/settings', requestData);
+      await axios.post(API_BASE, requestData);
 
       await logger.info('SettingsPanel: 設定保存成功', 
         { 

@@ -3,22 +3,24 @@
 import os
 import json
 from typing import Any, Dict, Optional, Union, List
-# utils.config から yaml_utils を使う想定（前回確認済み）
-from .yaml_utils import load_yaml, save_yaml
+from .config_store_sqlite import SQLiteConfigStore
 from .logger import setup_logger
 from .exceptions import ConfigError, ValidationError, wrap_exception
 from copy import deepcopy
+from pathlib import Path
 
 logger = setup_logger(__name__)
 
-DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.yaml')
+# YAML への依存は廃止（完全に SQLite へ移行）
 # 設定のデフォルト値を定義 (例)
 DEFAULT_CONFIG = {
     'server': {'port': 8000},
     'display': {'show_opencv_window': True},
     'conditions': {
         'absence': {'threshold_seconds': 5},
-        'smartphone_usage': {'threshold_seconds': 3}
+        'smartphone_usage': {'threshold_seconds': 3},
+        # 在席→不在の誤検知抑制用の猶予（瞬断対策）。既定 0.8s
+        'presence': {'grace_period_seconds': 0.8}
     },
     'llm': {
         'enabled': False,
@@ -37,12 +39,11 @@ DEFAULT_CONFIG = {
 
 class ConfigManager:
     """
-    設定ファイル (config.yaml) の読み込み、アクセス、保存を管理するクラス。
-    
+    設定の読み込み・アクセス・保存を管理するクラス（SQLite config.db 専用）。
+
     - 環境変数による設定上書き
     - 設定値バリデーション
     - 動的設定更新
-    - 複数形式対応（YAML/JSON）
     - 環境別設定（dev/prod/ci）
     """
     def __init__(self, config_path: Optional[str] = None, enable_env_override: bool = True, 
@@ -71,30 +72,8 @@ class ConfigManager:
         logger.info(f"ConfigManager initialized with path: {self.config_path}, env: {self.environment}, env_override: {enable_env_override}, fail_on_missing: {fail_on_missing}")
 
     def _get_config_path_for_env(self, env: str) -> str:
-        """
-        環境に応じた設定ファイルのパスを返します。
-        
-        Args:
-            env: 環境名（dev/prod/ci）
-            
-        Returns:
-            設定ファイルのパス
-        """
-        base_dir = os.path.join(os.path.dirname(__file__), '..', 'config')
-        
-        if env == "dev":
-            config_path = os.path.join(base_dir, 'config.dev.yaml')
-            if os.path.exists(config_path):
-                return config_path
-        
-        # ciの場合はテスト用の設定を使用（存在する場合）
-        if env == "ci":
-            config_path = os.path.join(base_dir, 'config.ci.yaml')
-            if os.path.exists(config_path):
-                return config_path
-        
-        # デフォルトのconfig.yamlを返す
-        return os.path.join(base_dir, 'config.yaml')
+        # 互換のために残すが、SQLite移行後は未使用
+        return ''
 
     def _setup_default_validation_rules(self) -> None:
         """
@@ -133,6 +112,14 @@ class ConfigManager:
             'max': 3600.0,  # 1時間
             'required': True
         })
+
+        # 在席判定の瞬断を吸収する猶予
+        self.add_validation_rule('conditions.presence.grace_period_seconds', {
+            'type': 'float',
+            'min': 0.0,
+            'max': 10.0,
+            'required': False
+        })
         
         # LINE設定
         self.add_validation_rule('line.enabled', {
@@ -167,33 +154,23 @@ class ConfigManager:
         """
         loaded_successfully = False
         try:
-            if os.path.exists(self.config_path):
-                loaded_config = load_yaml(self.config_path)
-                if loaded_config:
-                    self._config = self._merge_configs(DEFAULT_CONFIG, loaded_config)
-                    logger.info(f"設定ファイルを読み込みました: {self.config_path}")
-                    loaded_successfully = True
-                else:
-                    error_msg = f"設定ファイルが空または無効です: {self.config_path}"
-                    logger.warning(f"{error_msg}. デフォルト設定を使用します。")
-                    if self.fail_on_missing:
-                        raise ConfigError(error_msg)
-                    self._config = deepcopy(DEFAULT_CONFIG)
+            # SQLite のみをデータソースとする
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+            config_db = os.path.join(project_root, 'instance', 'config.db')
+            store = SQLiteConfigStore(Path(config_db))
+            db_cfg = store.read_all()
+            if db_cfg:
+                self._config = self._merge_configs(DEFAULT_CONFIG, db_cfg)
+                loaded_successfully = True
             else:
-                error_msg = f"設定ファイルが見つかりません: {self.config_path}"
-                logger.warning(f"{error_msg}. デフォルト設定を使用します。")
-                if self.fail_on_missing:
-                    raise ConfigError(error_msg)
+                # DBが空の場合は DEFAULT_CONFIG を初期投入
+                logger.warning("config.db が空です。DEFAULT_CONFIG を初期投入します。")
+                store.write(DEFAULT_CONFIG)
                 self._config = deepcopy(DEFAULT_CONFIG)
-                # デフォルト設定でファイルを作成する？ (今回はしない)
-                # self.save()
-        except ConfigError:
-            # ConfigErrorはそのまま再発生させる
-            raise
+                loaded_successfully = True
         except Exception as e:
-            error_msg = f"設定ファイルの読み込み中にエラーが発生しました ({self.config_path}): {e}"
-            logger.error(f"{error_msg}", exc_info=True)
-            logger.warning("エラーのためデフォルト設定を使用します。")
+            error_msg = f"設定の読み込み中にエラーが発生しました (SQLite): {e}"
+            logger.error(error_msg, exc_info=True)
             if self.fail_on_missing:
                 raise ConfigError(error_msg)
             self._config = deepcopy(DEFAULT_CONFIG)
@@ -559,13 +536,17 @@ class ConfigManager:
             bool: 保存に成功した場合は True、失敗した場合は False。
         """
         try:
-            # 保存先ディレクトリが存在しない場合は作成
-            os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
-            save_yaml(self._config, self.config_path)
-            logger.info(f"設定をファイルに保存しました: {self.config_path}")
-            return True
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+            config_db = os.path.join(project_root, 'instance', 'config.db')
+            store = SQLiteConfigStore(Path(config_db))
+            ok = store.write(self._config)
+            if ok:
+                logger.info("設定をSQLiteデータベースに保存しました")
+            else:
+                logger.error("SQLiteへの設定保存に失敗しました")
+            return ok
         except Exception as e:
-            logger.error(f"設定ファイルの保存中にエラーが発生しました ({self.config_path}): {e}", exc_info=True)
+            logger.error(f"SQLite保存中にエラー: {e}", exc_info=True)
             return False
 
     def reload(self) -> bool:

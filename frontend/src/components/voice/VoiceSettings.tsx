@@ -285,8 +285,12 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
     }
   }, []);
 
-  // 初期化
+  // 初期化（React StrictMode のダブルマウント対策）
+  const didInitRef = useRef(false);
   useEffect(() => {
+    if (didInitRef.current) return;
+    didInitRef.current = true;
+
     fetchTTSStatus();
     fetchAudioFiles();
     loadDefaultVoiceSettings(); // デフォルト設定を読み込む
@@ -935,13 +939,15 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
                       value={settings.defaultEmotion}
                       onChange={(e) => handleEmotionPresetChange(e.target.value)}
                     >
-                      {ttsStatus?.available_emotions?.map((emotion) => (
+                      {(
+                        (ttsStatus?.available_emotions || ['neutral'])
+                          // 日本語UIで使用するプリセットだけ許可
+                          .filter((e) => ['neutral','happiness','sadness','disgust','fear','surprise','anger','other'].includes(e))
+                      ).map((emotion) => (
                         <option key={emotion} value={emotion}>
                           {emotionTranslations[emotion] || emotion}
                         </option>
-                      )) || (
-                        <option value="neutral">普通</option>
-                      )}
+                      ))}
                     </Select>
                   ) : (
                     // 感情強度8軸スライダー
