@@ -165,6 +165,7 @@ cython_debug/
 
 
 backend/voice_data/
+backend/sounds/
 backend/src/sounds/
 backend/src/services/tts/vendor/*
 backend/src/services/config/*
