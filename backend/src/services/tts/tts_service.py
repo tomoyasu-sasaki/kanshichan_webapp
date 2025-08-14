@@ -135,14 +135,17 @@ class TTSService:
                 # モデル読み込み開始時刻記録
                 start_time = time.time()
                 
+                # Zonosに渡すデバイスはtorch.device型に正規化
+                zonos_device = torch.device(self.device_manager.device)
+
                 # ローカルモデルファイルのチェック
                 if os.path.exists(LOCAL_CONFIG_PATH) and os.path.exists(LOCAL_MODEL_PATH):
                     logger.info(f"📂 Using local model files from: {LOCAL_MODEL_DIR}")
-                    self.model = Zonos.from_local(LOCAL_CONFIG_PATH, LOCAL_MODEL_PATH, device=self.device_manager.device)
+                    self.model = Zonos.from_local(LOCAL_CONFIG_PATH, LOCAL_MODEL_PATH, device=zonos_device)
                 else:
                     logger.warning(f"⚠️ Local model files not found. Downloading from HuggingFace: {model_id}")
                     # モデル読み込み
-                    self.model = Zonos.from_pretrained(model_id, device=self.device_manager.device)
+                    self.model = Zonos.from_pretrained(model_id, device=zonos_device)
                 
                 load_time = time.time() - start_time
                 logger.info(f"✅ Model loaded in {load_time:.2f} seconds")
@@ -178,13 +181,16 @@ class TTSService:
                     
                     fallback_start = time.time()
                     
+                    # フォールバック用のtorch.device
+                    zonos_cpu_device = torch.device('cpu')
+
                     # ローカルモデルファイルのチェック
                     if os.path.exists(LOCAL_CONFIG_PATH) and os.path.exists(LOCAL_MODEL_PATH):
                         logger.info(f"📂 Using local model files for CPU fallback: {LOCAL_MODEL_DIR}")
-                        self.model = Zonos.from_local(LOCAL_CONFIG_PATH, LOCAL_MODEL_PATH, device='cpu')
+                        self.model = Zonos.from_local(LOCAL_CONFIG_PATH, LOCAL_MODEL_PATH, device=zonos_cpu_device)
                     else:
                         logger.warning(f"⚠️ Local model files not found. Downloading from HuggingFace for CPU fallback: {model_id}")
-                        self.model = Zonos.from_pretrained(model_id, device='cpu')
+                        self.model = Zonos.from_pretrained(model_id, device=zonos_cpu_device)
                         
                     self.model = self.device_manager.optimize_model_for_device(self.model)
                     
