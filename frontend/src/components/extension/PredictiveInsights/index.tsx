@@ -110,7 +110,7 @@ export const PredictiveInsights: React.FC<PredictiveInsightsProps> = ({
       );
       if (!predictionsResponse.ok) throw new Error('Failed to fetch predictions');
       const predictionsRaw = await predictionsResponse.json();
-      const predictionsData: any = predictionsRaw?.data ?? predictionsRaw;
+      const predictionsData: { predictions?: PredictionData[]; prediction_summary?: { key_predictions?: PredictionData[] } } = predictionsRaw?.data ?? predictionsRaw;
 
       // Fetch advanced patterns for trend analysis
       const patternsResponse = await fetch(
@@ -118,7 +118,7 @@ export const PredictiveInsights: React.FC<PredictiveInsightsProps> = ({
       );
       if (!patternsResponse.ok) throw new Error('Failed to fetch patterns');
       const patternsRaw = await patternsResponse.json();
-      const patternsData: any = patternsRaw?.data ?? patternsRaw;
+      const patternsData: { patterns?: { timeseries_analysis?: { trend_strength?: number; trend_direction?: 'up' | 'down' | 'stable'; seasonal_patterns?: string[]; anomalies_count?: number } } } = patternsRaw?.data ?? patternsRaw;
 
       // Process data
       setPredictions(predictionsData.predictions || predictionsData?.prediction_summary?.key_predictions || []);
@@ -350,7 +350,7 @@ export const PredictiveInsights: React.FC<PredictiveInsightsProps> = ({
                 </Stat>
               </SimpleGrid>
 
-              {trend.seasonal_patterns.length > 0 && (
+              {trend.seasonal_patterns.length > 0 ? (
                 <Box mt={4}>
                   <Text fontWeight="bold" mb={2}>季節パターン:</Text>
                   <HStack wrap="wrap">
@@ -361,7 +361,7 @@ export const PredictiveInsights: React.FC<PredictiveInsightsProps> = ({
                     ))}
                   </HStack>
                 </Box>
-              )}
+              ) : null}
             </Box>
           ))}
         </VStack>
@@ -517,4 +517,6 @@ export const PredictiveInsights: React.FC<PredictiveInsightsProps> = ({
       </VStack>
     </Box>
   );
-}; 
+};
+
+

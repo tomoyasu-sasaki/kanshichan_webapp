@@ -152,6 +152,9 @@ export const DailyInsightsCard: React.FC<DailyInsightsCardProps> = ({
               <Text fontSize="lg" fontWeight="bold" color="gray.800">
                 今日の洞察
               </Text>
+              <Text fontSize="sm" color="gray.600">
+                AIによる行動分析結果
+              </Text>
             </VStack>
           </HStack>
         </CardHeader>

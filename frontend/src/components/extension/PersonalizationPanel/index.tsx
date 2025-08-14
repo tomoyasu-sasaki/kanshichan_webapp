@@ -130,7 +130,7 @@ export const PersonalizationPanel: React.FC<PersonalizationPanelProps> = ({
       const recsPayload = recommendationsData?.data || recommendationsData;
       const learningPayload = learningData?.data || learningData;
 
-      const rawProfile: any = profilePayload.user_profile || profilePayload.profile || null;
+      const rawProfile: { user_id?: string; work_style?: string; focus_duration_minutes?: number; optimal_time_slots?: string[]; break_frequency_minutes?: number; productivity_rhythm?: string; health_habits?: string[]; learning_speed?: number } = profilePayload.user_profile || profilePayload.profile || null;
       const normalizedProfile = rawProfile
         ? {
             user_id: rawProfile.user_id ?? userId,

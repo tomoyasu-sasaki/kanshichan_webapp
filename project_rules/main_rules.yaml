@@ -98,7 +98,6 @@ project_structure:
         - "MonitorView.tsx（監視画面）"
         - "SettingsPanel.tsx（設定パネル）"
         - "ScheduleView.tsx（スケジュール管理）"
-        - "PerformanceStats.tsx（パフォーマンス統計）"
         - "LanguageSwitcher.tsx（言語切り替え）"
         - "VoiceSettings.tsx（音声設定）"
       utils: "WebSocket通信等のユーティリティ"
