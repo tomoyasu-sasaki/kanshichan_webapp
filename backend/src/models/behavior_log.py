@@ -7,7 +7,7 @@ Behavior Log Model
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 from sqlalchemy import Column, String, DateTime, Float, JSON, Text, Boolean, Index
-from .base import BaseModel
+from .base_model import BaseModel
 
 
 class BehaviorLog(BaseModel):

@@ -69,7 +69,7 @@ def get_backend_path() -> Path:
         Path: backendディレクトリの絶対パス
     """
     current_file = Path(__file__).resolve()
-    # src/web/routes/tts_helpers.py から backend/ への相対パス
+    # src/web/routes/tts/helpers.py から backend/ への相対パス
     return current_file.parent.parent.parent.parent
 
 
@@ -153,17 +153,17 @@ def _initialize_tts_components() -> None:
     # 初期化が必須なコンポーネントのみをリストアップ
     # 他はBlueprint登録のみで動作するため、明示的な初期化は不要
     components_to_initialize = {
-        "TTS Synthesis": ".tts_synthesis_routes",
-        "TTS Voice Clone": ".tts_voice_clone_routes",
-        "TTS File": ".tts_file_routes",
-        "TTS Streaming": ".tts_streaming_routes",
-        "TTS System": ".tts_system_routes",
+        "TTS Synthesis": ".synthesis",
+        "TTS Voice Clone": ".voice_clone",
+        "TTS File": ".file",
+        "TTS Streaming": ".streaming",
+        "TTS System": ".system",
     }
 
     initialized_components = []
     for name, module_name in components_to_initialize.items():
         try:
-            module = importlib.import_module(module_name, package='web.routes')
+            module = importlib.import_module(module_name, package='web.routes.tts')
             
             # init_..._services 関数を探して実行
             # 例: TTS Synthesis -> init_synthesis_services
@@ -231,4 +231,16 @@ def get_service_status() -> Dict[str, Any]:
         'services_ready': check_services_available(),
         'tts_service_status': tts_service.get_service_status() if tts_service else None,
         'voice_manager_status': voice_manager.get_service_status() if voice_manager else None
-    } 
+    }
+
+
+__all__ = [
+    'ensure_tqdm_disabled',
+    'get_backend_path',
+    'init_tts_services',
+    'get_tts_service',
+    'get_voice_manager',
+    'check_services_available',
+    'get_service_status',
+]
+

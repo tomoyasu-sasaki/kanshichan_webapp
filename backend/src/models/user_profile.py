@@ -7,7 +7,7 @@ User Profile Model
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from sqlalchemy import Column, String, DateTime, Float, JSON, Text, Boolean, Integer
-from .base import BaseModel
+from .base_model import BaseModel
 
 
 class UserProfile(BaseModel):

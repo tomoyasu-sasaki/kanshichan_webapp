@@ -126,7 +126,7 @@ class ScheduleManager:
             Optional[str]: 生成された音声ファイルのパス、失敗時はNone
         """
         try:
-            from web.routes.tts_helpers import tts_service
+            from web.routes.tts.helpers import tts_service
             
             if not tts_service or not tts_service.is_initialized:
                 logger.warning("TTSサービスが初期化されていないため、音声ファイルを生成できません")

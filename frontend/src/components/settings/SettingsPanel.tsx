@@ -114,6 +114,8 @@ export const SettingsPanel = () => {
         detection_objects: settings.detection_objects
       };
 
+      console.log('Saving settings with data:', requestData);
+
       await axios.post(API_BASE, requestData);
 
       await logger.info('SettingsPanel: 設定保存成功',
@@ -160,10 +162,16 @@ export const SettingsPanel = () => {
   const handleThresholdChange = async (field: string, value: number) => {
     const oldValue = settings[field as keyof Pick<SettingsType, 'absence_threshold' | 'smartphone_threshold'>];
 
-    setSettings(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    console.log('handleThresholdChange called:', { field, oldValue, newValue: value });
+
+    setSettings(prev => {
+      const newSettings = {
+        ...prev,
+        [field]: value
+      };
+      console.log('New settings state:', newSettings);
+      return newSettings;
+    });
 
     await logger.debug('SettingsPanel: 閾値変更',
       {

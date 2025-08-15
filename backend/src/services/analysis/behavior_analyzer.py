@@ -12,7 +12,7 @@ import logging
 
 from models.behavior_log import BehaviorLog
 from models.analysis_result import AnalysisResult
-from models.recommendation import RecommendationSchema
+from schemas.recommendation import RecommendationSchema
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)

@@ -30,7 +30,7 @@ from web.routes import (
     tts_streaming_bp, tts_system_bp, init_tts_services,
     behavior_bp, monitor_bp
 )
-from web.routes.monitor_routes import init_monitor_service
+from web.routes.monitor import init_monitor_service
 from web.websocket import (
     init_websocket, socketio, init_audio_streaming, init_system_metrics_broadcast
 )

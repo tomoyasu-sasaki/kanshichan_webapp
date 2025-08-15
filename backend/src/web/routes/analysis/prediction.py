@@ -12,21 +12,20 @@ from flask import Blueprint, request, current_app
 
 from models.behavior_log import BehaviorLog
 from utils.logger import setup_logger
-from .analysis_helpers import (
+from .helpers import (
     generate_comprehensive_insights,
     calculate_behavior_score,
     detect_behavioral_patterns,
     generate_contextual_recommendations,
     calculate_data_quality_metrics,
-
 )
 from services.analysis.service_loader import get_pattern_recognizer
+from web.response_utils import success_response, error_response
 
 logger = setup_logger(__name__)
 
 # Blueprint定義（相対パス化。上位で /api および /api/v1 を付与）
 prediction_analysis_bp = Blueprint('prediction_analysis', __name__, url_prefix='/analysis')
-from web.response_utils import success_response, error_response
 
 
 @prediction_analysis_bp.route('/predictions', methods=['GET'])
@@ -144,10 +143,10 @@ def get_predictions():
         return success_response(result_data)
         
     except ValueError as e:
-        return error_response('Invalid parameter format', code='VALIDATION_ERROR', status_code=400)
+        return error_response(f'Invalid parameter: {str(e)}', code='VALIDATION_ERROR', status_code=400)
     except Exception as e:
         logger.error(f"Error getting predictions: {e}", exc_info=True)
-        return error_response('Failed to generate predictions', code='ANALYSIS_ERROR', status_code=500)
+        return error_response('Failed to generate predictions', code='PREDICTION_ERROR', status_code=500)
 
 
 @prediction_analysis_bp.route('/personalized-recommendations', methods=['GET'])
@@ -281,6 +280,105 @@ def get_user_profile():
     except Exception as e:
         logger.error(f"Error getting user profile: {e}", exc_info=True)
         return error_response('Failed to get user profile', code='ANALYSIS_ERROR', status_code=500)
+
+
+@prediction_analysis_bp.route('/adaptive-learning', methods=['POST'])
+def update_adaptive_learning():
+    """適応学習更新API
+    
+    ユーザーのフィードバックに基づいて適応学習モデルを更新
+    
+    Request JSON:
+        {
+            "user_id": "string",
+            "feedback": {
+                "recommendation_id": "string",
+                "rating": 1-5,
+                "implemented": true/false,
+                "effectiveness": 1-5
+            }
+        }
+        
+    Returns:
+        JSON: 更新結果
+    """
+    try:
+        # リクエストデータ取得
+        data = request.get_json()
+        if not data:
+            return error_response('No JSON data provided', code='VALIDATION_ERROR', status_code=400)
+        
+        # 必須フィールドチェック
+        user_id = data.get('user_id')
+        feedback = data.get('feedback')
+        
+        if not user_id:
+            return error_response('user_id is required', code='VALIDATION_ERROR', status_code=400)
+        
+        if not feedback:
+            return error_response('feedback is required', code='VALIDATION_ERROR', status_code=400)
+        
+        # フィードバックバリデーション
+        required_fields = ['recommendation_id', 'rating', 'implemented', 'effectiveness']
+        missing_fields = [field for field in required_fields if field not in feedback]
+        
+        if missing_fields:
+            return error_response(f'Missing feedback fields: {", ".join(missing_fields)}', code='VALIDATION_ERROR', status_code=400)
+        
+        # 適応学習システム取得
+        adaptive_learning = _get_adaptive_learning_system()
+        if not adaptive_learning:
+            return error_response('Adaptive learning system not available', code='SERVICE_UNAVAILABLE', status_code=500)
+        
+        # 適応学習更新
+        update_result = adaptive_learning.update_learning_model(user_id, feedback)
+        
+        return success_response({
+            'user_id': user_id,
+            'update_successful': update_result.get('success', False),
+            'model_updated': update_result.get('model_updated', False),
+            'learning_progress': update_result.get('learning_progress', 0.0),
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error updating adaptive learning: {e}", exc_info=True)
+        return error_response('Failed to update adaptive learning', code='LEARNING_ERROR', status_code=500)
+
+
+@prediction_analysis_bp.route('/learning-progress', methods=['GET'])
+def get_learning_progress():
+    """学習進捗取得API
+    
+    適応学習モデルの学習進捗と精度を取得
+    
+    Query Parameters:
+        user_id (str): ユーザーID (オプション)
+        
+    Returns:
+        JSON: 学習進捗情報
+    """
+    try:
+        # パラメータ取得
+        user_id = request.args.get('user_id')
+        
+        # パターン認識エンジン取得
+        pattern_recognizer = _get_pattern_recognizer()
+        if not pattern_recognizer:
+            return error_response('Pattern recognizer not available', code='SERVICE_UNAVAILABLE', status_code=500)
+        
+        # 学習進捗取得
+        progress = pattern_recognizer.get_learning_progress(user_id)
+        
+        return success_response({
+            'user_id': user_id,
+            'learning_progress': progress,
+            'retrieved_at': datetime.now(timezone.utc).isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting learning progress: {e}", exc_info=True)
+        return error_response('Failed to get learning progress', code='PROGRESS_ERROR', status_code=500)
 
 
 @prediction_analysis_bp.route('/recommendation-feedback', methods=['POST'])
@@ -417,8 +515,8 @@ def get_adaptive_learning_status():
 
 # ========== ヘルパー関数 ==========
 
-def _get_pattern_recognizer() -> Optional[Any]:
-    """PatternRecognizerインスタンスを取得（service_loader経由）"""
+def _get_pattern_recognizer():
+    """パターン認識器インスタンスを取得"""
     return get_pattern_recognizer()
 
 
@@ -608,4 +706,4 @@ def _identify_improvement_areas(learning_metrics) -> List[str]:
     if (user_satisfaction or 0.5) < 0.6:
         areas.append("ユーザー満足度の向上")
     
-    return areas 
+    return areas

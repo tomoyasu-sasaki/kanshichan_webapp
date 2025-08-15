@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Any
 from sqlalchemy import Column, Integer, String, Float, DateTime, JSON, func
 from sqlalchemy.orm import relationship
 
-from .base import BaseModel
+from .base_model import BaseModel
 from . import db
 
 

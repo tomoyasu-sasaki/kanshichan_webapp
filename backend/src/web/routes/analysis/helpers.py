@@ -616,4 +616,6 @@ def _evaluate_data_freshness(logs: list) -> float:
             return 1.0 - (time_diff - 300) / (1800 - 300)
             
     except Exception:
-        return 0.5 
+        return 0.5
+
+

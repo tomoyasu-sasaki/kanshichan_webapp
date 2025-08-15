@@ -12,7 +12,7 @@ from flask import Blueprint, request, current_app
 
 from models.behavior_log import BehaviorLog
 from utils.logger import setup_logger
-from .analysis_helpers import (
+from .helpers import (
     generate_comprehensive_insights,
     calculate_behavior_score,
     detect_behavioral_patterns,
@@ -23,12 +23,12 @@ from services.analysis.service_loader import (
     get_advanced_behavior_analyzer,
     get_pattern_recognizer
 )
+from web.response_utils import success_response, error_response
 
 logger = setup_logger(__name__)
 
 # Blueprint定義（相対パス化。上位で /api および /api/v1 を付与）
 advanced_analysis_bp = Blueprint('advanced_analysis', __name__, url_prefix='/analysis')
-from web.response_utils import success_response, error_response
 
 
 @advanced_analysis_bp.route('/advanced-patterns', methods=['GET'])
@@ -116,6 +116,227 @@ def get_advanced_patterns():
     except Exception as e:
         logger.error(f"Error getting advanced patterns: {e}", exc_info=True)
         return error_response('Failed to analyze advanced patterns', code='ANALYSIS_ERROR', status_code=500)
+
+
+@advanced_analysis_bp.route('/detailed-analysis', methods=['GET'])
+def get_detailed_analysis():
+    """詳細分析API
+    
+    行動データの詳細な分析と洞察を提供
+    
+    Query Parameters:
+        timeframe (str): 分析期間 (hourly/daily/weekly) - デフォルト: daily
+        user_id (str): ユーザーID (オプション)
+        analysis_type (str): 分析タイプ (comprehensive/behavioral/health/all) - デフォルト: all
+        
+    Returns:
+        JSON: 詳細分析結果
+    """
+    try:
+        # パラメータ取得
+        timeframe = request.args.get('timeframe', 'daily')
+        user_id = request.args.get('user_id')
+        analysis_type = request.args.get('analysis_type', 'all')
+        
+        # バリデーション
+        if timeframe not in ['hourly', 'daily', 'weekly']:
+            return error_response(
+                'Invalid timeframe. Must be one of: hourly, daily, weekly',
+                code='VALIDATION_ERROR', status_code=400
+            )
+        
+        if analysis_type not in ['comprehensive', 'behavioral', 'health', 'all']:
+            return error_response(
+                'Invalid analysis_type. Must be one of: comprehensive, behavioral, health, all',
+                code='VALIDATION_ERROR', status_code=400
+            )
+        
+        # 高度分析エンジン取得
+        advanced_analyzer = _get_advanced_behavior_analyzer()
+        if not advanced_analyzer:
+            return error_response('Advanced analyzer not available', code='SERVICE_UNAVAILABLE', status_code=500)
+        
+        # 期間に応じたデータ取得
+        hours_map = {'hourly': 1, 'daily': 24, 'weekly': 168}
+        hours = hours_map[timeframe]
+        logs = BehaviorLog.get_recent_logs(hours=hours, user_id=user_id)
+        
+        if not logs:
+            return success_response({
+                'message': f'{timeframe}のデータが見つかりません',
+                'timeframe': timeframe,
+                'analysis_type': analysis_type,
+                'logs_count': 0
+            })
+        
+        # 包括的分析
+        comprehensive_analysis = {}
+        if analysis_type in ['comprehensive', 'all']:
+            comprehensive_analysis = advanced_analyzer.perform_comprehensive_analysis(logs)
+        
+        # 行動分析
+        behavioral_analysis = {}
+        if analysis_type in ['behavioral', 'all']:
+            behavioral_analysis = advanced_analyzer.analyze_behavioral_patterns(logs)
+        
+        # 健康評価
+        health_analysis = {}
+        if analysis_type in ['health', 'all']:
+            health_analysis = advanced_analyzer.evaluate_health_metrics(logs)
+        
+        result_data = {
+            'timeframe': timeframe,
+            'analysis_type': analysis_type,
+            'logs_analyzed': len(logs),
+            'comprehensive_analysis': comprehensive_analysis,
+            'behavioral_analysis': behavioral_analysis,
+            'health_analysis': health_analysis,
+            'analysis_timestamp': datetime.now(timezone.utc).isoformat()
+        }
+        
+        return success_response(result_data)
+        
+    except Exception as e:
+        logger.error(f"Error getting detailed analysis: {e}", exc_info=True)
+        return error_response('Failed to perform detailed analysis', code='ANALYSIS_ERROR', status_code=500)
+
+
+@advanced_analysis_bp.route('/health-evaluation', methods=['GET'])
+def get_health_evaluation():
+    """健康評価API
+    
+    行動データに基づく健康状態の評価を提供
+    
+    Query Parameters:
+        timeframe (str): 分析期間 (daily/weekly/monthly) - デフォルト: daily
+        user_id (str): ユーザーID (オプション)
+        evaluation_type (str): 評価タイプ (posture/eye_health/overall/all) - デフォルト: all
+        
+    Returns:
+        JSON: 健康評価結果
+    """
+    try:
+        # パラメータ取得
+        timeframe = request.args.get('timeframe', 'daily')
+        user_id = request.args.get('user_id')
+        evaluation_type = request.args.get('evaluation_type', 'all')
+        
+        # バリデーション
+        if timeframe not in ['daily', 'weekly', 'monthly']:
+            return error_response(
+                'Invalid timeframe. Must be one of: daily, weekly, monthly',
+                code='VALIDATION_ERROR', status_code=400
+            )
+        
+        if evaluation_type not in ['posture', 'eye_health', 'overall', 'all']:
+            return error_response(
+                'Invalid evaluation_type. Must be one of: posture, eye_health, overall, all',
+                code='VALIDATION_ERROR', status_code=400
+            )
+        
+        # 高度分析エンジン取得
+        advanced_analyzer = _get_advanced_behavior_analyzer()
+        if not advanced_analyzer:
+            return error_response('Advanced analyzer not available', code='SERVICE_UNAVAILABLE', status_code=500)
+        
+        # 期間に応じたデータ取得
+        hours_map = {'daily': 24, 'weekly': 168, 'monthly': 720}
+        hours = hours_map[timeframe]
+        logs = BehaviorLog.get_recent_logs(hours=hours, user_id=user_id)
+        
+        if not logs:
+            return success_response({
+                'message': f'{timeframe}のデータが見つかりません',
+                'timeframe': timeframe,
+                'evaluation_type': evaluation_type,
+                'logs_count': 0
+            })
+        
+        # 健康評価実行
+        health_evaluation = advanced_analyzer.evaluate_health_metrics(logs, evaluation_type)
+        
+        result_data = {
+            'timeframe': timeframe,
+            'evaluation_type': evaluation_type,
+            'logs_analyzed': len(logs),
+            'health_evaluation': health_evaluation,
+            'evaluation_timestamp': datetime.now(timezone.utc).isoformat()
+        }
+        
+        return success_response(result_data)
+        
+    except Exception as e:
+        logger.error(f"Error getting health evaluation: {e}", exc_info=True)
+        return error_response('Failed to evaluate health metrics', code='ANALYSIS_ERROR', status_code=500)
+
+
+@advanced_analysis_bp.route('/correlation-analysis', methods=['GET'])
+def get_correlation_analysis():
+    """相関分析API
+    
+    行動データの相関関係を分析して提供
+    
+    Query Parameters:
+        timeframe (str): 分析期間 (daily/weekly/monthly) - デフォルト: daily
+        user_id (str): ユーザーID (オプション)
+        variables (str): 分析対象変数 (focus_presence/focus_posture/all) - デフォルト: all
+        
+    Returns:
+        JSON: 相関分析結果
+    """
+    try:
+        # パラメータ取得
+        timeframe = request.args.get('timeframe', 'daily')
+        user_id = request.args.get('user_id')
+        variables = request.args.get('variables', 'all')
+        
+        # バリデーション
+        if timeframe not in ['daily', 'weekly', 'monthly']:
+            return error_response(
+                'Invalid timeframe. Must be one of: daily, weekly, monthly',
+                code='VALIDATION_ERROR', status_code=400
+            )
+        
+        if variables not in ['focus_presence', 'focus_posture', 'all']:
+            return error_response(
+                'Invalid variables. Must be one of: focus_presence, focus_posture, all',
+                code='VALIDATION_ERROR', status_code=400
+            )
+        
+        # 高度分析エンジン取得
+        advanced_analyzer = _get_advanced_behavior_analyzer()
+        if not advanced_analyzer:
+            return error_response('Advanced analyzer not available', code='SERVICE_UNAVAILABLE', status_code=500)
+        
+        # 期間に応じたデータ取得
+        hours_map = {'daily': 24, 'weekly': 168, 'monthly': 720}
+        hours = hours_map[timeframe]
+        logs = BehaviorLog.get_recent_logs(hours=hours, user_id=user_id)
+        
+        if not logs:
+            return success_response({
+                'message': f'{timeframe}のデータが見つかりません',
+                'timeframe': timeframe,
+                'variables': variables,
+                'logs_count': 0
+            })
+        
+        # 相関分析実行
+        correlation_analysis = advanced_analyzer.analyze_correlations(logs, variables)
+        
+        result_data = {
+            'timeframe': timeframe,
+            'variables': variables,
+            'logs_analyzed': len(logs),
+            'correlation_analysis': correlation_analysis,
+            'analysis_timestamp': datetime.now(timezone.utc).isoformat()
+        }
+        
+        return success_response(result_data)
+        
+    except Exception as e:
+        logger.error(f"Error getting correlation analysis: {e}", exc_info=True)
+        return error_response('Failed to analyze correlations', code='ANALYSIS_ERROR', status_code=500)
 
 
 @advanced_analysis_bp.route('/focus-deep-dive', methods=['GET'])
@@ -312,18 +533,18 @@ def get_productivity_score():
 
 # ========== ヘルパー関数 ==========
 
-def _get_advanced_behavior_analyzer() -> Optional[Any]:
-    """AdvancedBehaviorAnalyzerインスタンスを取得（service_loader経由）"""
+def _get_advanced_behavior_analyzer():
+    """高度行動分析器インスタンスを取得"""
     return get_advanced_behavior_analyzer()
 
 
-def _get_pattern_recognizer() -> Optional[Any]:
-    """PatternRecognizerインスタンスを取得（service_loader経由）"""
+def _get_pattern_recognizer():
+    """パターン認識器インスタンスを取得"""
     return get_pattern_recognizer()
 
 
 def _filter_patterns_by_type(pattern_analysis: Dict[str, Any], pattern_type: str) -> Dict[str, Any]:
-    """パターンタイプ別フィルタリング"""
+    """パターンタイプ別にフィルタリング"""
     try:
         filtered_analysis = pattern_analysis.copy()
         
@@ -459,4 +680,4 @@ def _generate_productivity_summary(activity_analysis: Dict) -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Error generating productivity summary: {e}")
-        return {'error': '生産性サマリー生成エラー'} 
+        return {'error': '生産性サマリー生成エラー'}

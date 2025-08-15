@@ -13,12 +13,12 @@ from flask import Blueprint, request, current_app
 
 from models.behavior_log import BehaviorLog
 from models.user_profile import UserProfile
-from models.recommendation import RecommendationSchema, standardize_recommendations
+from schemas.recommendation import RecommendationSchema, standardize_recommendations
 from utils.logger import setup_logger
 from services.ai.llm_service import LLMService
 from services.ai.advice_generator import AdviceGenerator
 from services.analysis.behavior_analyzer import BehaviorAnalyzer
-from .analysis_helpers import (
+from .helpers import (
     generate_comprehensive_insights,
     calculate_behavior_score,
     detect_behavioral_patterns,
@@ -615,10 +615,9 @@ def _generate_daily_summary(insights_data: Dict[str, Any], logs: list) -> Dict[s
     
     # バックエンド計算による生産性スコア（フォールバック）
     if productivity_score == 0 and logs:
-        # 一時的に behavior_routes の関数をインポート
         try:
-            from . import behavior_routes
-            productivity_score = behavior_routes._calculate_productivity_score(logs)
+            from ..behavior.utils import calculate_productivity_score
+            productivity_score = calculate_productivity_score(logs)
         except Exception:
             productivity_score = 0
     
@@ -698,4 +697,4 @@ def _generate_deterministic_hash(text: str) -> str:
     return hashlib.sha256(text.encode('utf-8')).hexdigest()[:16]
 
 
-# _evaluate_data_freshness関数は.analysis_helpersモジュールからインポートして使用
+# _evaluate_data_freshness関数は.helpersモジュールからインポートして使用

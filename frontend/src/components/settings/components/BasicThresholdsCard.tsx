@@ -38,7 +38,16 @@ export const BasicThresholdsCard: React.FC<BasicThresholdsCardProps> = ({ absenc
                 </HStack>
                 <Badge colorScheme="red" variant="outline">{absenceThreshold}秒</Badge>
               </HStack>
-              <NumberInput value={absenceThreshold} min={1} max={60} onChange={(_, v) => onChangeAbsence(v)} size="lg">
+              <NumberInput 
+                value={absenceThreshold} 
+                min={1} 
+                max={60} 
+                onChange={(valueAsString, valueAsNumber) => {
+                  console.log('Absence threshold change:', { valueAsString, valueAsNumber });
+                  onChangeAbsence(valueAsNumber);
+                }} 
+                size="lg"
+              >
                 <NumberInputField borderRadius="lg" />
                 <NumberInputStepper>
                   <NumberIncrementStepper />
@@ -59,7 +68,16 @@ export const BasicThresholdsCard: React.FC<BasicThresholdsCardProps> = ({ absenc
                 </HStack>
                 <Badge colorScheme="orange" variant="outline">{smartphoneThreshold}秒</Badge>
               </HStack>
-              <NumberInput value={smartphoneThreshold} min={1} max={30} onChange={(_, v) => onChangeSmartphone(v)} size="lg">
+              <NumberInput 
+                value={smartphoneThreshold} 
+                min={1} 
+                max={60} 
+                onChange={(valueAsString, valueAsNumber) => {
+                  console.log('Smartphone threshold change:', { valueAsString, valueAsNumber });
+                  onChangeSmartphone(valueAsNumber);
+                }} 
+                size="lg"
+              >
                 <NumberInputField borderRadius="lg" />
                 <NumberInputStepper>
                   <NumberIncrementStepper />

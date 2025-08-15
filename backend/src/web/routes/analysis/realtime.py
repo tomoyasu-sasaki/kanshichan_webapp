@@ -14,19 +14,19 @@ from flask import Blueprint, request, current_app
 from utils.logger import setup_logger
 from services.monitoring.alert_system import AlertSystem
 from services.monitoring.performance_monitor import PerformanceMonitor
-from .analysis_helpers import (
+from .helpers import (
     generate_comprehensive_insights,
     calculate_behavior_score,
     detect_behavioral_patterns,
     generate_contextual_recommendations,
     calculate_data_quality_metrics
 )
+from web.response_utils import success_response, error_response
 
 logger = setup_logger(__name__)
 
 # Blueprint定義（相対パス化。上位で /api および /api/v1 を付与）
 realtime_analysis_bp = Blueprint('realtime_analysis', __name__, url_prefix='/analysis')
-from web.response_utils import success_response, error_response
 
 
 @realtime_analysis_bp.route('/realtime-stream', methods=['POST'])
@@ -103,8 +103,187 @@ def submit_realtime_data():
         })
         
     except Exception as e:
-        logger.error(f"Error processing realtime data: {e}", exc_info=True)
-        return error_response('Failed to process realtime data', code='PROCESSING_ERROR', status_code=500)
+        logger.error(f"Error submitting realtime data: {e}", exc_info=True)
+        return error_response('Failed to submit realtime data', code='STREAM_ERROR', status_code=500)
+
+
+@realtime_analysis_bp.route('/stream-status', methods=['GET'])
+def get_stream_status():
+    """ストリーミング状態取得API
+    
+    リアルタイムデータストリームの現在の状態を取得
+    
+    Query Parameters:
+        user_id (str): ユーザーID (オプション)
+        
+    Returns:
+        JSON: ストリーミング状態情報
+    """
+    try:
+        user_id = request.args.get('user_id')
+        
+        # リアルタイム分析器取得
+        real_time_analyzer = _get_real_time_analyzer()
+        if not real_time_analyzer:
+            return error_response('Real-time analyzer not available', code='SERVICE_UNAVAILABLE', status_code=500)
+        
+        # ストリーム状態取得
+        stream_status = real_time_analyzer.get_stream_status(user_id)
+        
+        return success_response({
+            'stream_active': stream_status.get('active', False),
+            'data_points_count': stream_status.get('data_points', 0),
+            'last_update': stream_status.get('last_update'),
+            'processing_latency_ms': stream_status.get('latency', 0),
+            'user_id': user_id
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting stream status: {e}", exc_info=True)
+        return error_response('Failed to get stream status', code='STATUS_ERROR', status_code=500)
+
+
+@realtime_analysis_bp.route('/realtime-insights', methods=['GET'])
+def get_realtime_insights():
+    """リアルタイムインサイト取得API
+    
+    現在のストリーミングデータからリアルタイムインサイトを生成
+    
+    Query Parameters:
+        user_id (str): ユーザーID (オプション)
+        window_size (int): 分析ウィンドウサイズ（秒、デフォルト: 300）
+        
+    Returns:
+        JSON: リアルタイムインサイト
+    """
+    try:
+        user_id = request.args.get('user_id')
+        window_size = int(request.args.get('window_size', 300))
+        
+        if window_size < 60 or window_size > 3600:
+            return error_response('Window size must be between 60 and 3600 seconds', code='VALIDATION_ERROR', status_code=400)
+        
+        # リアルタイム分析器取得
+        real_time_analyzer = _get_real_time_analyzer()
+        if not real_time_analyzer:
+            return error_response('Real-time analyzer not available', code='SERVICE_UNAVAILABLE', status_code=500)
+        
+        # リアルタイムインサイト生成
+        insights = real_time_analyzer.generate_realtime_insights(user_id, window_size)
+        
+        return success_response({
+            'user_id': user_id,
+            'window_size_seconds': window_size,
+            'insights': insights,
+            'generated_at': datetime.now(timezone.utc).isoformat()
+        })
+        
+    except ValueError as e:
+        return error_response(f'Invalid parameter: {str(e)}', code='VALIDATION_ERROR', status_code=400)
+    except Exception as e:
+        logger.error(f"Error getting realtime insights: {e}", exc_info=True)
+        return error_response('Failed to generate realtime insights', code='ANALYSIS_ERROR', status_code=500)
+
+
+@realtime_analysis_bp.route('/alerts', methods=['GET'])
+def get_active_alerts():
+    """アクティブアラート取得API
+    
+    現在アクティブなアラートと統計情報を取得
+    
+    Query Parameters:
+        level (str): フィルタするアラートレベル (info/warning/alert/critical)
+        limit (int): 取得件数制限 - デフォルト: 50
+        
+    Returns:
+        JSON: アクティブアラート一覧
+    """
+    try:
+        # パラメータ取得
+        level_filter = request.args.get('level')
+        limit = int(request.args.get('limit', 50))
+        
+        # バリデーション
+        if level_filter and level_filter not in ['high', 'medium', 'low']:
+            return error_response('Invalid alert level. Must be one of: high, medium, low', code='VALIDATION_ERROR', status_code=400)
+        
+        # アラートシステム取得
+        alert_system = _get_alert_system()
+        if not alert_system:
+            return error_response('Alert system not available', code='SERVICE_UNAVAILABLE', status_code=500)
+        
+        # アラート統計取得
+        alert_stats = alert_system.get_alert_statistics()
+        
+        # アクティブアラート取得（実装に依存）
+        active_alerts = []
+        for alert_id, alert in alert_system.active_alerts.items():
+            # レベルフィルタ
+            if level_filter and alert.level.value != level_filter:
+                continue
+            
+            alert_data = {
+                'alert_id': alert.alert_id,
+                'rule_id': alert.rule_id,
+                'level': alert.level.value,
+                'title': alert.title,
+                'message': alert.message,
+                'timestamp': alert.timestamp.isoformat(),
+                'urgency_score': alert.urgency_score,
+                'channels': [ch.value for ch in alert.channels],
+                'status': alert.status.value
+            }
+            active_alerts.append(alert_data)
+            
+            if len(active_alerts) >= limit:
+                break
+        
+        return success_response({
+            'active_alerts': active_alerts,
+            'statistics': alert_stats,
+            'filter_applied': {
+                'level': level_filter,
+                'limit': limit
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting active alerts: {e}", exc_info=True)
+        return error_response('Failed to get active alerts', code='ALERTS_ERROR', status_code=500)
+
+
+@realtime_analysis_bp.route('/performance', methods=['GET'])
+def get_streaming_performance():
+    """ストリーミングパフォーマンス取得API
+    
+    リアルタイム分析システムのパフォーマンスメトリクスを取得
+    
+    Query Parameters:
+        user_id (str): ユーザーID (オプション)
+        
+    Returns:
+        JSON: パフォーマンスメトリクス
+    """
+    try:
+        user_id = request.args.get('user_id')
+        
+        # パフォーマンスモニター取得
+        performance_monitor = _get_performance_monitor()
+        if not performance_monitor:
+            return error_response('Performance monitor not available', code='SERVICE_UNAVAILABLE', status_code=500)
+        
+        # パフォーマンスメトリクス取得
+        metrics = performance_monitor.get_realtime_metrics(user_id)
+        
+        return success_response({
+            'user_id': user_id,
+            'metrics': metrics,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting streaming performance: {e}", exc_info=True)
+        return error_response('Failed to get performance metrics', code='PERFORMANCE_ERROR', status_code=500)
 
 
 @realtime_analysis_bp.route('/streaming-status', methods=['GET'])
@@ -174,73 +353,6 @@ def get_streaming_status():
     except Exception as e:
         logger.error(f"Error getting streaming status: {e}", exc_info=True)
         return error_response('Failed to get streaming status', code='STATUS_ERROR', status_code=500)
-
-
-@realtime_analysis_bp.route('/alerts', methods=['GET'])
-def get_active_alerts():
-    """アクティブアラート取得API
-    
-    現在アクティブなアラートと統計情報を取得
-    
-    Query Parameters:
-        level (str): フィルタするアラートレベル (info/warning/alert/critical)
-        limit (int): 取得件数制限 - デフォルト: 50
-        
-    Returns:
-        JSON: アクティブアラート一覧
-    """
-    try:
-        # パラメータ取得
-        level_filter = request.args.get('level')
-        limit = int(request.args.get('limit', 50))
-        
-        # バリデーション
-        if level_filter and level_filter not in ['high', 'medium', 'low']:
-            return error_response('Invalid alert level. Must be one of: high, medium, low', code='VALIDATION_ERROR', status_code=400)
-        
-        # アラートシステム取得
-        alert_system = _get_alert_system()
-        if not alert_system:
-            return error_response('Alert system not available', code='SERVICE_UNAVAILABLE', status_code=500)
-        
-        # アラート統計取得
-        alert_stats = alert_system.get_alert_statistics()
-        
-        # アクティブアラート取得（実装に依存）
-        active_alerts = []
-        for alert_id, alert in alert_system.active_alerts.items():
-            # レベルフィルタ
-            if level_filter and alert.level.value != level_filter:
-                continue
-            
-            alert_data = {
-                'alert_id': alert.alert_id,
-                'rule_id': alert.rule_id,
-                'level': alert.level.value,
-                'title': alert.title,
-                'message': alert.message,
-                'timestamp': alert.timestamp.isoformat(),
-                'urgency_score': alert.urgency_score,
-                'channels': [ch.value for ch in alert.channels],
-                'status': alert.status.value
-            }
-            active_alerts.append(alert_data)
-            
-            if len(active_alerts) >= limit:
-                break
-        
-        return success_response({
-            'active_alerts': active_alerts,
-            'statistics': alert_stats,
-            'filter_applied': {
-                'level': level_filter,
-                'limit': limit
-            }
-        })
-        
-    except Exception as e:
-        logger.error(f"Error getting active alerts: {e}", exc_info=True)
-        return error_response('Failed to get active alerts', code='ALERTS_ERROR', status_code=500)
 
 
 @realtime_analysis_bp.route('/performance-report', methods=['GET'])
@@ -386,4 +498,4 @@ def _get_performance_monitor() -> Optional[PerformanceMonitor]:
         return PerformanceMonitor(config)
     except Exception as e:
         logger.error(f"Error creating PerformanceMonitor: {e}")
-        return None 
+        return None

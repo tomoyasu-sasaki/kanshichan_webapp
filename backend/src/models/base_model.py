@@ -63,4 +63,5 @@ class BaseModel(db.Model):
             if isinstance(value, datetime):
                 value = value.isoformat()
             result[column.name] = value
-        return result 
+        return result
+
