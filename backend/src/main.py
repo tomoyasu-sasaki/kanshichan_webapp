@@ -5,11 +5,10 @@ import os
 from datetime import datetime
 from flask import current_app
 from web.app import create_app # create_app をインポート
-from core.monitor import Monitor
-from core.camera import Camera
-from core.detector import Detector
-from core.detection import DetectionManager
-from core.state import StateManager
+from core.monitoring import Monitor
+from core.monitoring import Camera
+from core.detection import Detector, DetectionManager
+from core.management import StateManager
 from services.communication.alert_manager import AlertManager
 from services.communication.alert_service import AlertService
 from services.tts.sound_service import SoundService

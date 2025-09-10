@@ -11,9 +11,9 @@ from typing import Any, Dict, Optional
 import time
 import numpy as np
 from utils.logger import setup_logger
-from core.camera import Camera
-from core.detector import Detector
-from core.state import StateManager
+from .camera import Camera
+from core.detection import Detector
+from core.management import StateManager
 from web.websocket import broadcast_status
 from utils.config_manager import ConfigManager
 from utils.exceptions import (

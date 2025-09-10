@@ -23,8 +23,8 @@ from utils.exceptions import (
     YOLOError, MediaPipeError, DetectionError, ConfigError,
     HardwareError, OptimizationError, SmoothingError, wrap_exception
 )
-from core.ai_optimizer import AIOptimizer
-from core.detection_smoother import DetectionSmoother
+from core.optimization import AIOptimizer
+from .detection_smoother import DetectionSmoother
 import shutil
 from pathlib import Path
 from ultralytics.utils import SETTINGS
@@ -218,11 +218,11 @@ class ObjectDetector:
             if self.config_manager:
                 models_dir_rel = self.config_manager.get('models.yolo.models_dir', 'model_artifacts')
                 # プロジェクトルートからの相対パスを絶対パスに変換
-                project_root = Path(__file__).resolve().parent.parent.parent
+                project_root = Path(__file__).resolve().parent.parent.parent.parent
                 models_dir = project_root / models_dir_rel
             else:
                 # 設定がない場合はデフォルトパスを使用
-                project_root = Path(__file__).resolve().parent.parent.parent
+                project_root = Path(__file__).resolve().parent.parent.parent.parent
                 models_dir = project_root / "model_artifacts"
             
             # モデルディレクトリが存在しない場合は作成

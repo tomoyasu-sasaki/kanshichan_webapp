@@ -13,9 +13,9 @@ import logging
 import json
 import uuid
 
-from core.camera import Camera
-from core.detector import Detector
-from core.state import StateManager
+from core.monitoring import Camera
+from core.detection import Detector
+from core.management import StateManager
 from models.behavior_log import BehaviorLog
 from utils.logger import setup_logger
 

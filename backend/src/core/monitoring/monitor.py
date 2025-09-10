@@ -10,11 +10,10 @@ import cv2
 import threading
 import datetime
 from utils.logger import setup_logger
-from core.camera import Camera
-from core.detector import Detector
+from .camera import Camera
+from core.detection import Detector, DetectionManager
 from services.communication.alert_manager import AlertManager
-from core.state import StateManager
-from core.detection import DetectionManager
+from core.management import StateManager
 from web.websocket import broadcast_status, socketio
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
@@ -24,10 +23,10 @@ from utils.config_manager import ConfigManager
 from typing import Any, Dict, Optional, List, Tuple
 
 # 新しく分割されたクラスをインポート
-from core.frame_processor import FrameProcessor
-from core.status_broadcaster import StatusBroadcaster
-from core.schedule_checker import ScheduleChecker
-from core.threshold_manager import ThresholdManager
+from core.optimization import FrameProcessor
+from .status_broadcaster import StatusBroadcaster
+from core.management import ScheduleChecker
+from .threshold_manager import ThresholdManager
 
 logger = setup_logger(__name__)
 

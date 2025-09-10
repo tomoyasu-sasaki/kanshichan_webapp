@@ -10,9 +10,11 @@ import threading
 from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 from utils.logger import setup_logger
-from core.camera import Camera
-from core.detection import DetectionManager
-from core.state import StateManager
+# 循環インポートを避けるため遅延インポート
+# from core.monitoring import Camera
+# 循環インポートを避けるため遅延インポート
+# from core.detection import DetectionManager
+from core.management import StateManager
 from utils.exceptions import (
     CameraError, DetectionError, StateError,
     HardwareError, AIProcessingError, wrap_exception
@@ -30,8 +32,8 @@ class FrameProcessor:
     """
     
     def __init__(self,
-                 camera: Camera,
-                 detection_manager: DetectionManager,
+                 camera,  # Camera型注釈を削除
+                 detection_manager,  # DetectionManager型注釈を削除
                  state_manager: StateManager):
         """
         初期化

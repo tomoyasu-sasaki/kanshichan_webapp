@@ -17,8 +17,8 @@ from utils.logger import setup_logger
 from utils.config_manager import ConfigManager
 
 # 新しく分割されたクラスをインポート
-from core.object_detector import ObjectDetector
-from core.detection_renderer import DetectionRenderer
+from .object_detector import ObjectDetector
+from core.rendering import DetectionRenderer
 
 logger = setup_logger(__name__)
 

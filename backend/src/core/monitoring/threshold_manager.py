@@ -7,7 +7,7 @@
 import time
 from typing import Optional
 from utils.logger import setup_logger
-from core.state import StateManager
+from core.management import StateManager
 from utils.config_manager import ConfigManager
 from utils.exceptions import (
     ConfigError, ValidationError, StateError,
