@@ -9,6 +9,7 @@ annotated-types==0.7.0
 anyio==4.9.0
 asgiref==3.8.1
 attrs==25.3.0
+audioread==3.0.1
 babel==2.17.0
 bidict==0.23.1
 blinker==1.9.0
@@ -64,8 +65,9 @@ kanjize==1.6.0
 kiwisolver==1.4.8
 language-tags==1.2.0
 lazy_loader==0.4
+librosa==0.11.0
 limits==5.2.0
-llvmlite==0.44.0
+llvmlite==0.45.1
 loguru==0.7.3
 markdown-it-py==3.0.0
 MarkupSafe==2.1.3
@@ -78,8 +80,10 @@ mpmath==1.3.0
 msgpack==1.1.0
 multidict==6.1.0
 networkx==3.4.2
+numba==0.62.1
 numpy==2.2.6
-opencv-contrib-python==4.11.0.86
+opencv-contrib-python==4.9.0.80
+opencv-python==4.12.0.88
 opt_einsum==3.4.0
 ordered-set==4.1.0
 orjson==3.10.18
@@ -88,8 +92,12 @@ pandas==2.3.0
 phonemizer==3.3.0
 Pillow==10.0.0
 platformdirs==4.3.8
+playsound==1.3.0
 pluggy==1.5.0
+polars==1.34.0
+polars-runtime-32==1.34.0
 pooch==1.8.2
+proces==0.1.7
 propcache==0.3.0
 protobuf==4.25.6
 psutil==7.0.0
@@ -122,6 +130,7 @@ ruff==0.11.13
 safehttpx==0.1.6
 safetensors==0.5.3
 schedule==1.2.0
+scikit-learn==1.7.2
 scipy==1.15.3
 screeninfo==0.8.1
 segments==2.3.0
@@ -146,12 +155,14 @@ tokenizers==0.21.1
 tomlkit==0.13.2
 torch==2.7.1
 torchaudio==2.7.1
+torchvision==0.22.1
 tqdm==4.67.1
 transformers==4.52.4
 typeguard==4.4.3
 typer==0.16.0
 typing_extensions==4.14.0
 tzdata==2025.1
+ultralytics==8.3.214
 ultralytics-thop==2.0.14
 uritemplate==4.1.1
 urllib3==2.3.0
@@ -159,6 +170,7 @@ uv==0.7.9
 uvicorn==0.34.3
 websockets==15.0.1
 Werkzeug==3.1.3
+wheel==0.45.1
 wrapt==1.17.2
 wsproto==1.2.0
 WTForms==3.2.1

@@ -183,7 +183,7 @@ tts:
   default_voice_mode: voiceClone
   default_voice_pitch: 1.0
   default_voice_sample_id: 5f37f403230125be
-  default_voice_sample_path: /Users/tmys-sasaki/Projects/Private/KanshiChan/backend/voice_data/samples/5f37f403230125be_tmpnl5ofbxe.wav
+  default_voice_sample_path: /Users/tmys-sasaki/Projects/Private/kanshichan_webapp/backend/voice_data/samples/5f37f403230125be_tmpnl5ofbxe.wav
   default_voice_speed: 1.0
   default_voice_volume: 0.7
   default_vq_score: 0.8
